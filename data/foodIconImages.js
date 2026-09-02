@@ -2,7 +2,9 @@
 // by the exact `iconKey` each card builds (see each card's `iconKey` there,
 // and `rowIconKeyOf` for the list rows).
 //
-// 1713 entries, wired in v0.0.50 from Damon's drawn set.
+// 1737 entries -- 1,713 wired in v0.0.50 from Damon's first drawn set, and
+// the last 24 added in v0.0.56. Every icon key this app can generate now
+// has artwork; nothing falls back to the dashed placeholder any more.
 //
 // ---------------------------------------------------------------------
 // They are .jpg, not .png, as of v0.0.53
@@ -61,23 +63,24 @@
 // Why this is still an explicit map
 //
 // It no longer has to be. Metro required static string literals inside
-// require(), which is what forced 1,713 hand-written lines instead of a
+// require(), which is what forced 1,737 hand-written lines instead of a
 // loop; assetUri() is an ordinary function call, so a template string
 // would now work fine.
 //
 // It stays explicit anyway, because the map is the only record of which
-// icon keys have artwork. A key with no entry falls back to the dashed
-// placeholder, which is exactly what should happen for the 24 that are
-// still undrawn -- generating URLs from a pattern would instead point all
-// 24 at files that don't exist and show 24 silently broken images.
+// icon keys have artwork. That mattered while 24 were undrawn: a key with
+// no entry falls back to the dashed placeholder, whereas a URL generated
+// from a pattern would have pointed at a file that did not exist and shown
+// a silently broken image. The set is complete now, but the next icon key
+// added to the app starts life undrawn too, so the property is worth
+// keeping.
 //
 // That failure mode is also the one thing that got safer here. A missing
 // require() broke the whole bundle at build time; a missing URL is one
 // blank icon at runtime. Cheaper to survive, but easier to miss -- so the
 // map is still worth checking against the real filenames when it changes.
 //
-// 24 keys are still undrawn and deliberately absent below. See
-// docs/icon-registry.md for which.
+// docs/icon-registry.md is the full inventory, key by key.
 import { assetUri } from '../utils/assetHost';
 
 export const FOOD_ICON_IMAGES = {
@@ -234,7 +237,7 @@ export const FOOD_ICON_IMAGES = {
   processed_pate_spread_loaf_cooked: assetUri('processed_pate_spread_loaf_cooked.jpg'),
   processed_sausage_cooked: assetUri('processed_sausage_cooked.jpg'),
   processed_sausage_raw: assetUri('processed_sausage_raw.jpg'),
-  // --- Turkey (56) ---
+  // --- Turkey (57) ---
   turkey_breast_skinOn_boneIn_cooked: assetUri('turkey_breast_skinOn_boneIn_cooked.jpg'),
   turkey_breast_skinOn_boneIn_raw: assetUri('turkey_breast_skinOn_boneIn_raw.jpg'),
   turkey_breast_skinOn_boneless_cooked: assetUri('turkey_breast_skinOn_boneless_cooked.jpg'),
@@ -267,6 +270,7 @@ export const FOOD_ICON_IMAGES = {
   turkey_other_skinOn_boneless_cooked: assetUri('turkey_other_skinOn_boneless_cooked.jpg'),
   turkey_other_skinless_boneIn_cooked: assetUri('turkey_other_skinless_boneIn_cooked.jpg'),
   turkey_other_skinless_boneless_cooked: assetUri('turkey_other_skinless_boneless_cooked.jpg'),
+  turkey_tenders_breaded_cooked: assetUri('turkey_tenders_breaded_cooked.jpg'),
   turkey_thigh_skinOn_boneIn_cooked: assetUri('turkey_thigh_skinOn_boneIn_cooked.jpg'),
   turkey_thigh_skinOn_boneIn_raw: assetUri('turkey_thigh_skinOn_boneIn_raw.jpg'),
   turkey_thigh_skinOn_boneless_cooked: assetUri('turkey_thigh_skinOn_boneless_cooked.jpg'),
@@ -299,7 +303,7 @@ export const FOOD_ICON_IMAGES = {
   type_poultry_turkey: assetUri('type_poultry_turkey.jpg'),
 
   // ===== RED MEAT =====
-  // --- Beef (66) ---
+  // --- Beef (68) ---
   beef_brisket_partly_trimmed_cooked: assetUri('beef_brisket_partly_trimmed_cooked.jpg'),
   beef_brisket_partly_trimmed_raw: assetUri('beef_brisket_partly_trimmed_raw.jpg'),
   beef_brisket_trimmed_cooked: assetUri('beef_brisket_trimmed_cooked.jpg'),
@@ -330,6 +334,8 @@ export const FOOD_ICON_IMAGES = {
   beef_ny_strip_untrimmed_raw: assetUri('beef_ny_strip_untrimmed_raw.jpg'),
   beef_organs_cooked: assetUri('beef_organs_cooked.jpg'),
   beef_organs_raw: assetUri('beef_organs_raw.jpg'),
+  beef_other_cooked: assetUri('beef_other_cooked.jpg'),
+  beef_other_raw: assetUri('beef_other_raw.jpg'),
   beef_porterhouse_tbone_partly_trimmed_cooked: assetUri('beef_porterhouse_tbone_partly_trimmed_cooked.jpg'),
   beef_porterhouse_tbone_partly_trimmed_raw: assetUri('beef_porterhouse_tbone_partly_trimmed_raw.jpg'),
   beef_porterhouse_tbone_trimmed_cooked: assetUri('beef_porterhouse_tbone_trimmed_cooked.jpg'),
@@ -439,7 +445,7 @@ export const FOOD_ICON_IMAGES = {
   lamb_shoulder_untrimmed_raw: assetUri('lamb_shoulder_untrimmed_raw.jpg'),
   // --- Other Meats (1) ---
   other_other_cooked: assetUri('other_other_cooked.jpg'),
-  // --- Pork (54) ---
+  // --- Pork (56) ---
   pork_backribs_partly_trimmed_cooked: assetUri('pork_backribs_partly_trimmed_cooked.jpg'),
   pork_backribs_partly_trimmed_raw: assetUri('pork_backribs_partly_trimmed_raw.jpg'),
   pork_backribs_trimmed_cooked: assetUri('pork_backribs_trimmed_cooked.jpg'),
@@ -480,6 +486,8 @@ export const FOOD_ICON_IMAGES = {
   pork_loin_untrimmed_raw: assetUri('pork_loin_untrimmed_raw.jpg'),
   pork_organs_cooked: assetUri('pork_organs_cooked.jpg'),
   pork_organs_raw: assetUri('pork_organs_raw.jpg'),
+  pork_other_cooked: assetUri('pork_other_cooked.jpg'),
+  pork_other_raw: assetUri('pork_other_raw.jpg'),
   pork_shoulder_butt_partly_trimmed_cooked: assetUri('pork_shoulder_butt_partly_trimmed_cooked.jpg'),
   pork_shoulder_butt_partly_trimmed_raw: assetUri('pork_shoulder_butt_partly_trimmed_raw.jpg'),
   pork_shoulder_butt_trimmed_cooked: assetUri('pork_shoulder_butt_trimmed_cooked.jpg'),
@@ -499,7 +507,7 @@ export const FOOD_ICON_IMAGES = {
   processed_jerky_cooked: assetUri('processed_jerky_cooked.jpg'),
   processed_other_raw: assetUri('processed_other_raw.jpg'),
   processed_salami_pepperoni_cooked: assetUri('processed_salami_pepperoni_cooked.jpg'),
-  // --- Veal (17) ---
+  // --- Veal (19) ---
   veal_chops_cooked: assetUri('veal_chops_cooked.jpg'),
   veal_ground_cooked: assetUri('veal_ground_cooked.jpg'),
   veal_ground_raw: assetUri('veal_ground_raw.jpg'),
@@ -509,6 +517,8 @@ export const FOOD_ICON_IMAGES = {
   veal_loin_raw: assetUri('veal_loin_raw.jpg'),
   veal_organs_cooked: assetUri('veal_organs_cooked.jpg'),
   veal_organs_raw: assetUri('veal_organs_raw.jpg'),
+  veal_other_cooked: assetUri('veal_other_cooked.jpg'),
+  veal_other_raw: assetUri('veal_other_raw.jpg'),
   veal_rib_rack_cooked: assetUri('veal_rib_rack_cooked.jpg'),
   veal_rib_rack_raw: assetUri('veal_rib_rack_raw.jpg'),
   veal_shank_cooked: assetUri('veal_shank_cooked.jpg'),
@@ -517,6 +527,14 @@ export const FOOD_ICON_IMAGES = {
   veal_shoulder_raw: assetUri('veal_shoulder_raw.jpg'),
   veal_sirloin_cooked: assetUri('veal_sirloin_cooked.jpg'),
   veal_sirloin_raw: assetUri('veal_sirloin_raw.jpg'),
+  // --- Category tiles (7) ---
+  type_red_meat_beef: assetUri('type_red_meat_beef.jpg'),
+  type_red_meat_game: assetUri('type_red_meat_game.jpg'),
+  type_red_meat_lamb: assetUri('type_red_meat_lamb.jpg'),
+  type_red_meat_other: assetUri('type_red_meat_other.jpg'),
+  type_red_meat_pork: assetUri('type_red_meat_pork.jpg'),
+  type_red_meat_processed: assetUri('type_red_meat_processed.jpg'),
+  type_red_meat_veal: assetUri('type_red_meat_veal.jpg'),
 
   // ===== SEAFOOD =====
   // --- Fish (50) ---
@@ -705,11 +723,15 @@ export const FOOD_ICON_IMAGES = {
   dairy_cream_cream: assetUri('dairy_cream_cream.jpg'),
   dairy_cream_sour_cream: assetUri('dairy_cream_sour_cream.jpg'),
   dairy_cream_whipped_topping: assetUri('dairy_cream_whipped_topping.jpg'),
-  // --- Milk (4) ---
+  // --- Milk (8) ---
   milk_fat_free: assetUri('milk_fat_free_large.jpg'),
   milk_low_fat: assetUri('milk_low_fat_large.jpg'),
   milk_reduced_fat: assetUri('milk_reduced_fat_large.jpg'),
   milk_whole: assetUri('milk_whole_large.jpg'),
+  dairy_buttermilk: assetUri('dairy_buttermilk.jpg'),
+  dairy_goat_milk: assetUri('dairy_goat_milk.jpg'),
+  dairy_kefir: assetUri('dairy_kefir.jpg'),
+  dairy_milk_condensed_sweetened: assetUri('dairy_milk_condensed_sweetened.jpg'),
   // --- Yogurt (3) ---
   dairy_yogurt_fruit: assetUri('dairy_yogurt_fruit.jpg'),
   dairy_yogurt_other: assetUri('dairy_yogurt_other.jpg'),
@@ -1579,12 +1601,18 @@ export const FOOD_ICON_IMAGES = {
   type_sweet_sugars: assetUri('type_sweet_sugars.jpg'),
 
   // ===== BEVERAGES =====
-  // --- Alcoholic (8) ---
+  // --- Alcoholic (14) ---
   bev_beer_higher_alc: assetUri('bev_beer_higher_alc.jpg'),
   bev_beer_light: assetUri('bev_beer_light.jpg'),
   bev_beer_regular: assetUri('bev_beer_regular.jpg'),
+  bev_bloody_mary: assetUri('bev_bloody_mary.jpg'),
   bev_champagne: assetUri('bev_champagne.jpg'),
+  bev_daiquiri: assetUri('bev_daiquiri.jpg'),
   bev_hard_cider: assetUri('bev_hard_cider.jpg'),
+  bev_liqueur: assetUri('bev_liqueur.jpg'),
+  bev_margarita: assetUri('bev_margarita.jpg'),
+  bev_pina_colada: assetUri('bev_pina_colada.jpg'),
+  bev_spirits: assetUri('bev_spirits.jpg'),
   bev_wine_dessert: assetUri('bev_wine_dessert.jpg'),
   bev_wine_red: assetUri('bev_wine_red.jpg'),
   bev_wine_white: assetUri('bev_wine_white.jpg'),
