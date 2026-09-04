@@ -1,7 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import foods from '../data/foods';
-import { sumEntries, progressPercent, iconForFood } from '../utils/nutrition';
+import { sumEntries, progressPercent } from '../utils/nutrition';
+import { iconKeyForFoodId } from '../utils/foodIcon';
+import FoodIcon from '../components/FoodIcon';
 import { APP_VERSION } from '../utils/appVersion';
 
 // A little horizontal bar that fills up as you approach (or exceed) a goal.
@@ -54,7 +56,7 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry }) {
           .reverse()
           .map((e) => (
             <View key={e.id} style={styles.entryRow}>
-              <Text style={styles.entryIcon}>{iconForFood(foods, e.foodId)}</Text>
+              <FoodIcon iconKey={iconKeyForFoodId(foods, e.foodId)} style={styles.entryIcon} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.entryName}>{e.name}</Text>
                 <Text style={styles.entrySub}>
@@ -95,13 +97,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
     borderRadius: 10,
-    padding: 12,
+    // 8, not 12: the 96pt icon added in v0.0.57 sets this row's height now,
+    // so the padding is breathing room around the picture rather than the
+    // thing making the row tall. Same trade the Log Food rows made.
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     marginBottom: 8,
   },
-  // Fixed width, same reasoning as LogFoodScreen.js's own `icon` style —
-  // reserves the same box now that iconForFood() returns '' for every
-  // food (data/foods.js), ready for a real icon to drop in later.
-  entryIcon: { fontSize: 26, width: 26, marginRight: 12 },
+  // Spacing only — the icon's own 96x96 box lives in components/FoodIcon.js,
+  // shared with the Log Food and Favorites rows so a food is the same size
+  // everywhere it is listed.
+  entryIcon: { marginRight: 12 },
   entryName: { fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
   entrySub: { fontSize: 14, color: '#777', marginTop: 2 },
   deleteBtn: { paddingHorizontal: 10, paddingVertical: 6 },

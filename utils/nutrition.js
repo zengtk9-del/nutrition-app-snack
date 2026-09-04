@@ -95,19 +95,6 @@ export function filterByCategory(foods, category) {
   );
 }
 
-// Looks up the icon for a logged entry by matching its foodId back against
-// the food database. Entries themselves don't store an icon — this way, if
-// a food's icon ever changes, every past entry for it picks up the new one
-// automatically instead of being stuck with whatever was saved at log time.
-// Every food's icon is currently blank (see data/foods.js) while Damon
-// designs real ones, so this — including the not-found fallback, which
-// used to be a generic plate emoji — returns '' for now too, rather than
-// showing a placeholder emoji next to entries that will get a real icon
-// soon.
-export function iconForFood(foods, foodId) {
-  const food = foods.find((f) => f.id === foodId);
-  return food?.icon || '';
-}
 
 // "2026-07-01" style key for a Date (uses LOCAL time, not UTC).
 export function formatDateKey(date = new Date()) {

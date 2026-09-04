@@ -30,14 +30,12 @@ import { LEGUME_TYPES, LEGUME_FORMS, LEGUME_ITEMS } from '../data/legumeHierarch
 import { NUT_SEED_TYPES, NUT_PREPS, NUT_SEED_ITEMS } from '../data/nutSeedHierarchy';
 import { GRAIN_TYPES, GRAIN_FORMS, GRAIN_ITEMS } from '../data/grainHierarchy';
 import { FAT_OIL_TYPES, FAT_LEVELS, FAT_OIL_ITEMS } from '../data/fatOilHierarchy';
-import { SWEET_TYPES, SWEET_VARIETIES, SWEET_ITEMS } from '../data/sweetHierarchy';
-import { BEVERAGE_TYPES, BEVERAGE_VARIETIES, BEVERAGE_ITEMS } from '../data/beverageHierarchy';
-import { CONDIMENT_TYPES, CONDIMENT_VARIETIES, CONDIMENT_ITEMS } from '../data/condimentHierarchy';
-import { DISH_TYPES, DISH_ITEMS } from '../data/mixedDishHierarchy';
-import { SNACK_TYPES, SNACK_VARIETIES, SNACK_ITEMS } from '../data/snackHierarchy';
-import { SUBSTITUTE_TYPES, SUBSTITUTE_ITEMS } from '../data/meatSubstituteHierarchy';
-import { BABY_TYPES, BABY_VARIETIES, BABY_ITEMS } from '../data/babyFoodHierarchy';
 import { filterFoods, filterByCategory } from '../utils/nutrition';
+// rowIconKeyOf and the two category tables moved to utils/foodIcon.js in
+// v0.0.57 so the Today tab and Favorites rows could use them too; the
+// 96pt icon square itself is components/FoodIcon.js for the same reason.
+import { SIMPLE_CATEGORIES, ITEM_CARD_CATEGORIES, rowIconKeyOf, iconKeyForFoodId } from '../utils/foodIcon';
+import FoodIcon from '../components/FoodIcon';
 import { cardKeyOf, representativeRow, cardTitleOf } from '../utils/foodCards';
 import { commonnessRank } from '../data/foodCommonness';
 import {
@@ -198,7 +196,7 @@ function CountFoodCard({ item, onAdd, onAddFavorite }) {
 function DrillDownRow({ label, onPress, iconKey }) {
   return (
     <TouchableOpacity style={styles.pickerRow} activeOpacity={0.6} onPress={onPress}>
-      <RowIcon iconKey={iconKey} />
+      <FoodIcon iconKey={iconKey} />
       <Text style={[styles.pickerRowText, styles.pickerRowTextWithIcon]}>{label}</Text>
       <Text style={styles.pickerRowChevron}>›</Text>
     </TouchableOpacity>
@@ -3085,15 +3083,6 @@ function FavoriteCountCard({ favorite, onAdd }) {
 // "Remove from Favorites" both work straight from the closed summary row
 // -- no need to open the card first just to log or delete it.
 
-// The four categories that predate SIMPLE_CATEGORIES but share its shape --
-// one item, one optional toggle, driven by LegumeCard.
-const ITEM_CARD_CATEGORIES = {
-  legume: { itemField: 'legumeItem', variantField: 'legumeForm', varieties: LEGUME_FORMS, iconPrefix: 'legume', toggleLabel: 'Form', variantInIconKey: true },
-  nut_seed: { itemField: 'nutItem', variantField: 'nutPrep', varieties: NUT_PREPS, iconPrefix: 'nutseed', toggleLabel: 'Preparation', variantInIconKey: true },
-  grain: { itemField: 'grainItem', variantField: 'grainForm', varieties: GRAIN_FORMS, iconPrefix: 'grain', toggleLabel: 'Form', variantInIconKey: true },
-  fat_oil: { itemField: 'fatItem', variantField: 'fatLevel', varieties: FAT_LEVELS, iconPrefix: 'fatoil', toggleLabel: 'Fat Level', variantInIconKey: false },
-};
-
 // Renders whichever food card a given card's rows belong to.
 //
 // The All tab needs this because it lists every food in the app in one
@@ -3190,83 +3179,7 @@ function FoodCardFor({ rows, cardKey, pools, onAddFavorite, onAdd }) {
 // showed, so nothing about reading the list changed -- only that tapping it
 // now opens a card with its toggles instead of a bare weight box.
 
-// The icon key a LIST ROW should show.
-//
-// Every drill-down row and every All-tab row now has an icon slot, and the
-// picture in it must be the SAME picture the card behind it shows -- one
-// drawing per food, not one for the list and another for the card. So this
-// reproduces each card's icon key at its DEFAULT toggle position, which is
-// what you see the moment the card opens.
-//
-// Type rows (Beef, Cookies & Biscuits) have no card behind them, so they
-// get their own `type_<category>_<key>` namespace instead.
-function rowIconKeyOf(food) {
-  if (!food) return null;
-  switch (food.category) {
-    case 'poultry': {
-      const meta = (POULTRY_CUTS[food.subcategory] || []).find((c) => c.key === food.cut);
-      const parts = [food.subcategory, food.cut];
-      if (meta?.hasSkinToggle) parts.push('skinOn');
-      if (meta?.hasBoneToggle) parts.push('boneIn');
-      parts.push('raw');
-      return parts.join('_');
-    }
-    case 'seafood': {
-      const meta = (SEAFOOD_CUTS[food.subcategory] || []).find((c) => c.key === food.cut);
-      const parts = [food.subcategory, food.cut];
-      if (meta?.hasShellToggle) parts.push('shellOff');
-      parts.push('raw');
-      return parts.join('_');
-    }
-    case 'egg':
-      return [food.subcategory, food.form, 'raw'].join('_');
-    case 'red_meat': {
-      const meta = (RED_MEAT_CUTS[food.subcategory] || []).find((c) => c.key === food.cut);
-      if (meta?.hasFatTierToggle) return [food.subcategory, 'ground', 'regular', 'raw'].join('_');
-      if (meta?.hasTrimTierToggle) return [food.subcategory, food.cut, 'trimmed', 'raw'].join('_');
-      return [food.subcategory, food.cut, 'raw'].join('_');
-    }
-    case 'fruit':
-      return `fruit_${food.cut}_fresh`;
-    case 'vegetable':
-      return `vegetable_${food.cut}_raw`;
-    case 'dairy':
-      if (food.subcategory === 'milk') return 'milk_whole';
-      if (food.subcategory === 'yogurt') return 'dairy_yogurt_plain';
-      if (food.subcategory === 'butter') return 'dairy_butter_stick';
-      if (food.cheeseType) return `dairy_cheese_${food.cheeseType}`;
-      if (food.creamGroup) return `dairy_cream_${food.creamGroup}`;
-      return `dairy_${food.id}`;
-    default: {
-      const cfg = SIMPLE_CATEGORIES[food.category] || ITEM_CARD_CATEGORIES[food.category] || null;
-      if (!cfg) return null;
-      const cross = (cfg.crossFields || []).find(([fl]) => food[fl] !== undefined);
-      const key = food[cfg.itemField] !== undefined ? food[cfg.itemField] : cross ? food[cross[0]] : null;
-      const prefix = food[cfg.itemField] !== undefined ? cfg.iconPrefix : cross ? cross[1] : cfg.iconPrefix;
-      if (!key) return null;
-      // The four older categories put their toggle in the key; the seven
-      // from v0.0.43 deliberately do not. See LegumeCard's variantInIconKey.
-      const variant = cfg.variantInIconKey ? food[cfg.variantField] : null;
-      return `${prefix}_${key}${variant ? `_${variant}` : ''}`;
-    }
-  }
-}
 
-// The small square on a list row. Deliberately the same lookup the cards
-// use, so an icon drawn once shows up in both places; until one exists it
-// draws an empty slot rather than nothing, which is the whole point of a
-// placeholder -- the layout does not shift when the art lands.
-function RowIcon({ iconKey }) {
-  const image = iconKey ? getFoodIconImage(iconKey) : null;
-  if (image) {
-    return (
-      <View style={styles.rowIconWrap}>
-        <Image source={image} style={styles.rowIconImage} resizeMode="contain" />
-      </View>
-    );
-  }
-  return <View style={styles.rowIconPlaceholder} />;
-}
 
 function AllFoodRow({ card, expanded, onToggle, pools, onAddFavorite, onAdd }) {
   const f = card.rep;
@@ -3274,7 +3187,7 @@ function AllFoodRow({ card, expanded, onToggle, pools, onAddFavorite, onAdd }) {
   return (
     <View style={styles.allCardWrap}>
       <TouchableOpacity style={styles.allCardRow} onPress={onToggle} activeOpacity={0.7}>
-        <RowIcon iconKey={rowIconKeyOf(f)} />
+        <FoodIcon iconKey={rowIconKeyOf(f)} />
         <View style={{ flex: 1, marginLeft: 14 }}>
           <Text style={styles.name}>{card.title}</Text>
           <Text style={styles.sub}>
@@ -3364,6 +3277,7 @@ function FavoriteListItem({
   return (
     <View style={styles.favoriteListItem}>
       <TouchableOpacity style={styles.favoriteSummaryRow} activeOpacity={0.6} onPress={onToggleExpand}>
+        <FoodIcon iconKey={iconKeyForFoodId(foods, favorite.foodId)} style={styles.rowIconSpacing} />
         <View style={{ flex: 1 }}>
           <Text style={styles.name}>
             {expanded ? '▾' : '▸'} {title}
@@ -3647,53 +3561,6 @@ function FavoriteListItem({
   );
 }
 
-// The seven categories organized in v0.0.43 -- Sweets, Beverages,
-// Condiments & Sauces, Mixed Dishes, Snacks, Meat Substitutes and Baby
-// Foods -- all have the SAME shape: Category > Type > item > card, with at
-// most one optional toggle on the card.
-//
-// So rather than seven near-identical copies of the state/derivation/
-// routing blocks that Grains and Fats & Oils each got, they share one
-// generic path driven by this table. Adding an eighth would be a row here,
-// not a new branch anywhere.
-//
-// `variantInIconKey` is false throughout: every toggle in these seven is a
-// data axis that does NOT change the drawing (light vs regular dressing,
-// diet vs regular cola, BBQ vs plain crisps, strained vs junior puree),
-// which is the same call margarine's fat level got in v0.0.41.
-// `crossFields` lists (field, iconPrefix) pairs for rows that arrive by
-// crossListCategories from another category -- snack bars into Sweets, nut
-// milks into Beverages, trail mix into Snacks, hummus and falafel into
-// Mixed Dishes. Such a row keeps its ORIGINAL item key and icon prefix, so
-// it is one food with one picture shown under two tabs, rather than a
-// second drawing of the same granola bar.
-const SIMPLE_CATEGORIES = {
-  sweet: { label: 'Sweets', types: SWEET_TYPES, items: SWEET_ITEMS, varieties: SWEET_VARIETIES,
-    itemField: 'sweetItem', variantField: 'sweetVariety', iconPrefix: 'sweet', toggleLabel: 'Variety',
-    crossFields: [['snackItem', 'snack']],
-  },
-  beverage: { label: 'Beverages', types: BEVERAGE_TYPES, items: BEVERAGE_ITEMS, varieties: BEVERAGE_VARIETIES,
-    itemField: 'beverageItem', variantField: 'beverageVariety', iconPrefix: 'bev', toggleLabel: 'Type',
-    crossFields: [['nutItem', 'nutseed']],
-  },
-  condiment_sauce: { label: 'Condiments & Sauces', types: CONDIMENT_TYPES, items: CONDIMENT_ITEMS,
-    varieties: CONDIMENT_VARIETIES, itemField: 'condimentItem', variantField: 'condimentVariety',
-    iconPrefix: 'cond', toggleLabel: 'Variety',
-    crossFields: [['legumeItem', 'legume']],
-  },
-  mixed_dish: { label: 'Mixed Dishes', types: DISH_TYPES, items: DISH_ITEMS, varieties: [],
-    itemField: 'dishItem', variantField: null, iconPrefix: 'dish', toggleLabel: null,
-    crossFields: [['legumeItem', 'legume']],
-  },
-  snack: { label: 'Snacks', types: SNACK_TYPES, items: SNACK_ITEMS, varieties: SNACK_VARIETIES,
-    itemField: 'snackItem', variantField: 'snackVariety', iconPrefix: 'snack', toggleLabel: 'Variety',
-    crossFields: [['nutItem', 'nutseed']],
-  },
-  meat_substitute: { label: 'Meat Substitutes', types: SUBSTITUTE_TYPES, items: SUBSTITUTE_ITEMS,
-    varieties: [], itemField: 'substituteItem', variantField: null, iconPrefix: 'meatsub', toggleLabel: null },
-  baby_food: { label: 'Baby Foods', types: BABY_TYPES, items: BABY_ITEMS, varieties: BABY_VARIETIES,
-    itemField: 'babyItem', variantField: 'babyStage', iconPrefix: 'baby', toggleLabel: 'Stage' },
-};
 
 export default function LogFoodScreen({
   onAddEntry,
@@ -5240,20 +5107,6 @@ const styles = StyleSheet.create({
   // fills its row almost edge to edge instead of floating in the middle of
   // it. That is the point of the slot: the picture should be the thing you
   // scan, not a stamp next to the words.
-  // White, not the #f4f4f7 tint it had in v0.0.47-0.0.52. The icons became
-  // JPEGs in v0.0.53 to get the set from 2.58 GB down to ~55 MB, and JPEG
-  // has no alpha channel -- every icon is now an opaque white square. A
-  // tinted wrap behind an opaque white image just draws a visible frame
-  // around each picture, so the wrap matches the image instead.
-  rowIconWrap: {
-    width: 96, height: 96, borderRadius: 14, backgroundColor: '#fff',
-    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
-  },
-  rowIconImage: { width: 92, height: 92 },
-  rowIconPlaceholder: {
-    width: 96, height: 96, borderRadius: 14, backgroundColor: '#f0f0f4',
-    borderWidth: 1, borderColor: '#e4e4ea', borderStyle: 'dashed',
-  },
   pickerRowChevron: { fontSize: 20, color: '#bbb', fontWeight: '600' },
   backRow: { paddingVertical: 10, marginBottom: 4 },
   backRowText: { fontSize: 15, fontWeight: '600', color: '#4f8ef7' },
@@ -5434,9 +5287,16 @@ const styles = StyleSheet.create({
   favoriteListItem: {
     backgroundColor: '#fff',
     borderRadius: 10,
-    padding: 12,
+    // Vertical padding trimmed from 12 to 8 in v0.0.57 to pay for the 96pt
+    // icon the summary row gained -- same trade the browse rows made in
+    // v0.0.48. The picture, not the whitespace, sets the row height.
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     marginBottom: 10,
   },
+  // The gap between a row's icon and its text. One value, so the Favorites
+  // rows and the Today entries line their text up identically.
+  rowIconSpacing: { marginRight: 12 },
   favoriteSummaryRow: { flexDirection: 'row', alignItems: 'center' },
   favoriteExpandedCard: {
     marginTop: 12,
