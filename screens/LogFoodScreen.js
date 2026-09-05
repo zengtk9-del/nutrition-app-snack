@@ -5174,20 +5174,23 @@ const styles = StyleSheet.create({
     borderColor: '#e3e3e8',
   },
   emptyText: { color: '#888', fontStyle: 'italic', marginTop: 20, textAlign: 'center', paddingHorizontal: 12 },
-  // 50 while these were text pills; the tiles are ~118 tall. A horizontal
-  // ScrollView needs an explicit height or it claims the whole screen.
-  categoryRow: { marginBottom: 12, height: 122 },
+  // A horizontal ScrollView needs an explicit height or it claims the whole
+  // screen. 122 was arithmetic -- the sum of the tile's own paddings -- and
+  // it clipped the labels on device, because iOS gives a Text block a little
+  // more than lineHeight x lines. This is the tile's height plus real slack
+  // rather than a number that only just fits.
+  categoryRow: { marginBottom: 12, height: 118 },
   // The category strip. Was a row of 42pt text pills until v0.0.60; the
   // artwork needs height to read, so each is now a small card. Fixed width
   // so the row is a regular rhythm rather than jumping about with label
   // length -- "Fats & Oils" and "Condiments & Sauces" wrap to two lines,
   // which is what numberOfLines={2} and the fixed lineHeight are for.
   catTile: {
-    width: 88,
+    width: 82,
     marginRight: 8,
     marginTop: 4,
-    paddingTop: 8,
-    paddingBottom: 8,
+    paddingTop: 6,
+    paddingBottom: 6,
     paddingHorizontal: 4,
     borderRadius: 14,
     borderWidth: 1,
@@ -5200,13 +5203,13 @@ const styles = StyleSheet.create({
   // so this frame is what stops them looking like a torn-out rectangle on
   // the selected tile.
   catTileArt: {
-    width: 62, height: 62, borderRadius: 12, backgroundColor: '#fff',
+    width: 54, height: 54, borderRadius: 12, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  catTileImage: { width: 60, height: 60 },
+  catTileImage: { width: 52, height: 52 },
   catTileGlyph: { fontSize: 26, color: '#4f8ef7' },
   catTileText: {
-    marginTop: 6,
+    marginTop: 5,
     fontSize: 11.5,
     fontWeight: '600',
     color: '#555',
