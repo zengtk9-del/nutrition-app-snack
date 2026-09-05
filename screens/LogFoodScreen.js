@@ -5024,7 +5024,7 @@ export default function LogFoodScreen({
           onPress={() => setCategory('all')}
         />
         <CategoryTile
-          label="My Favorites"
+          label="Favorites"
           glyph="★"
           active={category === 'favorites'}
           onPress={() => setCategory('favorites')}
@@ -5179,7 +5179,7 @@ const styles = StyleSheet.create({
   // it clipped the labels on device, because iOS gives a Text block a little
   // more than lineHeight x lines. This is the tile's height plus real slack
   // rather than a number that only just fits.
-  categoryRow: { marginBottom: 12, height: 118 },
+  categoryRow: { marginBottom: 12, height: 114 },
   // The category strip. Was a row of 42pt text pills until v0.0.60; the
   // artwork needs height to read, so each is now a small card. Fixed width
   // so the row is a regular rhythm rather than jumping about with label
@@ -5187,6 +5187,15 @@ const styles = StyleSheet.create({
   // which is what numberOfLines={2} and the fixed lineHeight are for.
   catTile: {
     width: 82,
+    // FIXED, not summed from paddings. Twice now the strip's height was
+    // computed by adding up what is inside a tile, and twice the labels
+    // came out clipped -- iOS gives a Text block a little more than
+    // lineHeight x lines, so the arithmetic is always a few points short
+    // and the overflow spills under the food list below. Pinning the tile
+    // and clipping it makes that impossible rather than unlikely: the row
+    // is this number plus slack, and nothing inside can exceed it.
+    height: 102,
+    overflow: 'hidden',
     marginRight: 8,
     marginTop: 4,
     paddingTop: 6,
@@ -5203,22 +5212,25 @@ const styles = StyleSheet.create({
   // so this frame is what stops them looking like a torn-out rectangle on
   // the selected tile.
   catTileArt: {
-    width: 54, height: 54, borderRadius: 12, backgroundColor: '#fff',
+    width: 50, height: 50, borderRadius: 11, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  catTileImage: { width: 52, height: 52 },
+  catTileImage: { width: 48, height: 48 },
   catTileGlyph: { fontSize: 26, color: '#4f8ef7' },
   catTileText: {
-    marginTop: 5,
-    fontSize: 11.5,
+    marginTop: 4,
+    fontSize: 11,
     fontWeight: '600',
     color: '#555',
     textAlign: 'center',
-    lineHeight: 14,
-    // Two lines' worth whether the label needs them or not, so "Fruit" and
-    // "Condiments & Sauces" produce tiles of identical height and the row
-    // reads as a row rather than a picket fence.
-    height: 28,
+    lineHeight: 13,
+    // Room for two lines and then some. Fixed so "Fruit" and "Condiments &
+    // Sauces" produce tiles of identical height -- but 30 rather than the
+    // exact 26 that two 13pt lines need, because that is precisely what
+    // went wrong twice: iOS wants a shade more than lineHeight x lines to
+    // lay a second line out, and given exactly enough it silently drops it.
+    // "My Favorites" rendered as "My".
+    height: 30,
   },
   catTileTextActive: { color: '#fff' },
   // Shown above the list only while inside the Red Meat picker (Cuts step
