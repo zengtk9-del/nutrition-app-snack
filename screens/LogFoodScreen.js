@@ -37,6 +37,7 @@ import { filterFoods, filterByCategory } from '../utils/nutrition';
 import { SIMPLE_CATEGORIES, ITEM_CARD_CATEGORIES, rowIconKeyOf, iconKeyForFoodId } from '../utils/foodIcon';
 import FoodIcon from '../components/FoodIcon';
 import CountPortion, { useUnitPortion } from '../components/PortionStep';
+import { getCategoryIcon } from '../data/categoryIcons';
 import { cardKeyOf, representativeRow, cardTitleOf } from '../utils/foodCards';
 import { commonnessRank } from '../data/foodCommonness';
 import {
@@ -188,6 +189,42 @@ function CountFoodCard({ item, onAdd, onAddFavorite }) {
         </TouchableOpacity>
       </View>
     </View>
+  );
+}
+
+// One tile in the category strip along the top of Log Food.
+//
+// These were plain text pills until v0.0.60. The artwork is a compact
+// scene per category (a plate of fruit, a grill of red meat) and it needs
+// real size to read -- at pill height it would have been a smudge -- so
+// the strip grew into a row of small cards instead.
+//
+// The picture sits in its own white rounded square rather than directly on
+// the tile. That is not decoration: the icons are opaque white JPEGs, so
+// on the blue selected tile a bare image would show as a white rectangle.
+// Framed, it reads as a card sitting on the selection colour.
+//
+// `glyph` covers All and My Favorites, which are filters rather than
+// categories and have no artwork of their own.
+function CategoryTile({ label, iconKey, glyph, active, onPress }) {
+  const image = iconKey ? getCategoryIcon(iconKey) : null;
+  return (
+    <TouchableOpacity
+      style={[styles.catTile, active && styles.catTileActive]}
+      activeOpacity={0.7}
+      onPress={onPress}
+    >
+      <View style={styles.catTileArt}>
+        {image ? (
+          <Image source={image} style={styles.catTileImage} resizeMode="contain" />
+        ) : (
+          <Text style={styles.catTileGlyph}>{glyph}</Text>
+        )}
+      </View>
+      <Text numberOfLines={2} style={[styles.catTileText, active && styles.catTileTextActive]}>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
@@ -4978,30 +5015,28 @@ export default function LogFoodScreen({
         horizontal
         showsHorizontalScrollIndicator={false}
         style={styles.categoryRow}
-        contentContainerStyle={{ alignItems: 'center', paddingRight: 16 }}
+        contentContainerStyle={{ alignItems: 'flex-start', paddingRight: 16 }}
       >
-        <TouchableOpacity
-          style={[styles.chip, category === 'all' && styles.chipActive]}
+        <CategoryTile
+          label="All"
+          glyph="▦"
+          active={category === 'all'}
           onPress={() => setCategory('all')}
-        >
-          <Text style={[styles.chipText, category === 'all' && styles.chipTextActive]}>All</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.chip, category === 'favorites' && styles.chipActive]}
+        />
+        <CategoryTile
+          label="My Favorites"
+          glyph="★"
+          active={category === 'favorites'}
           onPress={() => setCategory('favorites')}
-        >
-          <Text style={[styles.chipText, category === 'favorites' && styles.chipTextActive]}>
-            ★ My Favorites
-          </Text>
-        </TouchableOpacity>
+        />
         {CATEGORIES.map((c) => (
-          <TouchableOpacity
+          <CategoryTile
             key={c.key}
-            style={[styles.chip, category === c.key && styles.chipActive]}
+            label={c.label}
+            iconKey={c.key}
+            active={category === c.key}
             onPress={() => setCategory(c.key)}
-          >
-            <Text style={[styles.chipText, category === c.key && styles.chipTextActive]}>{c.label}</Text>
-          </TouchableOpacity>
+          />
         ))}
       </ScrollView>
 
@@ -5139,29 +5174,50 @@ const styles = StyleSheet.create({
     borderColor: '#e3e3e8',
   },
   emptyText: { color: '#888', fontStyle: 'italic', marginTop: 20, textAlign: 'center', paddingHorizontal: 12 },
-  categoryRow: { marginBottom: 12, height: 50 },
-  chip: {
-    height: 42,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e3e3e8',
-    borderRadius: 21,
-    paddingHorizontal: 14,
+  // 50 while these were text pills; the tiles are ~118 tall. A horizontal
+  // ScrollView needs an explicit height or it claims the whole screen.
+  categoryRow: { marginBottom: 12, height: 122 },
+  // The category strip. Was a row of 42pt text pills until v0.0.60; the
+  // artwork needs height to read, so each is now a small card. Fixed width
+  // so the row is a regular rhythm rather than jumping about with label
+  // length -- "Fats & Oils" and "Condiments & Sauces" wrap to two lines,
+  // which is what numberOfLines={2} and the fixed lineHeight are for.
+  catTile: {
+    width: 88,
     marginRight: 8,
     marginTop: 4,
-    alignSelf: 'flex-start',
-    justifyContent: 'center',
+    paddingTop: 8,
+    paddingBottom: 8,
+    paddingHorizontal: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e3e3e8',
+    backgroundColor: '#fff',
     alignItems: 'center',
   },
-  chipActive: { backgroundColor: '#4f8ef7', borderColor: '#4f8ef7' },
-  chipText: {
-    fontSize: 15,
+  catTileActive: { backgroundColor: '#4f8ef7', borderColor: '#4f8ef7' },
+  // White, always -- see CategoryTile's comment: the icons carry no alpha,
+  // so this frame is what stops them looking like a torn-out rectangle on
+  // the selected tile.
+  catTileArt: {
+    width: 62, height: 62, borderRadius: 12, backgroundColor: '#fff',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+  },
+  catTileImage: { width: 60, height: 60 },
+  catTileGlyph: { fontSize: 26, color: '#4f8ef7' },
+  catTileText: {
+    marginTop: 6,
+    fontSize: 11.5,
     fontWeight: '600',
     color: '#555',
-    lineHeight: 22,
-    textAlignVertical: 'center',
+    textAlign: 'center',
+    lineHeight: 14,
+    // Two lines' worth whether the label needs them or not, so "Fruit" and
+    // "Condiments & Sauces" produce tiles of identical height and the row
+    // reads as a row rather than a picket fence.
+    height: 28,
   },
-  chipTextActive: { color: '#fff' },
+  catTileTextActive: { color: '#fff' },
   // Shown above the list only while inside the Red Meat picker (Cuts step
   // or final Foods step) — a plain-text trail so it's always clear which
   // Type/Cut you're currently inside of, since the category chip row above
