@@ -1,0 +1,88 @@
+// The curated Baby Foods list -- Category > Type > item > card, with labels
+// and ordering in data/babyFoodHierarchy.js.
+//
+// Replaces 464 raw USDA rows, of which 172 were infant, toddler and child
+// FORMULA -- dropped entirely per Decision 3. That is 37% of the category
+// and it is not something anyone logs in a personal macro tracker. If it
+// is ever wanted back it is one round to restore.
+//
+// Strained vs Junior is USDA's own axis and a real one: Junior is the
+// coarser, later-stage texture and the two carry different numbers. It is
+// data-gated per item -- plenty of foods exist in only one stage, and
+// those cards show no toggle.
+//
+// The 30 baby-food juice rows that the original import filed under
+// `beverage` are picked up here.
+
+export const foodsBabyFoods = [
+  // --- Fruit Purees ---
+  { id: 'baby_apple_strained', name: 'Apples, strained', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'apple', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 41, proteinPer100g: 0.2, carbsPer100g: 10.8, fatPer100g: 0.2, typicalGrams: 113 },
+  { id: 'baby_apple_junior', name: 'Apples, junior', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'apple', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 37, proteinPer100g: 0.0, carbsPer100g: 10.3, fatPer100g: 0.0, typicalGrams: 113 },
+  { id: 'baby_banana_strained', name: 'Bananas, strained', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'banana', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 56, proteinPer100g: 0.4, carbsPer100g: 15.3, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_banana_junior', name: 'Bananas, junior', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'banana', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 67, proteinPer100g: 0.4, carbsPer100g: 17.8, fatPer100g: 0.2, typicalGrams: 113 },
+  { id: 'baby_pear_strained', name: 'Pears, strained', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'pear', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 42, proteinPer100g: 0.3, carbsPer100g: 10.8, fatPer100g: 0.2, typicalGrams: 113 },
+  { id: 'baby_pear_junior', name: 'Pears, junior', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'pear', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 44, proteinPer100g: 0.3, carbsPer100g: 11.6, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_peach_strained', name: 'Peaches, strained', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'peach', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 65, proteinPer100g: 0.9, carbsPer100g: 14.5, fatPer100g: 0.3, typicalGrams: 113 },
+  { id: 'baby_peach_junior', name: 'Peaches, junior', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'peach', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 65, proteinPer100g: 0.9, carbsPer100g: 14.5, fatPer100g: 0.3, typicalGrams: 113 },
+  { id: 'baby_prune_strained', name: 'Prunes, strained', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'prune', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 69, proteinPer100g: 0.6, carbsPer100g: 18.5, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_prune_junior', name: 'Prunes, junior', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'prune', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 70, proteinPer100g: 0.6, carbsPer100g: 18.7, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_plum_strained', name: 'Plums, strained', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'plum', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 71, proteinPer100g: 0.1, carbsPer100g: 19.7, fatPer100g: 0.0, typicalGrams: 113 },
+  { id: 'baby_plum_junior', name: 'Plums, junior', category: 'baby_food', subcategory: 'fruit_puree', babyItem: 'plum', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 74, proteinPer100g: 0.1, carbsPer100g: 20.5, fatPer100g: 0.0, typicalGrams: 113 },
+
+  // --- Vegetable Purees ---
+  { id: 'baby_carrot_strained', name: 'Carrots, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'carrot', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 26, proteinPer100g: 0.8, carbsPer100g: 6.0, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_carrot_junior', name: 'Carrots, junior', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'carrot', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 32, proteinPer100g: 0.8, carbsPer100g: 7.2, fatPer100g: 0.2, typicalGrams: 113 },
+  { id: 'baby_peas_strained', name: 'Peas, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'peas', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 50, proteinPer100g: 3.3, carbsPer100g: 8.4, fatPer100g: 0.4, typicalGrams: 113 },
+  { id: 'baby_green_beans_strained', name: 'Green Beans, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'green_beans', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 27, proteinPer100g: 1.2, carbsPer100g: 6.3, fatPer100g: 0.2, typicalGrams: 113 },
+  { id: 'baby_green_beans_junior', name: 'Green Beans, junior', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'green_beans', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 24, proteinPer100g: 1.2, carbsPer100g: 5.8, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_sweet_potato_strained', name: 'Sweet Potatoes, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'sweet_potato', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 57, proteinPer100g: 1.1, carbsPer100g: 13.2, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_sweet_potato_junior', name: 'Sweet Potatoes, junior', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'sweet_potato', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 60, proteinPer100g: 1.1, carbsPer100g: 14.0, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_squash_strained', name: 'Squash, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'squash', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 28, proteinPer100g: 0.8, carbsPer100g: 5.7, fatPer100g: 0.2, typicalGrams: 113 },
+  { id: 'baby_squash_junior', name: 'Squash, junior', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'squash', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 24, proteinPer100g: 0.8, carbsPer100g: 5.7, fatPer100g: 0.2, typicalGrams: 113 },
+  { id: 'baby_spinach_strained', name: 'Creamed Spinach, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'spinach', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 37, proteinPer100g: 2.5, carbsPer100g: 5.7, fatPer100g: 1.3, typicalGrams: 113 },
+  { id: 'baby_corn_strained', name: 'Creamed Corn, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'corn', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 57, proteinPer100g: 1.4, carbsPer100g: 14.1, fatPer100g: 0.4, typicalGrams: 113 },
+  { id: 'baby_corn_junior', name: 'Creamed Corn, junior', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'corn', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 65, proteinPer100g: 1.4, carbsPer100g: 16.2, fatPer100g: 0.4, typicalGrams: 113 },
+  { id: 'baby_beets_strained', name: 'Beets, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'beets', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 34, proteinPer100g: 1.3, carbsPer100g: 7.7, fatPer100g: 0.1, typicalGrams: 113 },
+  { id: 'baby_green_peas_veg_strained', name: 'Garden Vegetables, strained', category: 'baby_food', subcategory: 'veg_puree', babyItem: 'green_peas_veg', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 32, proteinPer100g: 2.3, carbsPer100g: 6.8, fatPer100g: 0.2, typicalGrams: 113 },
+
+  // --- Meats & Dinners ---
+  { id: 'baby_chicken_strained', name: 'Chicken, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'chicken', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 130, proteinPer100g: 13.7, carbsPer100g: 0.1, fatPer100g: 7.9, typicalGrams: 71 },
+  { id: 'baby_chicken_junior', name: 'Chicken, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'chicken', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 146, proteinPer100g: 14.0, carbsPer100g: 0.0, fatPer100g: 9.6, typicalGrams: 71 },
+  { id: 'baby_beef_strained', name: 'Beef, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'beef', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 81, proteinPer100g: 12.0, carbsPer100g: 2.4, fatPer100g: 2.5, typicalGrams: 71 },
+  { id: 'baby_beef_junior', name: 'Beef, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'beef', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 81, proteinPer100g: 12.0, carbsPer100g: 2.4, fatPer100g: 2.5, typicalGrams: 71 },
+  { id: 'baby_turkey_strained', name: 'Turkey, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'turkey', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 111, proteinPer100g: 11.5, carbsPer100g: 1.4, fatPer100g: 6.2, typicalGrams: 71 },
+  { id: 'baby_turkey_junior', name: 'Turkey, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'turkey', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 111, proteinPer100g: 11.5, carbsPer100g: 1.4, fatPer100g: 6.2, typicalGrams: 71 },
+  { id: 'baby_ham_strained', name: 'Ham, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'ham', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 97, proteinPer100g: 11.3, carbsPer100g: 3.7, fatPer100g: 3.8, typicalGrams: 71 },
+  { id: 'baby_ham_junior', name: 'Ham, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'ham', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 97, proteinPer100g: 11.3, carbsPer100g: 3.7, fatPer100g: 3.8, typicalGrams: 71 },
+  { id: 'baby_lamb_strained', name: 'Lamb, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'lamb', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 94, proteinPer100g: 14.1, carbsPer100g: 0.8, fatPer100g: 3.4, typicalGrams: 71 },
+  { id: 'baby_lamb_junior', name: 'Lamb, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'lamb', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 112, proteinPer100g: 15.2, carbsPer100g: 0.0, fatPer100g: 5.2, typicalGrams: 71 },
+  { id: 'baby_veal_strained', name: 'Veal, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'veal', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 81, proteinPer100g: 13.1, carbsPer100g: 1.5, fatPer100g: 2.5, typicalGrams: 71 },
+  { id: 'baby_dinner_veg_chicken_junior', name: 'Dinner, vegetables & chicken, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_veg_chicken', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 53, proteinPer100g: 2.0, carbsPer100g: 8.7, fatPer100g: 1.1, typicalGrams: 113 },
+  { id: 'baby_dinner_veg_beef_strained', name: 'Dinner, vegetables & beef, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_veg_beef', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 77, proteinPer100g: 2.2, carbsPer100g: 8.8, fatPer100g: 3.6, typicalGrams: 113 },
+  { id: 'baby_dinner_veg_beef_junior', name: 'Dinner, vegetables & beef, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_veg_beef', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 77, proteinPer100g: 2.2, carbsPer100g: 8.8, fatPer100g: 3.6, typicalGrams: 113 },
+  { id: 'baby_dinner_macaroni_strained', name: 'Dinner, macaroni & cheese, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_macaroni', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 67, proteinPer100g: 3.1, carbsPer100g: 8.9, fatPer100g: 2.1, typicalGrams: 113 },
+  { id: 'baby_dinner_macaroni_junior', name: 'Dinner, macaroni & cheese, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_macaroni', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 61, proteinPer100g: 2.6, carbsPer100g: 8.2, fatPer100g: 2.0, typicalGrams: 113 },
+  { id: 'baby_dinner_chicken_noodle_strained', name: 'Dinner, chicken noodle, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_chicken_noodle', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 74, proteinPer100g: 3.5, carbsPer100g: 7.8, fatPer100g: 3.2, typicalGrams: 113 },
+  { id: 'baby_dinner_chicken_noodle_junior', name: 'Dinner, chicken noodle, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_chicken_noodle', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 74, proteinPer100g: 3.5, carbsPer100g: 7.8, fatPer100g: 3.2, typicalGrams: 113 },
+  { id: 'baby_dinner_turkey_rice_strained', name: 'Dinner, turkey & rice, strained', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_turkey_rice', babyStage: 'strained', icon: '', servingType: 'weight', caloriesPer100g: 52, proteinPer100g: 2.3, carbsPer100g: 7.9, fatPer100g: 1.2, typicalGrams: 113 },
+  { id: 'baby_dinner_turkey_rice_junior', name: 'Dinner, turkey & rice, junior', category: 'baby_food', subcategory: 'meat_dinner', babyItem: 'dinner_turkey_rice', babyStage: 'junior', icon: '', servingType: 'weight', caloriesPer100g: 56, proteinPer100g: 2.4, carbsPer100g: 9.6, fatPer100g: 0.9, typicalGrams: 113 },
+
+  // --- Cereals ---
+  { id: 'baby_cereal_rice', name: 'Rice Cereal', category: 'baby_food', subcategory: 'cereal', babyItem: 'cereal_rice', icon: '', servingType: 'weight', caloriesPer100g: 390, proteinPer100g: 6.7, carbsPer100g: 83.1, fatPer100g: 2.2, typicalGrams: 15 },
+  { id: 'baby_cereal_oatmeal', name: 'Oatmeal Cereal', category: 'baby_food', subcategory: 'cereal', babyItem: 'cereal_oatmeal', icon: '', servingType: 'weight', caloriesPer100g: 394, proteinPer100g: 11.0, carbsPer100g: 73.5, fatPer100g: 6.4, typicalGrams: 15 },
+  { id: 'baby_cereal_barley', name: 'Barley Cereal', category: 'baby_food', subcategory: 'cereal', babyItem: 'cereal_barley', icon: '', servingType: 'weight', caloriesPer100g: 376, proteinPer100g: 13.2, carbsPer100g: 69.4, fatPer100g: 6.6, typicalGrams: 15 },
+  { id: 'baby_cereal_mixed', name: 'Mixed Grain Cereal', category: 'baby_food', subcategory: 'cereal', babyItem: 'cereal_mixed', icon: '', servingType: 'weight', caloriesPer100g: 399, proteinPer100g: 6.7, carbsPer100g: 78.2, fatPer100g: 6.7, typicalGrams: 15 },
+  { id: 'baby_cereal_whole_wheat', name: 'Whole Wheat Cereal', category: 'baby_food', subcategory: 'cereal', babyItem: 'cereal_whole_wheat', icon: '', servingType: 'weight', caloriesPer100g: 402, proteinPer100g: 6.6, carbsPer100g: 83.2, fatPer100g: 4.8, typicalGrams: 15 },
+  { id: 'baby_cereal_toddler', name: 'Toddler Cereal', category: 'baby_food', subcategory: 'cereal', babyItem: 'cereal_toddler', icon: '', servingType: 'weight', caloriesPer100g: 89, proteinPer100g: 1.9, carbsPer100g: 18.4, fatPer100g: 1.0, typicalGrams: 30 },
+
+  // --- Toddler Snacks & Meals ---
+  { id: 'baby_puffs', name: 'Baby Puffs', category: 'baby_food', subcategory: 'toddler', babyItem: 'puffs', icon: '', servingType: 'weight', caloriesPer100g: 344, proteinPer100g: 6.2, carbsPer100g: 85.8, fatPer100g: 2.3, typicalGrams: 7 },
+  { id: 'baby_yogurt_baby', name: 'Baby / Toddler Yogurt', category: 'baby_food', subcategory: 'toddler', babyItem: 'yogurt_baby', icon: '', servingType: 'weight', caloriesPer100g: 380, proteinPer100g: 14.3, carbsPer100g: 71.8, fatPer100g: 4.0, typicalGrams: 113 },
+  { id: 'baby_toddler_meal', name: 'Toddler Meal', category: 'baby_food', subcategory: 'toddler', babyItem: 'toddler_meal', icon: '', servingType: 'weight', caloriesPer100g: 85, proteinPer100g: 3.6, carbsPer100g: 12.8, fatPer100g: 2.1, typicalGrams: 170 },
+  { id: 'baby_juice_baby', name: 'Baby Juice', category: 'baby_food', subcategory: 'toddler', babyItem: 'juice_baby', icon: '', servingType: 'weight', caloriesPer100g: 47, proteinPer100g: 0.0, carbsPer100g: 11.7, fatPer100g: 0.1, typicalGrams: 120 },
+  { id: 'baby_pretzel_baby', name: 'Baby Snacks / Pretzels', category: 'baby_food', subcategory: 'toddler', babyItem: 'pretzel_baby', icon: '', servingType: 'weight', caloriesPer100g: 380, proteinPer100g: 14.3, carbsPer100g: 71.8, fatPer100g: 4.0, typicalGrams: 7 },
+  { id: 'baby_dessert_pudding', name: 'Baby Dessert / Pudding', category: 'baby_food', subcategory: 'toddler', babyItem: 'dessert_pudding', icon: '', servingType: 'weight', caloriesPer100g: 86, proteinPer100g: 1.8, carbsPer100g: 17.6, fatPer100g: 1.0, typicalGrams: 113 },
+  { id: 'baby_dessert_fruit', name: 'Baby Fruit Dessert', category: 'baby_food', subcategory: 'toddler', babyItem: 'dessert_fruit', icon: '', servingType: 'weight', caloriesPer100g: 63, proteinPer100g: 0.3, carbsPer100g: 17.2, fatPer100g: 0.0, typicalGrams: 113 },
+];
+
+export default foodsBabyFoods;
