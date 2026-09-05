@@ -5174,12 +5174,18 @@ const styles = StyleSheet.create({
     borderColor: '#e3e3e8',
   },
   emptyText: { color: '#888', fontStyle: 'italic', marginTop: 20, textAlign: 'center', paddingHorizontal: 12 },
-  // A horizontal ScrollView needs an explicit height or it claims the whole
-  // screen. 122 was arithmetic -- the sum of the tile's own paddings -- and
-  // it clipped the labels on device, because iOS gives a Text block a little
-  // more than lineHeight x lines. This is the tile's height plus real slack
-  // rather than a number that only just fits.
-  categoryRow: { marginBottom: 12, height: 114 },
+  // NO height. Three attempts at one -- 122, 118, 114 -- each trimmed a few
+  // points off the bottom of the tiles, because a hand-computed height is
+  // only ever right for the font metrics, text scale and device it was
+  // computed against.
+  //
+  // `flexGrow: 0` is what makes that unnecessary: it stops the ScrollView
+  // claiming the whole column (the reason a height was there at all) while
+  // still letting it size to its tallest child. The tile below has a fixed
+  // 102, so the row is 106 and stays 106 wherever it runs. If the tile ever
+  // changes size, this follows it instead of needing to be found and
+  // edited.
+  categoryRow: { marginBottom: 12, flexGrow: 0, flexShrink: 0 },
   // The category strip. Was a row of 42pt text pills until v0.0.60; the
   // artwork needs height to read, so each is now a small card. Fixed width
   // so the row is a regular rhythm rather than jumping about with label
@@ -5195,7 +5201,6 @@ const styles = StyleSheet.create({
     // and clipping it makes that impossible rather than unlikely: the row
     // is this number plus slack, and nothing inside can exceed it.
     height: 102,
-    overflow: 'hidden',
     marginRight: 8,
     marginTop: 4,
     paddingTop: 6,
