@@ -1575,7 +1575,7 @@ function VegetableCard({
 
       {optionalVariety ? (
         <ToggleRow
-          label="Variety"
+          label="Variety (optional)"
           value={variety}
           onChange={handleVariety}
           disabled={isLocked}
@@ -2364,9 +2364,14 @@ function FruitCard({
           // filed under a field that happens to be called `variety`. Those
           // keep a required choice (there is no honest average of coconut
           // milk and coconut cream) and get an honest label instead.
+          // "(optional)" only where nothing is preselected. The other two
+          // branches still require a pick -- coconut's Type and frozen
+          // strawberries' Preparation -- and a form whose rows differ by
+          // packing liquid rather than cultivar is a required Variety too.
           label={
             fruitType === 'coconut' ? 'Type'
               : !optionalVariety && varietyFoods.length > 0 ? 'Preparation'
+              : optionalVariety ? 'Variety (optional)'
               : 'Variety'
           }
           // null until the user taps one -- see optionalVariety above.
