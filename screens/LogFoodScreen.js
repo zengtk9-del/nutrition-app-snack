@@ -36,6 +36,7 @@ import { filterFoods, filterByCategory } from '../utils/nutrition';
 // 96pt icon square itself is components/FoodIcon.js for the same reason.
 import { SIMPLE_CATEGORIES, ITEM_CARD_CATEGORIES, rowIconKeyOf, iconKeyForFoodId } from '../utils/foodIcon';
 import FoodIcon from '../components/FoodIcon';
+import CountPortion, { useUnitPortion } from '../components/PortionStep';
 import { cardKeyOf, representativeRow, cardTitleOf } from '../utils/foodCards';
 import { commonnessRank } from '../data/foodCommonness';
 import {
@@ -1430,7 +1431,11 @@ function VegetableCard({
 
   const iconKey = `vegetable_${vegetableType}_${resolvedEntry.prep}`;
 
-  const grams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  // Counting comes first for foods that come in units (data/unitPortions.js);
+  // the weight box is still here, one tap away, for anything on a scale.
+  const portion = useUnitPortion(resolvedFood, initialSettings);
+  const typedGrams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  const grams = portion.unit && portion.mode === 'count' ? portion.grams : typedGrams;
   const previewCalories = Math.round((resolvedFood.caloriesPer100g * grams) / 100);
 
   const handleWeightUnitChange = (nextUnit) => {
@@ -1473,6 +1478,7 @@ function VegetableCard({
       prep,
       weightUnit,
       weightValue,
+      ...portion.settings,
       grams,
     },
   });
@@ -1513,7 +1519,22 @@ function VegetableCard({
       <View style={styles.divider} />
 
       <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <View style={styles.gramsRow}>
+      {portion.unit ? (
+        <ToggleRow
+          value={portion.mode}
+          onChange={portion.setMode}
+          disabled={isLocked}
+          options={[
+            { value: 'count', label: `By ${portion.unit.noun}` },
+            { value: 'weight', label: 'Exact weight' },
+          ]}
+        />
+      ) : null}
+
+      {portion.unit && portion.mode === 'count' ? (
+        <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
+      ) : (
+      <><View style={styles.gramsRow}>
         <TextInput
           style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
           value={weightValue}
@@ -1533,7 +1554,8 @@ function VegetableCard({
         />
       </View>
 
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
+      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text></>
+      )}
 
       <CardActionButtons
         mode={mode}
@@ -2133,7 +2155,11 @@ function FruitCard({
 
   const iconKey = `fruit_${fruitType}_${form}`;
 
-  const grams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  // Counting comes first for foods that come in units (data/unitPortions.js);
+  // the weight box is still here, one tap away, for anything on a scale.
+  const portion = useUnitPortion(resolvedFood, initialSettings);
+  const typedGrams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  const grams = portion.unit && portion.mode === 'count' ? portion.grams : typedGrams;
   const servingsN = parseFloat(servings) || 0;
   const previewCalories = isCountMode
     ? Math.round((resolvedFood.calories || 0) * servingsN)
@@ -2198,6 +2224,7 @@ function FruitCard({
             variety: resolvedFood.variety || resolvedFood.id,
             weightUnit,
             weightValue,
+      ...portion.settings,
             grams,
           },
         };
@@ -2255,6 +2282,18 @@ function FruitCard({
       <View style={styles.divider} />
 
       <Text style={styles.poultrySectionTitle}>Portion</Text>
+      {portion.unit ? (
+        <ToggleRow
+          value={portion.mode}
+          onChange={portion.setMode}
+          disabled={isLocked}
+          options={[
+            { value: 'count', label: `By ${portion.unit.noun}` },
+            { value: 'weight', label: 'Exact weight' },
+          ]}
+        />
+      ) : null}
+
       {isCountMode ? (
         <View style={styles.gramsRow}>
           <TextInput
@@ -2267,6 +2306,8 @@ function FruitCard({
           />
           <Text style={styles.matchNote}>× {resolvedFood.servingLabel}</Text>
         </View>
+      ) : portion.unit && portion.mode === 'count' ? (
+        <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
       ) : (
         <View style={styles.gramsRow}>
           <TextInput
@@ -2289,9 +2330,11 @@ function FruitCard({
         </View>
       )}
 
-      <Text style={styles.gramsUnit}>
-        {previewCalories > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}
-      </Text>
+      {portion.unit && portion.mode === 'count' && !isCountMode ? null : (
+        <Text style={styles.gramsUnit}>
+          {previewCalories > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}
+        </Text>
+      )}
 
       <CardActionButtons
         mode={mode}
@@ -2308,8 +2351,13 @@ function FruitCard({
 // They differ only in how many toggles sit above it, so the grams input,
 // unit switch, calorie preview and action buttons live here once instead
 // of three near-identical copies.
-function DairyPortion({ resolvedFood, weightUnit, setWeightUnit, weightValue, setWeightValue, isLocked, mode, onEdit, onSaveChanges, onAddFavorite, onAddFood }) {
-  const grams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+// `portion` is optional -- LegumeCard passes one so grains and breads can be
+// counted in slices, tortillas and bagels; the dairy cards that share this
+// step pass nothing and get the weight box exactly as before.
+function DairyPortion({ resolvedFood, weightUnit, setWeightUnit, weightValue, setWeightValue, isLocked, mode, onEdit, onSaveChanges, onAddFavorite, onAddFood, portion }) {
+  const counting = !!(portion && portion.unit && portion.mode === 'count');
+  const typedGrams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  const grams = counting ? portion.grams : typedGrams;
   const previewCalories = Math.round((resolvedFood.caloriesPer100g * grams) / 100);
   const handleUnit = (nextUnit) => {
     const n = parseFloat(weightValue);
@@ -2327,7 +2375,21 @@ function DairyPortion({ resolvedFood, weightUnit, setWeightUnit, weightValue, se
       </Text>
       <View style={styles.divider} />
       <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <View style={styles.gramsRow}>
+      {portion && portion.unit ? (
+        <ToggleRow
+          value={portion.mode}
+          onChange={portion.setMode}
+          disabled={isLocked}
+          options={[
+            { value: 'count', label: `By ${portion.unit.noun}` },
+            { value: 'weight', label: 'Exact weight' },
+          ]}
+        />
+      ) : null}
+      {counting ? (
+        <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
+      ) : (
+      <><View style={styles.gramsRow}>
         <TextInput
           style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
           value={weightValue}
@@ -2343,7 +2405,8 @@ function DairyPortion({ resolvedFood, weightUnit, setWeightUnit, weightValue, se
           options={[{ value: 'g', label: 'g' }, { value: 'oz', label: 'oz' }]}
         />
       </View>
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
+      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text></>
+      )}
       <CardActionButtons mode={mode} onEdit={onEdit} onSaveChanges={onSaveChanges} onAddFavorite={onAddFavorite} onAddFood={onAddFood} />
     </>
   );
@@ -2670,7 +2733,11 @@ function LegumeCard({
       : 'legume';
   const iconVariant = variantInIconKey ? resolvedFood[variantField] || resolvedFood.legumeForm : null;
   const iconKey = `${iconPfx}_${iconItem}${iconVariant ? `_${iconVariant}` : ''}`;
-  const grams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  // Counting comes first for foods that come in units (data/unitPortions.js);
+  // the weight box is still here, one tap away, for anything on a scale.
+  const portion = useUnitPortion(resolvedFood, initialSettings);
+  const typedGrams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  const grams = portion.unit && portion.mode === 'count' ? portion.grams : typedGrams;
 
   const buildFavoriteData = () => ({
     foodId: resolvedFood.id,
@@ -2698,6 +2765,7 @@ function LegumeCard({
       legumeForm: resolvedFood[variantField] || null,
       weightUnit,
       weightValue,
+      ...portion.settings,
       grams,
     },
   });
@@ -2729,6 +2797,7 @@ function LegumeCard({
       ) : null}
       <DairyPortion
         resolvedFood={resolvedFood}
+        portion={portion}
         weightUnit={weightUnit} setWeightUnit={setWeightUnit}
         weightValue={weightValue} setWeightValue={setWeightValue}
         isLocked={isLocked}
