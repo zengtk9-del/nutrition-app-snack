@@ -1407,11 +1407,23 @@ function VegetableCard({
   // present -- see CROSS_LISTED_VEGETABLE_PREPS's header comment above.
   const cardFoods = vegetableTypeFoods.filter((f) => f.servingType === 'weight');
 
-  const availablePreps = cardFoods.map((f) => ({
-    food: f,
-    prep: f.prep || CROSS_LISTED_VEGETABLE_PREPS[f.id]?.prep || 'raw',
-    label: f.prepLabel || CROSS_LISTED_VEGETABLE_PREPS[f.id]?.label || f.name,
-  }));
+  const prepOf = (f) => f.prep || CROSS_LISTED_VEGETABLE_PREPS[f.id]?.prep || 'raw';
+  const labelOf = (f) => f.prepLabel || CROSS_LISTED_VEGETABLE_PREPS[f.id]?.label || f.name;
+
+  // One option per DISTINCT prep. It used to be one per row, which quietly
+  // broke Bell Pepper: its four colours are four raw rows, so all four
+  // shared the value 'raw' and the picker always resolved to the first one
+  // -- Yellow, Red and Orange were listed but unreachable. Colours are a
+  // variety, not a preparation, and are handled as one below.
+  const availablePreps = [];
+  for (const f of cardFoods) {
+    const prepKey = prepOf(f);
+    const seen = availablePreps.find((e) => e.prep === prepKey);
+    if (!seen) availablePreps.push({ food: f, prep: prepKey, label: labelOf(f) });
+    // A generic row names the prep better than any one variety does
+    // ("Bell Pepper", not "Peppers, bell, green, raw").
+    else if (!f.variety && seen.food.variety) { seen.food = f; seen.label = labelOf(f); }
+  }
   const hasPrepToggle = availablePreps.length > 1;
   // Prefer 'raw' as the default, same reasoning as EggCard's defaultPrep --
   // falls back to whichever row happens to be first if this vegetable has
@@ -1424,7 +1436,19 @@ function VegetableCard({
   const [isLocked, setIsLocked] = useState(!!locked);
 
   const resolvedEntry = availablePreps.find((p) => p.prep === prep) || availablePreps[0];
-  const resolvedFood = resolvedEntry.food;
+
+  // Varieties within the chosen prep -- optional, exactly as on FruitCard:
+  // nothing selected until tapped, and until then the plain row shows.
+  const prepFoods = cardFoods.filter((f) => prepOf(f) === resolvedEntry.prep);
+  const varietyFoods = prepFoods.filter((f) => f.variety);
+  const genericFoods = prepFoods.filter((f) => !f.variety);
+  const optionalVariety = varietyFoods.length > 0 && genericFoods.length === 1;
+  const [variety, setVariety] = useState(initialSettings?.variety ?? null);
+  const handleVariety = (next) => setVariety(next === variety ? null : next);
+  const resolvedFood =
+    (optionalVariety && prepFoods.find((f) => f.variety === variety)) ||
+    (optionalVariety ? genericFoods[0] : null) ||
+    resolvedEntry.food;
 
   const [weightUnit, setWeightUnit] = useState(initialSettings?.weightUnit || 'g');
   const [weightValue, setWeightValue] = useState(String(initialSettings?.weightValue ?? resolvedFood.typicalGrams));
@@ -1478,6 +1502,7 @@ function VegetableCard({
       prep,
       weightUnit,
       weightValue,
+      variety,
       ...portion.settings,
       grams,
     },
@@ -1508,6 +1533,16 @@ function VegetableCard({
           onChange={setPrep}
           disabled={isLocked}
           options={availablePreps.map((p) => ({ value: p.prep, label: p.label }))}
+        />
+      ) : null}
+
+      {optionalVariety ? (
+        <ToggleRow
+          label="Variety"
+          value={variety}
+          onChange={handleVariety}
+          disabled={isLocked}
+          options={varietyFoods.map((f) => ({ value: f.variety, label: f.variety }))}
         />
       ) : null}
 
@@ -2126,10 +2161,35 @@ function FruitCard({
   const [isLocked, setIsLocked] = useState(!!locked);
 
   const formFoods = cardFoods.filter((f) => f.subcategory === form);
-  const hasVarietyToggle = formFoods.length > 1;
 
-  const [variety, setVariety] = useState(initialSettings?.variety || null);
-  const resolvedFood = formFoods.find((f) => (f.variety || f.id) === variety) || formFoods[0] || cardFoods[0];
+  // Varieties became OPTIONAL in v0.0.59. Before that a card opened on
+  // whichever row came first in the data, so Apple opened on Fuji and
+  // Avocado on California as though the user had chosen them -- and Apple's
+  // first row was actually "Peeled (Without Skin)", so the default apple was
+  // a peeled one. Now nothing is selected until it is tapped, and until
+  // then the card shows the plain food (data/foodsGenerics.js).
+  //
+  // Only when this form has BOTH a generic row and named varieties. Some
+  // forms have several unnamed rows that differ by packing liquid ("in
+  // juice" vs "in syrup"); those still list every row and still require a
+  // pick, exactly as before.
+  const varietyFoods = formFoods.filter((f) => f.variety);
+  const genericFoods = formFoods.filter((f) => !f.variety);
+  const optionalVariety = varietyFoods.length > 0 && genericFoods.length === 1;
+  const hasVarietyToggle = optionalVariety ? varietyFoods.length > 0 : formFoods.length > 1;
+
+  const [variety, setVariety] = useState(
+    initialSettings?.variety ?? (optionalVariety ? null : null)
+  );
+  const resolvedFood =
+    formFoods.find((f) => (f.variety || f.id) === variety) ||
+    (optionalVariety ? genericFoods[0] : null) ||
+    formFoods[0] ||
+    cardFoods[0];
+
+  // Tapping the variety already chosen clears it, which is the only way back
+  // to the plain food once you have picked one.
+  const handleVariety = (next) => setVariety(optionalVariety && next === variety ? null : next);
 
   const [weightUnit, setWeightUnit] = useState(initialSettings?.weightUnit || 'g');
   const [weightValue, setWeightValue] = useState(
@@ -2259,11 +2319,22 @@ function FruitCard({
 
       {hasVarietyToggle ? (
         <ToggleRow
-          label="Variety"
-          value={resolvedFood.variety || resolvedFood.id}
-          onChange={setVariety}
+          // "Variety" only where these really are cultivars. Coconut's canned
+          // rows are Coconut milk vs Coconut cream and its dried rows are
+          // sweetened vs not -- different products and different processing,
+          // filed under a field that happens to be called `variety`. Those
+          // keep a required choice (there is no honest average of coconut
+          // milk and coconut cream) and get an honest label instead.
+          label={
+            fruitType === 'coconut' ? 'Type'
+              : !optionalVariety && varietyFoods.length > 0 ? 'Preparation'
+              : 'Variety'
+          }
+          // null until the user taps one -- see optionalVariety above.
+          value={optionalVariety ? variety : resolvedFood.variety || resolvedFood.id}
+          onChange={handleVariety}
           disabled={isLocked}
-          options={formFoods.map((f) => ({
+          options={(optionalVariety ? varietyFoods : formFoods).map((f) => ({
             value: f.variety || f.id,
             // Falls back to the row's full name when it carries no variety
             // of its own -- e.g. canned fruit rows differ by packing liquid

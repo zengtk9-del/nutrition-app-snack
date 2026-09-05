@@ -84,6 +84,8 @@ import foodsMixedDishes from './foodsMixedDishes.js';
 import foodsSnacks from './foodsSnacks.js';
 import foodsMeatSubstitutes from './foodsMeatSubstitutes.js';
 import foodsBabyFoods from './foodsBabyFoods.js';
+// The "no variety chosen" rows -- see foodsGenerics.js.
+import foodsGenerics from './foodsGenerics.js';
 
 // The ordered list of categories shown as filter chips on the Log Food
 // screen. "key" must match the `category` value used on foods below.
@@ -315,6 +317,7 @@ const foods = [
   ...foodsSnacks,
   ...foodsMeatSubstitutes,
   ...foodsBabyFoods,
+  ...foodsGenerics,
 ];
 
 export default foods;
