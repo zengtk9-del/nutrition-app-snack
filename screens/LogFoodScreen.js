@@ -771,7 +771,12 @@ function SeafoodCard({
   const defaultPrep = availablePreps.has('raw') ? 'raw' : 'cooked';
 
   const [prep, setPrep] = useState(initialSettings?.prep || defaultPrep);
-  const [shell, setShell] = useState(initialSettings?.shell || 'off');
+  // Shell ON by default as of v0.0.67, matching the icon the Shellfish list
+  // showed on the way in. It is also the weight you actually have: nobody
+  // shells a pound of shrimp before putting it on the scale. The portion
+  // step converts down to edible grams using shellYieldPercent, so the
+  // calories are unchanged -- only which number you type.
+  const [shell, setShell] = useState(initialSettings?.shell || 'on');
   const [isLocked, setIsLocked] = useState(!!locked);
 
   const [portionMode, setPortionMode] = useState(initialSettings?.portionMode || 'weight'); // 'weight' | 'size'

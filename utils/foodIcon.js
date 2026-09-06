@@ -174,7 +174,7 @@ function rawRowIconKeyOf(food) {
     case 'seafood': {
       const meta = (SEAFOOD_CUTS[food.subcategory] || []).find((c) => c.key === food.cut);
       const parts = [food.subcategory, food.cut];
-      if (meta?.hasShellToggle) parts.push('shellOff');
+      if (meta?.hasShellToggle) parts.push('shellOn');
       parts.push('raw');
       return parts.join('_');
     }
