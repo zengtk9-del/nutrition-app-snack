@@ -47,11 +47,6 @@ export default function DietPickerScreen({ diet = DEFAULT_DIET, onSave, onCancel
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>My Diet</Text>
-        <Text style={styles.hint}>
-          This changes the order foods appear in on the Log Food tab so the ones you actually eat
-          come first. Nothing is ever hidden, and your calorie and macro goals stay exactly as they
-          are.
-        </Text>
 
         {DIET_OPTIONS.map((opt) => {
           const isOn = selected === opt.value;
@@ -150,8 +145,9 @@ export default function DietPickerScreen({ diet = DEFAULT_DIET, onSave, onCancel
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f7f7fa', padding: 16 },
   scrollContent: { paddingBottom: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', marginBottom: 6, marginTop: 8 },
-  hint: { fontSize: 15, color: '#777', marginBottom: 18, lineHeight: 21 },
+  // Carries the gap the explanatory paragraph under it used to hold open,
+  // so the first card doesn't ride up against the title.
+  title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', marginBottom: 18, marginTop: 8 },
 
   dietCard: {
     position: 'relative',
