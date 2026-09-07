@@ -15,7 +15,10 @@ import {
   addFavoriteFood,
   updateFavoriteFood,
   removeFavoriteFood,
+  fetchDiet,
+  saveDiet,
 } from './utils/db';
+import { DEFAULT_DIET } from './data/dietOrder';
 
 import AuthScreen from './screens/AuthScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -27,6 +30,7 @@ import LoadingScreen from './screens/LoadingScreen';
 import ReportScreen from './screens/ReportScreen';
 import ReportPagesScreen from './screens/ReportPagesScreen';
 import MacroGoalsScreen from './screens/MacroGoalsScreen';
+import DietPickerScreen from './screens/DietPickerScreen';
 import FollowGoalScreen from './screens/FollowGoalScreen';
 import { makeEntryFromFood, entriesForToday } from './utils/nutrition';
 import { buildProfile, generateGoalsReport } from './utils/goals';
@@ -68,6 +72,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [entries, setEntries] = useState([]);
   const [goals, setGoals] = useState(DEFAULT_GOALS);
+  // The user's diet, which reorders the Log Food tab (data/dietOrder.js).
+  // Held next to `goals` rather than inside it because it is stored on the
+  // same row but never travels with the numbers — saved goals, following a
+  // goal and the macro sliders all move calories/protein/carbs/fat around
+  // and none of them should carry a diet along with them.
+  const [diet, setDiet] = useState(DEFAULT_DIET);
+  // Open state for the "My Diet" picker, a full-screen takeover from the
+  // Goals tab in the same style as the macro-goals screen.
+  const [dietPickerOpen, setDietPickerOpen] = useState(false);
   // The up-to-5 named goals from utils/db.js's saved_goals table — a
   // separate, parallel list from the single `goals` row above. `goals`
   // itself is still the only thing Dashboard/History actually read from
@@ -88,6 +101,7 @@ export default function App() {
       setGoals(DEFAULT_GOALS);
       setSavedGoals([]);
       setFavorites([]);
+      setDiet(DEFAULT_DIET);
       setDataLoading(true);
       return;
     }
@@ -96,17 +110,23 @@ export default function App() {
     setDataLoading(true);
     (async () => {
       try {
-        const [userGoals, userEntries, userSavedGoals, userFavorites] = await Promise.all([
+        const [userGoals, userEntries, userSavedGoals, userFavorites, userDiet] = await Promise.all([
           fetchGoals(session.user.id),
           fetchEntries(session.user.id),
           fetchSavedGoals(session.user.id),
           fetchFavoriteFoods(session.user.id),
+          fetchDiet(session.user.id),
         ]);
         if (cancelled) return;
         setGoals(userGoals);
         setEntries(userEntries);
         setSavedGoals(userSavedGoals);
         setFavorites(userFavorites);
+        // Null for anyone who took the quiz before v0.0.69 started saving
+        // this, and for anyone whose database predates the `diet` column.
+        // Balanced is the ordering the app has always had, so those users
+        // notice nothing until they set one.
+        setDiet(userDiet || DEFAULT_DIET);
       } catch (err) {
         console.warn('Failed to load your data from Supabase', err);
       } finally {
@@ -335,6 +355,31 @@ export default function App() {
 
   const handleStartQuiz = () => setQuizStage('quiz');
 
+  // Changing diet from the Goals tab. Reorders Log Food and nothing else —
+  // it deliberately does NOT recalculate calories or macros, even though
+  // diet feeds those too (see utils/goals.js). Rewriting someone's targets
+  // because they tapped a button labelled "My Diet" would be a surprise;
+  // recalculating stays the quiz's job.
+  //
+  // Applied locally first so the picker closes on an ordering that has
+  // already changed, then persisted. A failed write leaves the app showing
+  // the new diet until the next reload, which is a better outcome than
+  // silently reverting the choice under the user.
+  const handleSaveDiet = async (nextDiet) => {
+    setDiet(nextDiet);
+    setDietPickerOpen(false);
+    if (!session) return;
+    try {
+      await saveDiet(session.user.id, nextDiet);
+    } catch (err) {
+      console.warn('Failed to save your diet', err);
+      Alert.alert(
+        'Could not save your diet',
+        "Log Food is reordered for this session, but we couldn't save the change. It may go back after you reload."
+      );
+    }
+  };
+
   const handleQuizComplete = (answers) => {
     const profile = buildProfile(answers);
     const report = generateGoalsReport(profile);
@@ -362,6 +407,21 @@ export default function App() {
       saveGoals(session.user.id, { tdee: report.tdee }).catch((err) =>
         console.warn('Failed to save TDEE', err)
       );
+    }
+
+    // The diet answer, persisted on exactly the same terms as TDEE above:
+    // the moment it's known, whether or not this report ever gets applied
+    // as goals. Before v0.0.69 this answer only ever existed inside
+    // `quizAnswers` in this component's state and was thrown away when the
+    // quiz flow closed, which is why every account created before then has
+    // no diet stored and falls back to balanced.
+    if (answers.diet) {
+      setDiet(answers.diet);
+      if (session) {
+        saveDiet(session.user.id, answers.diet).catch((err) =>
+          console.warn('Failed to save diet', err)
+        );
+      }
     }
   };
 
@@ -506,6 +566,19 @@ export default function App() {
     );
   }
 
+  if (dietPickerOpen) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" />
+        <DietPickerScreen
+          diet={diet}
+          onSave={handleSaveDiet}
+          onCancel={() => setDietPickerOpen(false)}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (followPreviewGoal) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -536,6 +609,7 @@ export default function App() {
             onAddFavorite={handleAddFavorite}
             onUpdateFavorite={handleUpdateFavorite}
             onRemoveFavorite={handleRemoveFavorite}
+            diet={diet}
           />
         )}
         {activeTab === 'history' && <HistoryScreen entries={entries} goals={goals} />}
@@ -549,6 +623,8 @@ export default function App() {
             savedGoals={savedGoals}
             onRequestFollow={setFollowPreviewGoal}
             onDeleteSavedGoal={handleDeleteSavedGoal}
+            diet={diet}
+            onChangeDiet={() => setDietPickerOpen(true)}
           />
         )}
       </View>

@@ -163,11 +163,30 @@ export const CATEGORY_WEIGHT = {
 
 const RANK = new Map(COMMON_FIRST.map((k, i) => [k, i]));
 
+// Keeps every unranked card below every ranked one, however long
+// COMMON_FIRST grows. Exported so data/dietOrder.js can size its tier
+// offsets to stay clear of it.
+export const UNRANKED_BASE = 1000;
+
 // Sort key for one card. Lower sorts first.
-export function commonnessRank(cardKey, category) {
+//
+// `categoryWeight` overrides CATEGORY_WEIGHT for the unranked tail only.
+// Log Food passes the position of this category in the user's diet order
+// (see data/dietOrder.js) so the tail sorts the same way as the category
+// strip above it. Omit it and this behaves exactly as it did before diets
+// existed.
+export function commonnessRank(cardKey, category, categoryWeight) {
   const explicit = RANK.get(cardKey);
   if (explicit !== undefined) return explicit;
-  // +1000 keeps every unranked card below every ranked one, however long
-  // COMMON_FIRST grows.
-  return 1000 + (CATEGORY_WEIGHT[category] ?? 99) * 10;
+  const weight = categoryWeight ?? CATEGORY_WEIGHT[category] ?? 99;
+  return UNRANKED_BASE + weight * 10;
+}
+
+// True when this card is one of the ~105 hand-ranked staples above.
+//
+// Log Food adds the diet tier offset only to these. The unranked tail is
+// already in diet order via `categoryWeight`, so offsetting it a second
+// time would spread it out without changing anything.
+export function isRankedStaple(cardKey) {
+  return RANK.has(cardKey);
 }

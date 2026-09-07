@@ -50,6 +50,40 @@ export async function saveGoals(userId, goals) {
   if (error) throw error;
 }
 
+// --- Diet ---
+//
+// Which diet the user picked in the intake quiz. Lives on the same `goals`
+// row as the numbers, since it is one value per user and the row already
+// exists by the time anything needs it.
+//
+// Read with its own query rather than being added to fetchGoals' select
+// list, and deliberately so: the `diet` column arrived in v0.0.69, and if
+// this app ever runs against a database where that migration hasn't been
+// applied, naming a missing column inside fetchGoals would fail the whole
+// call and leave the user with no goals at all. Isolated here, the same
+// situation degrades to "no diet stored", which the app already handles by
+// falling back to balanced — the Log Food ordering it shipped with.
+export async function fetchDiet(userId) {
+  const { data, error } = await supabase
+    .from('goals')
+    .select('diet')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Could not read diet (has the `diet` column been added?)', error);
+    return null;
+  }
+  return data?.diet || null;
+}
+
+// Saves the chosen diet. Unlike the read above this does NOT swallow its
+// error: a save that silently did nothing would leave the user looking at
+// a diet the app has already forgotten.
+export async function saveDiet(userId, diet) {
+  await saveGoals(userId, { diet });
+}
+
 // --- Saved Goals ---
 //
 // A separate, parallel table from the single `goals` row above: a named

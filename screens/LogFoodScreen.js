@@ -39,7 +39,13 @@ import FoodIcon from '../components/FoodIcon';
 import CountPortion, { useUnitPortion } from '../components/PortionStep';
 import { getCategoryIcon } from '../data/categoryIcons';
 import { cardKeyOf, representativeRow, cardTitleOf } from '../utils/foodCards';
-import { commonnessRank } from '../data/foodCommonness';
+import { commonnessRank, isRankedStaple } from '../data/foodCommonness';
+import {
+  DEFAULT_DIET,
+  categoryOrderFor,
+  dietCategoryRank,
+  dietTierOffset,
+} from '../data/dietOrder';
 import {
   gramsToOz,
   ozToGrams,
@@ -3759,6 +3765,11 @@ export default function LogFoodScreen({
   onAddFavorite,
   onUpdateFavorite,
   onRemoveFavorite,
+  // The user's diet from the intake quiz, reordering both the category
+  // strip and the All tab — see data/dietOrder.js. Never filters anything;
+  // an unknown or missing value falls back to 'balanced', which is the
+  // identity ordering.
+  diet = DEFAULT_DIET,
   // Test-only, same reasoning as QuizScreen.js's initialAnswers/
   // initialStepIndex — lets the local render-test harness render straight
   // into the "My Favorites" filter without needing to simulate a real tap
@@ -4221,6 +4232,12 @@ export default function LogFoodScreen({
   // Ordered most-common-first per data/foodCommonness.js, deliberately NOT
   // grouped by category: the point of this tab is that you can find eggs
   // without first deciding that eggs are Dairy-adjacent.
+  //
+  // As of v0.0.69 the user's diet biases that order (data/dietOrder.js):
+  // hand-ranked staples get a tier offset by category, and the unranked
+  // tail takes its weight from the diet's category order. Nothing is
+  // filtered out at any point — a vegan's list still contains every steak,
+  // just further down, and searching for one is unaffected entirely.
   const allCards = useMemo(() => {
     const groups = new Map();
     for (const f of results) {
@@ -4242,7 +4259,11 @@ export default function LogFoodScreen({
               : rep.creamGroup ? CREAM_GROUPS.find((g) => g.key === rep.creamGroup)?.label
                 : null;
       const title = hierLabel || cardTitleOf(rep, key);
-      out.push({ id: key, rows, rep, title, rank: commonnessRank(key, rep.category) });
+      // The tier offset applies only to the hand-ranked staples; the
+      // unranked tail is already diet-ordered by the weight passed in.
+      const base = commonnessRank(key, rep.category, dietCategoryRank(rep.category, diet));
+      const rank = isRankedStaple(key) ? base + dietTierOffset(rep.category, diet) : base;
+      out.push({ id: key, rows, rep, title, rank });
     }
     // Two categories can legitimately produce the same title -- Bacon and
     // Sausage exist as both pork and turkey, Prunes as fruit and as baby
@@ -4261,7 +4282,7 @@ export default function LogFoodScreen({
     // dependent on however data/foods.js happens to be ordered.
     out.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
     return out;
-  }, [results]);
+  }, [results, diet]);
 
   // --- Nuts & Seeds ---
   const isBrowsingNut = category === 'nut_seed' && !query.trim();
@@ -5042,13 +5063,17 @@ export default function LogFoodScreen({
           active={category === 'favorites'}
           onPress={() => setCategory('favorites')}
         />
-        {CATEGORIES.map((c) => (
+        {/* Order comes from the user's diet, not data/foods.js — see
+            data/dietOrder.js. All 18 are always present; only their order
+            changes. `label` still comes from CATEGORIES so there is one
+            place a category gets renamed. */}
+        {categoryOrderFor(diet).map((key) => (
           <CategoryTile
-            key={c.key}
-            label={c.label}
-            iconKey={c.key}
-            active={category === c.key}
-            onPress={() => setCategory(c.key)}
+            key={key}
+            label={CATEGORIES.find((c) => c.key === key)?.label || key}
+            iconKey={key}
+            active={category === key}
+            onPress={() => setCategory(key)}
           />
         ))}
       </ScrollView>

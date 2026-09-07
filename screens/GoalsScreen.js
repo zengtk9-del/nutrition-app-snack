@@ -1,6 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import MacroDonutChart from '../components/MacroDonutChart';
+import { DIET_IMAGES } from '../data/quizQuestions';
+import { DEFAULT_DIET } from '../data/dietOrder';
+import { dietLabel } from './DietPickerScreen';
 
 const MAX_SAVED_GOALS = 5;
 
@@ -72,6 +75,11 @@ export default function GoalsScreen({
   savedGoals = [],
   onRequestFollow,
   onDeleteSavedGoal,
+  // The stored diet and the handler that opens the picker. Both optional
+  // in the same way onRetakeQuiz/onSetMacroGoals are — the button simply
+  // doesn't render without a handler.
+  diet = DEFAULT_DIET,
+  onChangeDiet,
 }) {
   return (
     <ScrollView style={styles.container}>
@@ -122,6 +130,30 @@ export default function GoalsScreen({
             />
           ))}
         </View>
+      )}
+
+      {/* "My Diet" — the illustration for the current diet plus its name,
+          opening the same picker the quiz uses (screens/DietPickerScreen.js).
+          Sits above Retake Quiz because it is the cheaper of the two: it
+          reorders Log Food and changes nothing about the numbers on this
+          screen, where retaking the quiz recalculates all of them. */}
+      {onChangeDiet && (
+        <TouchableOpacity style={styles.dietButton} onPress={onChangeDiet}>
+          <Image
+            source={DIET_IMAGES[diet] || DIET_IMAGES[DEFAULT_DIET]}
+            style={styles.dietButtonIcon}
+            resizeMode="contain"
+            accessibilityElementsHidden
+            importantForAccessibility="no"
+          />
+          <View style={styles.dietButtonTextCol}>
+            <Text style={styles.quizButtonText}>My Diet: {dietLabel(diet)}</Text>
+            <Text style={styles.quizButtonSub}>
+              Puts the foods you actually eat first on the Log Food tab.
+            </Text>
+          </View>
+          <Text style={styles.dietButtonChevron}>›</Text>
+        </TouchableOpacity>
       )}
 
       {onRetakeQuiz && (
@@ -203,6 +235,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   quizButtonText: { color: '#4f8ef7', fontWeight: '700', fontSize: 17 },
+  // Same card as quizButton, but laid out as a row (illustration, text,
+  // chevron) instead of centred text, so it reads as "here is your current
+  // setting, tap to change it" rather than as another action button.
+  dietButton: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#4f8ef7',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  // White behind the illustration for the same reason as the category
+  // tiles in Log Food: these are opaque JPEGs with no alpha channel.
+  dietButtonIcon: { width: 52, height: 52, marginRight: 12, backgroundColor: '#fff' },
+  dietButtonTextCol: { flex: 1 },
+  dietButtonChevron: { fontSize: 24, color: '#4f8ef7', marginLeft: 8 },
   quizButtonSub: { color: '#777', fontSize: 14, marginTop: 4, textAlign: 'center' },
   accountText: { textAlign: 'center', color: '#999', fontSize: 15, marginTop: 24 },
   logoutButton: {
