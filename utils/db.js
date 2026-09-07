@@ -84,6 +84,34 @@ export async function saveDiet(userId, diet) {
   await saveGoals(userId, { diet });
 }
 
+// Turns a failed diet save into a sentence that says what to actually do
+// about it.
+//
+// Worth the specificity because the overwhelmingly likely cause is
+// operational rather than a bug: the `diet` column is new in v0.0.69 and
+// the migration has to be run by hand. Two different things produce that
+// same symptom and they need different fixes, so they're separated here:
+//
+//   PGRST204 — PostgREST looked for the column in its cached copy of the
+//     schema and didn't find it. Either the migration hasn't been run, OR
+//     it has and the cache hasn't caught up yet, which is why the SQL
+//     script ends with `notify pgrst, 'reload schema'`.
+//   42703 — Postgres itself says the column doesn't exist. The migration
+//     definitely hasn't run against this database.
+//
+// Anything else is reported verbatim rather than guessed at: a wrong
+// message that sounds confident is worse than the raw one.
+export function describeDietSaveError(err) {
+  const code = err?.code;
+  if (code === 'PGRST204' || code === '42703') {
+    return "Your database doesn't have anywhere to put this yet. Run add-diet-column.sql in the Supabase SQL Editor, then try again.";
+  }
+  if (code === '42501' || err?.status === 401 || err?.status === 403) {
+    return 'The database refused the write. Check that row-level security on the goals table allows this user to update their own row.';
+  }
+  return err?.message ? `The database said: ${err.message}` : 'Something went wrong reaching the database.';
+}
+
 // --- Saved Goals ---
 //
 // A separate, parallel table from the single `goals` row above: a named

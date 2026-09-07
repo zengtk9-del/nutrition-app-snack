@@ -148,9 +148,6 @@ export default function GoalsScreen({
           />
           <View style={styles.dietButtonTextCol}>
             <Text style={styles.quizButtonText}>My Diet: {dietLabel(diet)}</Text>
-            <Text style={styles.quizButtonSub}>
-              Puts the foods you actually eat first on the Log Food tab.
-            </Text>
           </View>
           <Text style={styles.dietButtonChevron}>›</Text>
         </TouchableOpacity>

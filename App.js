@@ -17,6 +17,7 @@ import {
   removeFavoriteFood,
   fetchDiet,
   saveDiet,
+  describeDietSaveError,
 } from './utils/db';
 import { DEFAULT_DIET } from './data/dietOrder';
 
@@ -375,7 +376,7 @@ export default function App() {
       console.warn('Failed to save your diet', err);
       Alert.alert(
         'Could not save your diet',
-        "Log Food is reordered for this session, but we couldn't save the change. It may go back after you reload."
+        `${describeDietSaveError(err)}\n\nLog Food is reordered for now, but the change will be lost when you reload.`
       );
     }
   };
