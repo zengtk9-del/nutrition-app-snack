@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from './utils/supabaseClient';
 import {
   fetchGoals,
@@ -20,6 +21,7 @@ import {
   describeDietSaveError,
 } from './utils/db';
 import { DEFAULT_DIET } from './data/dietOrder';
+import { COLORS, TYPE, RADIUS } from './utils/theme';
 
 import AuthScreen from './screens/AuthScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -38,11 +40,13 @@ import { buildProfile, generateGoalsReport } from './utils/goals';
 
 const DEFAULT_GOALS = { calories: 2000, protein: 150, carbs: 200, fat: 65, tdee: null };
 
+// Icon names are MaterialCommunityIcons, from @expo/vector-icons — already a
+// dependency, so the tab bar gained icons in v0.0.72 without adding one.
 const TABS = [
-  { key: 'dashboard', label: 'Today' },
-  { key: 'log', label: 'Log Food' },
-  { key: 'history', label: 'History' },
-  { key: 'goals', label: 'Goals' },
+  { key: 'dashboard', label: 'Today', icon: 'calendar-star' },
+  { key: 'log', label: 'Log Food', icon: 'silverware-fork-knife' },
+  { key: 'history', label: 'History', icon: 'chart-bar' },
+  { key: 'goals', label: 'Goals', icon: 'target' },
 ];
 
 export default function App() {
@@ -631,33 +635,57 @@ export default function App() {
       </View>
 
       <View style={styles.tabBar}>
-        {TABS.map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={styles.tabButton}
-            onPress={() => setActiveTab(tab.key)}
-          >
-            <Text style={[styles.tabLabel, activeTab === tab.key && styles.tabLabelActive]}>
-              {tab.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
+        {TABS.map((tab) => {
+          const on = activeTab === tab.key;
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={styles.tabButton}
+              onPress={() => setActiveTab(tab.key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+            >
+              {/* The selected tab sits on a filled pill rather than just
+                  changing colour -- at 12pt a colour change alone is easy
+                  to miss, and the pill also gives the icon somewhere to
+                  sit. */}
+              <View style={[styles.tabInner, on && styles.tabInnerActive]}>
+                <MaterialCommunityIcons
+                  name={tab.icon}
+                  size={22}
+                  color={on ? COLORS.tabActive : COLORS.tabInactive}
+                />
+                <Text style={[styles.tabLabel, on && styles.tabLabelActive]}>{tab.label}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#f7f7fa' },
-  loadingContainer: { flex: 1, backgroundColor: '#f7f7fa', justifyContent: 'center', alignItems: 'center' },
+  safeArea: { flex: 1, backgroundColor: COLORS.bg },
+  loadingContainer: { flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' },
   content: { flex: 1 },
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: '#e3e3e8',
-    backgroundColor: '#fff',
+    borderTopColor: COLORS.line,
+    backgroundColor: COLORS.card,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
   },
-  tabButton: { flex: 1, paddingVertical: 12, alignItems: 'center' },
-  tabLabel: { fontSize: 15, color: '#999', fontWeight: '600' },
-  tabLabelActive: { color: '#4f8ef7' },
+  tabButton: { flex: 1, alignItems: 'center' },
+  tabInner: {
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.tile,
+    alignSelf: 'stretch',
+  },
+  tabInnerActive: { backgroundColor: COLORS.tabActiveBg },
+  tabLabel: { ...TYPE.tab, color: COLORS.tabInactive, marginTop: 3 },
+  tabLabelActive: { color: COLORS.tabActive, fontWeight: '700' },
 });

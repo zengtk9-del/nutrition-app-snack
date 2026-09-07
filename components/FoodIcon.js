@@ -5,21 +5,33 @@
 // Favorites summary rows (LogFoodScreen). They were never going to stay in
 // sync as three copies of the same 96pt box, so there is one copy here.
 //
-// The size is deliberate and shared: 96pt outer, 92pt image. A food should
-// be the same size everywhere it is listed, because the picture is what
-// people scan for -- a smaller one on the Today tab would read as a
+// The size is deliberate and shared: 96pt outer, 92pt image by default. A
+// food should be the same size everywhere it is listed, because the picture
+// is what people scan for -- a smaller one on the Today tab would read as a
 // different, lesser kind of row.
+//
+// `size` exists for the v0.0.72 redesign, which draws a tighter 72pt row on
+// Today. That deliberately breaks the rule above for as long as the redesign
+// is only half-rolled-out: Today's rows are 72 and Log Food's are still 96
+// until it gets the same treatment, at which point they match again at the
+// new number. A temporary inconsistency during a migration, not a new
+// principle.
 
 import React from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 import { getFoodIconImage } from '../data/foodIconImages';
 
-export default function FoodIcon({ iconKey, style }) {
+export default function FoodIcon({ iconKey, style, size }) {
   const image = iconKey ? getFoodIconImage(iconKey) : null;
+  // The image sits 4pt inside its box at the default size; that inset is
+  // kept proportional so a smaller icon doesn't lose its breathing room.
+  const box = size ? { width: size, height: size } : null;
+  const inner = size ? { width: size - 4, height: size - 4 } : null;
+
   if (image) {
     return (
-      <View style={[styles.wrap, style]}>
-        <Image source={image} style={styles.image} resizeMode="contain" />
+      <View style={[styles.wrap, box, style]}>
+        <Image source={image} style={[styles.image, inner]} resizeMode="contain" />
       </View>
     );
   }
@@ -27,7 +39,7 @@ export default function FoodIcon({ iconKey, style }) {
   // artwork as of v0.0.56, so this should now only appear for a food whose
   // id no longer resolves -- a favourite saved against a row that was later
   // removed, say. Keeping it means the layout never shifts.
-  return <View style={[styles.placeholder, style]} />;
+  return <View style={[styles.placeholder, box, style]} />;
 }
 
 const styles = StyleSheet.create({
