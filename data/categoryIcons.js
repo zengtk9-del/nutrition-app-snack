@@ -1,15 +1,24 @@
-// Artwork for the 18 top-level category tiles in Log Food.
+// Artwork for the category tiles in Log Food -- the 18 real categories plus
+// the `all` filter, 19 in all.
 //
 // A different axis from data/foodIconImages.js, which is keyed on a FOOD's
 // iconKey. These are keyed on the category keys in data/foods.js CATEGORIES,
 // and there is exactly one per category -- so they live in their own small
 // file rather than being lost among 1,737 food icons.
 //
+// `all` is the odd one out: it isn't in CATEGORIES at all, it's the tile that
+// clears the filter. It had no artwork until v0.0.68 and drew a ▦ glyph
+// instead; now it draws like everything else.
+//
 // The filenames are the ones the artwork arrived with (plural, and worded
 // slightly differently from the app's internal keys: `vegetables.jpg` for
 // `vegetable`, `eggs.jpg` for `egg`). Mapping them here rather than renaming
 // 18 files is the same trade data/foodIconImages.js already makes for the
 // 26 `_large` egg and milk files.
+//
+// Note the capital A in `All.png`. Every other asset in the repo is lower
+// case; this one arrived capitalised, and jsDelivr's paths are CASE-SENSITIVE,
+// so `all.png` is a 404. Don't "tidy" it without renaming the file too.
 //
 // These are .png where every other asset is .jpg -- they arrived that way
 // and pointing at them is cheaper than renaming. Worth knowing that PNG
@@ -24,6 +33,7 @@
 import { assetUri } from '../utils/assetHost';
 
 export const CATEGORY_ICONS = {
+  all: assetUri('All.png'),
   fruit: assetUri('fruit.png'),
   vegetable: assetUri('vegetables.png'),
   red_meat: assetUri('red_meat.png'),

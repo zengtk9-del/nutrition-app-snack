@@ -204,8 +204,9 @@ function CountFoodCard({ item, onAdd, onAddFavorite }) {
 // on the blue selected tile a bare image would show as a white rectangle.
 // Framed, it reads as a card sitting on the selection colour.
 //
-// `glyph` covers All and My Favorites, which are filters rather than
-// categories and have no artwork of their own.
+// `glyph` is the fallback for a tile with no artwork. As of v0.0.68 that is
+// My Favorites alone -- a saved-list filter rather than a kind of food, and
+// the one tile a ★ says better than a picture would.
 function CategoryTile({ label, iconKey, glyph, active, onPress }) {
   const image = iconKey ? getCategoryIcon(iconKey) : null;
   return (
@@ -5031,7 +5032,7 @@ export default function LogFoodScreen({
       >
         <CategoryTile
           label="All"
-          glyph="▦"
+          iconKey="all"
           active={category === 'all'}
           onPress={() => setCategory('all')}
         />
