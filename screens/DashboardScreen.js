@@ -26,7 +26,8 @@ import { iconKeyForFoodId } from '../utils/foodIcon';
 import FoodIcon from '../components/FoodIcon';
 import { APP_VERSION } from '../utils/appVersion';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-import { scoreDay } from '../utils/score';
+import { scoreDay, targetState } from '../utils/score';
+import { TARGETS } from '../data/scoreConfig';
 import { scoreTone } from '../utils/scoreTone';
 import { ART_READY, MASCOT, MACRO_ART, MACRO_FALLBACK_ICONS } from '../data/brandArt';
 
@@ -34,12 +35,15 @@ const FOOD_ICON_SIZE = 72;
 
 // The four rows of the summary card, in order. Colour and tint are looked up
 // rather than passed in so a macro's identity lives in exactly one place.
+// `target` is the row's entry from data/scoreConfig.js — the same object the
+// score uses, so the bar's colours and the score's arithmetic can never
+// drift apart into disagreeing about the same day.
 const MACROS = [
   { key: 'calories', label: 'Calories', unit: ' kcal', color: COLORS.calories, tint: COLORS.caloriesSoft },
   { key: 'protein', label: 'Protein', unit: 'g', color: COLORS.protein, tint: COLORS.proteinSoft },
   { key: 'carbs', label: 'Carbs', unit: 'g', color: COLORS.carbs, tint: COLORS.carbsSoft },
   { key: 'fat', label: 'Fat', unit: 'g', color: COLORS.fat, tint: COLORS.fatSoft },
-];
+].map((m) => ({ ...m, target: TARGETS.find((t) => t.key === m.key) }));
 
 // Illustration when we have one, vector glyph when we don't -- see
 // data/brandArt.js's ART_READY switch.
@@ -54,12 +58,28 @@ function MacroIcon({ macroKey, color }) {
 
 // One nutrient: icon tile, name, current-over-target, and a progress bar
 // that runs to a finish flag sitting at the target.
-function MacroRow({ label, unit, color, tint, macroKey, value, goal }) {
+//
+// Four states, not two (v0.0.75). Crossing a target is an achievement and
+// now looks like one: the flag goes green and the bar keeps its own colour.
+// Amber and red are held back for overshoots big enough to be worth saying
+// out loud -- see targetState in utils/score.js for where the lines are.
+function MacroRow({ label, unit, color, tint, macroKey, value, goal, target }) {
   const pct = progressPercent(value, goal);
-  const over = goal > 0 && value > goal;
+  const state = targetState(value, goal, target);
+  const past = state !== 'under';
   // Rounded the same way the numbers above it are, so "158.6 / 144" never
   // disagrees with a stated overshoot of 14.6.
-  const overBy = over ? Math.round((value - goal) * 10) / 10 : 0;
+  const overBy = past ? Math.round((value - goal) * 10) / 10 : 0;
+
+  // The bar keeps the macro's own colour right through 'met': hitting a goal
+  // is not a warning, and recolouring it would throw away the one cue that
+  // tells the four bars apart.
+  const barColor =
+    state === 'wayOver' ? COLORS.over : state === 'over' ? COLORS.warn : color;
+  const statusInk =
+    state === 'wayOver' ? COLORS.over : state === 'over' ? COLORS.warn : COLORS.good;
+  const statusSoft =
+    state === 'wayOver' ? COLORS.overSoft : state === 'over' ? COLORS.warnSoft : COLORS.goodSoft;
 
   return (
     <View style={s.macroRow}>
@@ -71,13 +91,9 @@ function MacroRow({ label, unit, color, tint, macroKey, value, goal }) {
         <View style={s.macroTop}>
           <Text style={s.macroName}>{label}</Text>
           <Text style={s.macroValue}>
-            <Text style={over ? s.macroNowOver : s.macroNow}>
-              {value}
-              {over ? unit : ''}
-            </Text>
+            <Text style={[s.macroNow, past && { color: statusInk }]}>{value}</Text>
             <Text style={s.macroGoal}>
-              {over ? ' / ' : `${unit} / `}
-              {goal}
+              {unit} / {goal}
               {unit}
             </Text>
           </Text>
@@ -90,28 +106,27 @@ function MacroRow({ label, unit, color, tint, macroKey, value, goal }) {
             {[25, 50, 75].map((at) => (
               <View key={at} style={[s.tick, { left: `${at}%`, backgroundColor: color, opacity: pct > at ? 0 : 0.35 }]} />
             ))}
-            <View
-              style={[s.fill, { width: `${pct}%`, backgroundColor: over ? COLORS.over : color }]}
-            />
+            <View style={[s.fill, { width: `${pct}%`, backgroundColor: barColor }]} />
           </View>
 
           {/* The target. Sits at the end of the track because the track IS
-              the target -- see this file's header. */}
+              the target -- see this file's header. Goes green the moment the
+              goal is reached, which is the cheapest way to make hitting one
+              feel like hitting one. */}
           <MaterialCommunityIcons
             name="flag-checkered"
             size={17}
-            color={over ? COLORS.over : COLORS.textMuted}
+            color={past ? statusInk : COLORS.textMuted}
             style={s.flag}
           />
 
-          {/* Only when past the target. Rendering it inline (rather than
-              floating it over the bar) lets the track shrink to make room,
-              so a long number can never overflow the card. */}
-          {over ? (
-            <View style={s.overPill}>
-              <Text style={s.overPillText}>
-                {overBy}
-                {unit.trim()} over
+          {/* Only once the goal is passed. Rendered inline rather than
+              floated over the bar so the track shrinks to make room, and a
+              long number can never overflow the card. */}
+          {past ? (
+            <View style={[s.overPill, { backgroundColor: statusSoft }]}>
+              <Text style={[s.overPillText, { color: statusInk }]}>
+                {state === 'met' ? 'Goal met' : `${overBy}${unit.trim()} over`}
               </Text>
             </View>
           ) : null}
@@ -172,6 +187,7 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry }) {
             unit={m.unit}
             color={m.color}
             tint={m.tint}
+            target={m.target}
             value={totals[m.key]}
             goal={goals[m.key]}
           />
@@ -289,7 +305,6 @@ const s = StyleSheet.create({
   macroName: { ...TYPE.macroName, color: COLORS.text },
   macroValue: { ...TYPE.macroValue },
   macroNow: { color: COLORS.text },
-  macroNowOver: { color: COLORS.over },
   macroGoal: { color: COLORS.textMuted, fontWeight: '600' },
 
   barRow: { flexDirection: 'row', alignItems: 'center' },
@@ -298,14 +313,15 @@ const s = StyleSheet.create({
   tick: { position: 'absolute', top: 5, width: 3, height: 3, borderRadius: RADIUS.pill },
   flag: { marginLeft: 6 },
 
+  // Background and text colour are both set at the call site from the row's
+  // state, so nothing is hard-coded to the red case here.
   overPill: {
     marginLeft: 6,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.overSoft,
   },
-  overPillText: { ...TYPE.pill, color: COLORS.over },
+  overPillText: { ...TYPE.pill },
 
   sectionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { ...TYPE.sectionTitle, color: COLORS.text },

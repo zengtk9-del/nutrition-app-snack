@@ -48,8 +48,22 @@ export const COLORS = {
   carbsSoft: '#fdefcf',
   fatSoft: '#f1e0fc',
 
-  // Past your target. Deliberately not the same red as Remove -- one is a
-  // status, the other is a button, and they appear on screen together.
+  // --- Status, in three steps ---
+  //
+  // Going past a target is not one state, it is three, and treating it as
+  // one was the bug this replaced: a bar that turned red the instant you
+  // crossed your goal called 5 grams and 300 grams the same thing, and made
+  // hitting a target look like failing one.
+  //
+  // `good` is the same green as protein by eye but a separate token on
+  // purpose -- one is a macro's identity, the other is a verdict, and they
+  // will not always want to move together.
+  good: '#2fae52',
+  goodSoft: '#dcf0e2',
+  warn: '#e08b0f',
+  warnSoft: '#fdeed2',
+  // The far end. Deliberately not the same red as Remove -- one is a status,
+  // the other is a button, and they appear on screen together.
   over: '#e8463f',
   overSoft: '#fdeceb',
 

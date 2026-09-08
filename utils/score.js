@@ -40,6 +40,28 @@ export function bandScore(actual, goal, t) {
   return t.points * ((r - zeroAt) / (flatTo - zeroAt));
 }
 
+// Which of four states a target is in, for display only -- the score itself
+// uses the continuous bands above, not these buckets.
+//
+//   'under'    still below the goal
+//   'met'      at or past it, by an amount worth no comment
+//   'over'     past it by enough to mention
+//   'wayOver'  past it by enough to say plainly
+//
+// The point of having three states above the goal instead of one: crossing
+// a target is an achievement, and the previous single "over" state coloured
+// that the same red as a 300-gram overshoot.
+export function targetState(actual, goal, t) {
+  if (!goal || goal <= 0) return 'under';
+  const r = actual / goal;
+  if (r < 1) return 'under';
+  const ok = t.okOver != null ? t.okOver : 1 + t.flat;
+  const warn = t.warnOver != null ? t.warnOver : 1 + t.zero;
+  if (r <= ok) return 'met';
+  if (r <= warn) return 'over';
+  return 'wayOver';
+}
+
 // Is this food one the quality component counts against the day?
 export function isFlaggedFood(food) {
   if (!food) return false;

@@ -19,8 +19,17 @@
 // is a safeguard, not an oversight: eating far too little has to cost what
 // eating far too much costs, or the shortest path to a perfect score is to
 // stop eating.
+// `okOver` and `warnOver` are display, not scoring: they decide when a
+// progress bar on the Today screen stops reading as "goal met" and starts
+// reading as "over", and then as "well over".
+//
+// They sit slightly WIDER than the scoring band above them, and that gap is
+// deliberate. The score is arithmetic and can afford to notice a 6% miss;
+// a coloured bar is a glance, and a bar that goes amber the moment you tip
+// one calorie past your goal is nagging, not informing. Hitting a target
+// should look like hitting it.
 export const TARGETS = [
-  { key: 'calories', label: 'Calories', points: 30, flat: 0.05, zero: 0.4 },
+  { key: 'calories', label: 'Calories', points: 30, flat: 0.05, zero: 0.4, okOver: 1.1, warnOver: 1.3 },
   // Protein is the one asymmetric band. Going over is not treated as a miss
   // until it gets extreme, because protein is what the goals engine is built
   // around (utils/goals.js sets it from lean body mass and lets carbs and fat
@@ -35,9 +44,14 @@ export const TARGETS = [
     overZero: 2.5,
     underFlat: 0.9,
     underZero: 0.4,
+    // Protein is the most forgiving of the four here too. Overshooting it
+    // is what people are usually trying to do, and an amber bar for hitting
+    // 190g against a 180g target would be telling someone off for winning.
+    okOver: 1.5,
+    warnOver: 2.0,
   },
-  { key: 'carbs', label: 'Carbs', points: 10, flat: 0.2, zero: 0.6 },
-  { key: 'fat', label: 'Fat', points: 10, flat: 0.2, zero: 0.6 },
+  { key: 'carbs', label: 'Carbs', points: 10, flat: 0.2, zero: 0.6, okOver: 1.2, warnOver: 1.5 },
+  { key: 'fat', label: 'Fat', points: 10, flat: 0.2, zero: 0.6, okOver: 1.2, warnOver: 1.5 },
 ];
 
 // --- Part two: food quality, the remaining 30 -----------------------------

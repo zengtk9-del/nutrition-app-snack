@@ -3775,7 +3775,7 @@ export default function LogFoodScreen({
   // into the "My Favorites" filter without needing to simulate a real tap
   // on the chip (renderToStaticMarkup is a single static pass, it can't
   // run event handlers).
-  initialCategory = 'all',
+  initialCategory = 'favorites',
   // Test-only, same reasoning as initialCategory above — lets the render
   // test harness jump straight into the Cuts step or the final Foods step
   // of the Red Meat picker without simulating the taps that would normally
@@ -3820,7 +3820,14 @@ export default function LogFoodScreen({
   initialExpandedFavoriteId = null,
 }) {
   const [query, setQuery] = useState(initialQuery);
-  const [category, setCategory] = useState(initialCategory);
+  // Log Food opens on Favorites (v0.0.75). The one exception is an account
+  // that hasn't saved any yet: opening a brand-new user onto an empty list
+  // would make their first look at this screen a dead end, so they get All
+  // until they have something to come back to. Everyone else lands on the
+  // foods they actually eat.
+  const [category, setCategory] = useState(
+    initialCategory === 'favorites' && favorites.length === 0 ? 'all' : initialCategory
+  );
   // Red Meat — which Type (Beef, Pork, ...) and Cut (Ribeye, Chuck, ...)
   // the user has drilled into, one screen at a time, instead of one long
   // flat list. Both reset whenever the category chip changes, including
@@ -5051,17 +5058,20 @@ export default function LogFoodScreen({
         style={styles.categoryRow}
         contentContainerStyle={{ alignItems: 'flex-start', paddingRight: 16 }}
       >
-        <CategoryTile
-          label="All"
-          iconKey="all"
-          active={category === 'all'}
-          onPress={() => setCategory('all')}
-        />
+        {/* Favorites leads, and is where the tab opens. The foods someone
+            logs repeatedly are the reason they came to this screen; All is
+            for the times they're looking for something new. */}
         <CategoryTile
           label="Favorites"
           glyph="★"
           active={category === 'favorites'}
           onPress={() => setCategory('favorites')}
+        />
+        <CategoryTile
+          label="All"
+          iconKey="all"
+          active={category === 'all'}
+          onPress={() => setCategory('all')}
         />
         {/* Order comes from the user's diet, not data/foods.js — see
             data/dietOrder.js. All 18 are always present; only their order

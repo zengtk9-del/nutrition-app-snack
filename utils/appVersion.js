@@ -8,4 +8,4 @@
 // with a change, however small, this number goes up — starting at 0.0.1
 // and incrementing the last digit (0.0.2, 0.0.3, …) for each round of
 // changes, same as this file's own history below.
-export const APP_VERSION = '0.0.74';
+export const APP_VERSION = '0.0.75';
