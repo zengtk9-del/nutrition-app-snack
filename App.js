@@ -669,13 +669,25 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   loadingContainer: { flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' },
   content: { flex: 1 },
+  // Floats clear of the screen edge rather than sitting flush against it
+  // (v0.0.76, from the History mockup). Shared by every tab, so this moves
+  // Today, Log Food and Goals too -- a bar that only detached on one screen
+  // would read as a bug.
   tabBar: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.line,
     backgroundColor: COLORS.card,
-    paddingVertical: 6,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingVertical: 7,
     paddingHorizontal: 6,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
   tabButton: { flex: 1, alignItems: 'center' },
   tabInner: {
