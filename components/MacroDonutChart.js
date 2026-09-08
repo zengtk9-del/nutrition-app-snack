@@ -150,6 +150,23 @@ export function thicknessForCalories(calories, size) {
 // on screen instead of being mostly invisible inside a big hole.
 const HOLE_RATIO = 0.46;
 
+// A few degrees of the card showing between wedges. Most of what separates
+// a chart that looks drawn from one that looks stamped, and unlike rounded
+// wedge ends it works at every thickness this ring takes.
+//
+// ON ROUNDED ENDS, since it will come up again: they need a ring that is
+// thin relative to its radius, and this one is the opposite. A half-round
+// cap on a band of thickness `t` at centreline radius `r` bulges t/(hole+t)
+// radians past the wedge edge -- 15 degrees at this ring's thinnest setting
+// and 24 degrees at a 3,100 kcal target, which would swallow the gaps and
+// then the neighbouring wedge. Getting that under 10 degrees needs the band
+// at roughly a fifth of the hole's width, which would mean giving up either
+// the small hole or the calorie-driven thickness above. A charting library
+// would not help: a round stroke cap is the same geometry.
+const WEDGE_GAP_DEG = 4;
+// Below this a wedge is a sliver nobody can read as a quantity.
+const MIN_WEDGE_DEG = 0.5;
+
 // Exported alongside thicknessForCalories for the same reason — a pure,
 // renderer-independent function this project's test harness can assert
 // on directly (constant hole size, growing outer size) rather than trying
@@ -210,9 +227,25 @@ function RingShape({ calories, proteinG, carbsG, fatG, size, thickness, stageSiz
     total > 0
       ? slices.map((s) => {
           const sweep = (s.kcal / total) * 360;
-          const wedge = <Wedge key={s.key} size={outerSize} start={cumulative} sweep={sweep} color={s.color} />;
+          const start = cumulative;
           cumulative += sweep;
-          return wedge;
+          // A macro at zero gets nothing rather than a hairline that reads
+          // as a rendering artefact.
+          if (sweep <= MIN_WEDGE_DEG) return null;
+          // Half the gap comes off each end, so a wedge stays centred on
+          // its true arc and the angles still encode the real split. A
+          // wedge narrower than the gap keeps a proportional sliver rather
+          // than inverting into a negative sweep.
+          const gap = Math.min(WEDGE_GAP_DEG, sweep * 0.4);
+          return (
+            <Wedge
+              key={s.key}
+              size={outerSize}
+              start={start + gap / 2}
+              sweep={sweep - gap}
+              color={s.color}
+            />
+          );
         })
       : null;
 
@@ -269,8 +302,13 @@ function Legend({ proteinG, carbsG, fatG, inline }) {
       {slices.map((s) => (
         <View key={s.key} style={styles.legendRow}>
           <View style={[styles.swatch, { backgroundColor: s.color }]} />
-          <Text style={styles.legendLabel}>{s.label}</Text>
-          <Text style={styles.legendValue}>
+          {/* numberOfLines={1} matters in the inline layout, where the
+              legend shares its width with the ring: without it "Protein"
+              wraps to "Prot / ein" the moment the column gets tight. */}
+          <Text style={[styles.legendLabel, inline && styles.legendLabelInline]} numberOfLines={1}>
+            {s.label}
+          </Text>
+          <Text style={[styles.legendValue, inline && styles.legendValueInline]} numberOfLines={1}>
             {s.grams}g ({total > 0 ? Math.round((s.kcal / total) * 100) : 0}%)
           </Text>
         </View>
@@ -509,4 +547,8 @@ const styles = StyleSheet.create({
   swatch: { width: 12, height: 12, borderRadius: 3, marginRight: 8, flexShrink: 0 },
   legendLabel: { fontSize: 16, fontWeight: '600', color: '#1a1a1a', flex: 1, flexShrink: 1, minWidth: 0 },
   legendValue: { fontSize: 16, fontWeight: '700', color: '#555', flexShrink: 0, marginLeft: 8 },
+  // A size down in the inline layout, where the legend has the ring beside
+  // it instead of the full card width to itself.
+  legendLabelInline: { fontSize: 14.5 },
+  legendValueInline: { fontSize: 14.5, marginLeft: 6 },
 });

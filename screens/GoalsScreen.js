@@ -176,7 +176,11 @@ export default function GoalsScreen({
           proteinG={goals.protein}
           carbsG={goals.carbs}
           fatG={goals.fat}
-          size={132}
+          // 100, not the 132 this started at. The ring reserves a fixed
+          // stage of 1.46x `size` so its hole never drifts as the band
+          // thickens, which meant 132 was quietly taking 193pt of a ~322pt
+          // card and squeezing the legend until "Protein" wrapped.
+          size={100}
           layout="row"
         />
       </View>
