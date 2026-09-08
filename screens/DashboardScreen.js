@@ -26,6 +26,8 @@ import { iconKeyForFoodId } from '../utils/foodIcon';
 import FoodIcon from '../components/FoodIcon';
 import { APP_VERSION } from '../utils/appVersion';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
+import { scoreDay } from '../utils/score';
+import { scoreTone } from '../utils/scoreTone';
 import { ART_READY, MASCOT, MACRO_ART, MACRO_FALLBACK_ICONS } from '../data/brandArt';
 
 const FOOD_ICON_SIZE = 72;
@@ -121,6 +123,9 @@ function MacroRow({ label, unit, color, tint, macroKey, value, goal }) {
 
 export default function DashboardScreen({ entries, goals, onDeleteEntry }) {
   const totals = sumEntries(entries);
+  // null on a day with nothing logged -- see utils/score.js. The chip simply
+  // doesn't render then, rather than showing a zero nobody earned.
+  const score = scoreDay({ entries, totals, goals, foods });
 
   return (
     <ScrollView
@@ -145,7 +150,20 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry }) {
       </View>
 
       <View style={s.card}>
-        <Text style={s.eyebrow}>DAILY FUEL</Text>
+        <View style={s.cardHead}>
+          <Text style={s.eyebrow}>DAILY FUEL</Text>
+          {/* Today's score is provisional and says so. At 10am nobody has
+              eaten their calories yet, so a number presented as final would
+              read as failure all morning. It locks at midnight. */}
+          {score ? (
+            <View style={[s.scoreChip, { backgroundColor: scoreTone(score.total).soft }]}>
+              <Text style={[s.scoreChipNum, { color: scoreTone(score.total).ink }]}>
+                {score.total}
+              </Text>
+              <Text style={s.scoreChipLabel}>so far</Text>
+            </View>
+          ) : null}
+        </View>
         {MACROS.map((m) => (
           <MacroRow
             key={m.key}
@@ -233,7 +251,23 @@ const s = StyleSheet.create({
     marginBottom: 22,
     ...SHADOW.card,
   },
-  eyebrow: { ...TYPE.eyebrow, color: COLORS.eyebrow, marginBottom: 14 },
+  cardHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  eyebrow: { ...TYPE.eyebrow, color: COLORS.eyebrow },
+  scoreChip: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.pill,
+  },
+  scoreChipNum: { fontSize: 17, fontWeight: '800' },
+  scoreChipLabel: { fontSize: 11, fontWeight: '600', color: COLORS.textMuted },
 
   macroRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
   macroTile: {
