@@ -252,7 +252,7 @@ function HoleNumberText({ calories }) {
   );
 }
 
-function Legend({ proteinG, carbsG, fatG }) {
+function Legend({ proteinG, carbsG, fatG, inline }) {
   const proteinKcal = proteinG * 4;
   const carbsKcal = carbsG * 4;
   const fatKcal = fatG * 9;
@@ -265,7 +265,7 @@ function Legend({ proteinG, carbsG, fatG }) {
   ];
 
   return (
-    <View style={styles.legend}>
+    <View style={[styles.legend, inline && styles.legendInline]}>
       {slices.map((s) => (
         <View key={s.key} style={styles.legendRow}>
           <View style={[styles.swatch, { backgroundColor: s.color }]} />
@@ -298,7 +298,11 @@ const NUMBER_FADE_MS = 400;
 // this is what every normal, non-guided drag anywhere in the app should
 // do, exactly as before. Only MacroGoalsScreen's guided walkthrough ever
 // passes `animate={true}`, and only while it's actually running.
-export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size = 180, thickness, animate = false }) {
+// `layout`: 'column' (the default, and what every existing caller gets)
+// stacks the legend under the ring. 'row' puts it alongside, which is what
+// the redesigned Goals screen wants -- the ring alone is a lot of vertical
+// space on a screen that already scrolls past two viewports.
+export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size = 180, thickness, animate = false, layout = 'column' }) {
   const stageSize = maxOuterSizeFor(size);
   const holeSize = size * HOLE_RATIO;
 
@@ -393,7 +397,7 @@ export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size
   }, [calories, animate]);
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, layout === 'row' && styles.wrapRow]}>
       <View style={[styles.stage, { width: stageSize, height: stageSize }]}>
         <RingShape
           calories={ringNumbers.calories}
@@ -420,7 +424,7 @@ export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size
         </View>
       </View>
 
-      <Legend proteinG={proteinG} carbsG={carbsG} fatG={fatG} />
+      <Legend proteinG={proteinG} carbsG={carbsG} fatG={fatG} inline={layout === 'row'} />
     </View>
   );
 }
@@ -442,6 +446,7 @@ const styles = StyleSheet.create({
   // circle and legend still end up visually centered underneath it via
   // `alignItems: 'center'` exactly as before.
   wrap: { alignItems: 'center', marginBottom: 14, width: '100%' },
+  wrapRow: { flexDirection: 'row', marginBottom: 0 },
   // `position: 'relative'` is what makes holeNumberOverlay's absolute
   // positioning below resolve against THIS box (the fixed-size ring
   // stage) instead of drifting up to some more distant positioned
@@ -488,6 +493,11 @@ const styles = StyleSheet.create({
   holeCalories: { fontSize: 22, fontWeight: '800', color: '#1a1a1a' },
   holeUnit: { fontSize: 13, fontWeight: '600', color: '#777', marginTop: 2 },
   legend: { marginTop: 16, width: '100%', maxWidth: 280 },
+  // Alongside the ring instead of under it. `width: 'auto'` and
+  // `maxWidth: undefined` are doing real work here -- they undo the two
+  // rules above, which exist to stop the column layout clipping its labels
+  // and would pin this to 280pt in a track that is usually narrower.
+  legendInline: { marginTop: 0, marginLeft: 12, flex: 1, width: 'auto', maxWidth: undefined },
   legendRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   // flexShrink: 0 on the swatch and value, plus flexShrink: 1 + minWidth: 0
   // on the label, is a defensive belt-and-suspenders on top of the `wrap`
