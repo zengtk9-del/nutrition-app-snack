@@ -131,6 +131,36 @@ export const MACRO_GRADIENT = {
   fat: ['#ffd43a', '#f3bf11'],
 };
 
+// --- Log Food's macro chips -------------------------------------------
+//
+// A SECOND macro palette, and a deliberate one. Every other surface in this
+// app -- the Today bars, the Goals wheel, the saved-goal chips -- uses the
+// four COLORS.calories/protein/carbs/fat above. The Log Food mockup came
+// back with a different set, and Damon picked it over matching (v0.0.84),
+// so this is the one screen where a macro's colour differs from everywhere
+// else.
+//
+// Kept as its own named block rather than typed into LogFoodScreen's
+// StyleSheet so that decision stays reversible: pointing these eight values
+// at the COLORS versions above is a single edit, and nothing else changes.
+//
+// Sampled off the mockup PNG rather than eyeballed -- modal colour inside
+// each dot, so anti-aliasing at the circle's edge doesn't drag the value.
+//
+// CONTRAST, measured, and accepted rather than corrected: as non-text marks
+// these want 3:1 against the tint they sit on. Carbs (3.3) and protein
+// (3.1) clear it; calories' green is 2.1 and fat's amber is 1.65. Yellow on
+// pale yellow has nowhere to go -- the same finding as COLORS.fat above --
+// and darkening the tints would move both ends together. What makes this
+// survivable is that the dot is never the only channel: the word KCAL,
+// PROTEIN, CARBS or FAT sits directly beside every one of them.
+export const LOG_CHIP = {
+  calories: { dot: '#62c305', tint: '#f2fced' },
+  protein: { dot: '#fd485c', tint: '#fff2f2' },
+  carbs: { dot: '#0584fd', tint: '#eaf5fd' },
+  fat: { dot: '#fdb705', tint: '#fdf8e8' },
+};
+
 export const TYPE = {
   screenTitle: { fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
   eyebrow: { fontSize: 12, fontWeight: '800', letterSpacing: 1.3 },
@@ -183,4 +213,4 @@ export const SHADOW = {
   },
 };
 
-export default { COLORS, TYPE, RADIUS, SPACE, SHADOW };
+export default { COLORS, LOG_CHIP, MACRO_GRADIENT, TYPE, RADIUS, SPACE, SHADOW };

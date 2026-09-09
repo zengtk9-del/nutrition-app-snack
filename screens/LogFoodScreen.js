@@ -55,6 +55,55 @@ import {
   boneInToEdibleGrams,
   edibleToBoneInGrams,
 } from '../utils/units';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { COLORS, LOG_CHIP, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
+import { ART_READY, MASCOT } from '../data/brandArt';
+
+// The four chips under a food's name. Order matters and is the same one
+// used on Today's bars and the Goals cards: calories first, then the three
+// macros it is made of.
+//
+// Colours come from LOG_CHIP rather than COLORS -- this screen is the one
+// place the two disagree, on purpose. See utils/theme.js.
+const MACRO_CHIPS = [
+  { key: 'calories', label: 'KCAL', ...LOG_CHIP.calories },
+  { key: 'protein', label: 'PROTEIN', ...LOG_CHIP.protein, suffix: 'g' },
+  { key: 'carbs', label: 'CARBS', ...LOG_CHIP.carbs, suffix: 'g' },
+  { key: 'fat', label: 'FAT', ...LOG_CHIP.fat, suffix: 'g' },
+];
+
+// The macro chip row. `values` is whatever four numbers the caller wants
+// shown -- per-100g for a weight food, per-serving for a count food -- and
+// `caption` is the line above that says which of those two you're looking
+// at, since the numbers alone can't tell you.
+//
+// One decimal at most, and never a trailing ".0": the data carries values
+// like 23.7 and 0.1 that matter, alongside plenty of flat 0s and 291s that
+// would look like false precision written as 291.0.
+function MacroChipRow({ values }) {
+  return (
+    <View style={styles.chipRow}>
+      {MACRO_CHIPS.map((c) => {
+        const raw = values[c.key];
+        const n = typeof raw === 'number' ? Math.round(raw * 10) / 10 : 0;
+        return (
+          <View key={c.key} style={[styles.chip, { backgroundColor: c.tint }]}>
+            <View style={styles.chipHead}>
+              <View style={[styles.chipDot, { backgroundColor: c.dot }]} />
+              <Text style={styles.chipLabel} numberOfLines={1}>
+                {c.label}
+              </Text>
+            </View>
+            <Text style={styles.chipValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {c.key === 'calories' ? Math.round(n).toLocaleString() : n}
+              {c.suffix || ''}
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 // The star button shared by WeightFoodRow and CountFoodCard below, for
 // normal browsing (NOT the My Favorites tab -- see FavoriteListItem for
@@ -213,21 +262,47 @@ function CountFoodCard({ item, onAdd, onAddFavorite }) {
 // `glyph` is the fallback for a tile with no artwork. As of v0.0.68 that is
 // My Favorites alone -- a saved-list filter rather than a kind of food, and
 // the one tile a ★ says better than a picture would.
+// Redesigned in v0.0.84. Two states, and they differ in more than colour:
+//
+//   inactive -- white card, the category's artwork on a white frame, label
+//   in dark ink underneath.
+//
+//   active -- solid blue, and the artwork is REPLACED by a white vector
+//   glyph. That swap is the point: the artwork is opaque JPEG with no
+//   alpha, so on a blue tile it can only ever appear inside a white
+//   rectangle, which is exactly the "torn-out square" the old design had to
+//   live with. A glyph has no background to cut out.
+//
+// The mockup's active tile is a top-to-bottom blue gradient (#2292fe to
+// #0066fa, measured). React Native has no gradient without a library, and
+// the stepped-sub-view trick used on the donut would cost ~20 extra Views
+// inside a horizontally scrolling row of 20 tiles. Flat accent blue instead
+// -- the two ends are 6% apart in lightness, which is not what makes this
+// tile read as selected.
 function CategoryTile({ label, iconKey, glyph, active, onPress }) {
   const image = iconKey ? getCategoryIcon(iconKey) : null;
   return (
     <TouchableOpacity
       style={[styles.catTile, active && styles.catTileActive]}
-      activeOpacity={0.7}
+      activeOpacity={0.75}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!active }}
+      accessibilityLabel={label}
     >
-      <View style={styles.catTileArt}>
-        {image ? (
-          <Image source={image} style={styles.catTileImage} resizeMode="contain" />
-        ) : (
-          <Text style={styles.catTileGlyph}>{glyph}</Text>
-        )}
-      </View>
+      {active ? (
+        <View style={styles.catTileGlyphWrap}>
+          <MaterialCommunityIcons name={glyph || 'silverware-fork-knife'} size={30} color="#fff" />
+        </View>
+      ) : (
+        <View style={styles.catTileArt}>
+          {image ? (
+            <Image source={image} style={styles.catTileImage} resizeMode="contain" />
+          ) : (
+            <MaterialCommunityIcons name={glyph || 'silverware-fork-knife'} size={28} color={COLORS.accent} />
+          )}
+        </View>
+      )}
       <Text numberOfLines={2} style={[styles.catTileText, active && styles.catTileTextActive]}>
         {label}
       </Text>
@@ -3465,28 +3540,102 @@ function FavoriteListItem({
     }
   };
 
-  const summaryDetail =
-    favorite.servingType === 'weight'
-      ? `per 100g: ${favorite.caloriesPer100g} kcal · P${favorite.proteinPer100g} C${favorite.carbsPer100g} F${favorite.fatPer100g} · ${favorite.grams}g`
-      : `${favorite.servingLabel} · ${favorite.calories} kcal`;
+  // The run-on summary line this replaced ("per 100g: 291 kcal · P23.7
+  // C0 F21.8 · 100g") said everything the mockup's chips say, in a string
+  // you had to read left to right to find one number in. Same four values,
+  // now findable by position.
+  //
+  // TWO KINDS OF FAVORITE, and they do not carry the same numbers. A weight
+  // favorite stores per-100g values plus the grams you saved; a count
+  // favorite (one egg, one slice) stores the absolute macros of one
+  // serving and has no per-100g at all. So the chips take whichever set
+  // exists, and the caption above them says which you are looking at --
+  // without it, "291" and "0g" are ambiguous between the two.
+  const isWeight = favorite.servingType === 'weight';
+  const chipValues = isWeight
+    ? {
+        calories: favorite.caloriesPer100g,
+        protein: favorite.proteinPer100g,
+        carbs: favorite.carbsPer100g,
+        fat: favorite.fatPer100g,
+      }
+    : {
+        calories: favorite.calories,
+        protein: favorite.protein,
+        carbs: favorite.carbs,
+        fat: favorite.fat,
+      };
 
   return (
     <View style={styles.favoriteListItem}>
-      <TouchableOpacity style={styles.favoriteSummaryRow} activeOpacity={0.6} onPress={onToggleExpand}>
-        <FoodIcon iconKey={iconKeyForFoodId(foods, favorite.foodId)} style={styles.rowIconSpacing} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.name}>
-            {expanded ? '▾' : '▸'} {title}
-          </Text>
-          <Text style={styles.sub}>{summaryDetail}</Text>
+      <View style={styles.favTop}>
+        <View style={styles.favArtTile}>
+          <FoodIcon iconKey={iconKeyForFoodId(foods, favorite.foodId)} size={72} style={styles.favArt} />
         </View>
-      </TouchableOpacity>
-      <View style={styles.cardActionsRow}>
-        <TouchableOpacity style={styles.favBtn} activeOpacity={0.6} onPress={handleRemove}>
-          <Text style={styles.favBtnText}>Remove from Favorites</Text>
+
+        <View style={styles.favBody}>
+          {/* The chevron and the name are one target, not two. The chevron
+              alone is a 26pt circle -- fine as a marker, too small as the
+              only way to open the editor underneath. */}
+          <TouchableOpacity
+            style={styles.favNameRow}
+            activeOpacity={0.6}
+            onPress={onToggleExpand}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !!expanded }}
+            accessibilityLabel={`${title}, ${expanded ? 'hide' : 'show'} portion settings`}
+          >
+            <View style={styles.favChevron}>
+              <MaterialCommunityIcons
+                name={expanded ? 'chevron-down' : 'chevron-right'}
+                size={19}
+                color={COLORS.accent}
+              />
+            </View>
+            <Text style={styles.favName} numberOfLines={2}>
+              {title}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={styles.favCaption}>{isWeight ? 'per 100g' : favorite.servingLabel}</Text>
+
+          <MacroChipRow values={chipValues} />
+
+          <Text style={styles.favServing}>
+            Serving <Text style={styles.favServingValue}>{isWeight ? `${favorite.grams}g` : favorite.servingLabel}</Text>
+          </Text>
+        </View>
+      </View>
+
+      {/* Deliberately NOT styles.cardActionsRow / favBtn / addBtn. Those
+          three are shared by roughly twenty other cards on this screen,
+          none of which have been redesigned yet -- restyling them here
+          would silently reshape every one. Own styles until the rest
+          catches up, then these fold back into the shared set. */}
+      <View style={styles.favActions}>
+        <TouchableOpacity
+          style={styles.favRemoveBtn}
+          activeOpacity={0.7}
+          onPress={handleRemove}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${favorite.name} from favorites`}
+        >
+          <MaterialCommunityIcons name="heart-minus-outline" size={17} color={COLORS.destructive} />
+          <Text style={styles.favRemoveText} numberOfLines={1}>
+            Remove from Favorites
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.addBtn} activeOpacity={0.6} onPress={handleQuickAdd}>
-          <Text style={styles.addBtnText}>+ Add to Today</Text>
+        <TouchableOpacity
+          style={styles.favQuickAddBtn}
+          activeOpacity={0.8}
+          onPress={handleQuickAdd}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${favorite.name} to today`}
+        >
+          <MaterialCommunityIcons name="plus" size={19} color="#fff" />
+          <Text style={styles.favQuickAddText} numberOfLines={1}>
+            Add to Today
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -5043,14 +5192,51 @@ export default function LogFoodScreen({
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Log Food</Text>
-      <TextInput
-        style={styles.search}
-        placeholder="Search foods (e.g. chicken, rice, apple)"
-        value={query}
-        onChangeText={setQuery}
-        autoCorrect={false}
-      />
+      {/* The same soft shapes the other three tabs put behind their title.
+          Non-interactive and behind everything, so the search bar and tiles
+          still take their own touches. */}
+      <View pointerEvents="none" style={styles.blobs}>
+        <View style={[styles.blob, styles.blobA]} />
+        <View style={[styles.blob, styles.blobB]} />
+        <View style={[styles.blob, styles.blobC]} />
+      </View>
+
+      <View style={styles.header}>
+        <Text style={styles.title}>Log Food</Text>
+        {/* The mockup draws a broccoli holding a magnifying glass -- a pose
+            that doesn't exist yet. Until that file lands this reuses the
+            Today mascot, which is the same character and reads correctly;
+            when the search pose is pushed, point MASCOT_SEARCH at it in
+            data/brandArt.js and only this line changes. */}
+        {ART_READY ? <Image source={MASCOT} style={styles.mascot} resizeMode="contain" /> : null}
+      </View>
+
+      {/* The magnifier is a sibling of the input rather than something the
+          input draws, because RN's TextInput has no leading-icon slot. The
+          input is flex:1 beside it and the row carries the rounded fill, so
+          the caret still starts after the icon rather than under it. */}
+      <View style={styles.searchWrap}>
+        <MaterialCommunityIcons name="magnify" size={22} color={COLORS.textSoft} />
+        <TextInput
+          style={styles.search}
+          placeholder="Search foods (e.g. chicken, rice, apple)"
+          placeholderTextColor={COLORS.textMuted}
+          value={query}
+          onChangeText={setQuery}
+          autoCorrect={false}
+          returnKeyType="search"
+        />
+        {query ? (
+          <TouchableOpacity
+            onPress={() => setQuery('')}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+          >
+            <MaterialCommunityIcons name="close-circle" size={19} color={COLORS.textFaint} />
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       <ScrollView
         horizontal
@@ -5063,7 +5249,7 @@ export default function LogFoodScreen({
             for the times they're looking for something new. */}
         <CategoryTile
           label="Favorites"
-          glyph="★"
+          glyph="star"
           active={category === 'favorites'}
           onPress={() => setCategory('favorites')}
         />
@@ -5209,18 +5395,36 @@ const styles = StyleSheet.create({
     borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12,
   },
   allCardChevron: { fontSize: 20, color: '#bbb', marginLeft: 12 },
-  container: { flex: 1, backgroundColor: '#f7f7fa', padding: 16 },
-  title: { fontSize: 28, fontWeight: '700', marginBottom: 12, color: '#1a1a1a' },
-  search: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+  container: { flex: 1, backgroundColor: COLORS.bg, padding: SPACE.screen },
+
+  blobs: { position: 'absolute', top: 0, left: 0, right: 0, height: 210 },
+  blob: { position: 'absolute', backgroundColor: COLORS.blob, borderRadius: RADIUS.pill },
+  blobA: { width: 230, height: 180, top: -46, right: -66 },
+  blobB: { width: 104, height: 104, top: 26, right: 142 },
+  blobC: { width: 40, height: 40, top: 2, right: 214 },
+
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, minHeight: 78 },
+  title: { ...TYPE.screenTitle, color: COLORS.text, flex: 1 },
+  mascot: { width: 96, height: 96, marginTop: -10, marginRight: -6 },
+
+  // 48pt tall, measured off the mockup -- noticeably taller than the 40 it
+  // replaced. It is the one control on this screen that is always
+  // available, so it gets a real touch target.
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    height: 48,
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 17,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e3e3e8',
+    ...SHADOW.row,
   },
+  // No vertical padding and no height of its own: the row above sets both.
+  // A TextInput that also has padding ends up with its text sitting a few
+  // points low inside the pill on Android.
+  search: { flex: 1, fontSize: 16.5, color: COLORS.text, padding: 0 },
   emptyText: { color: '#888', fontStyle: 'italic', marginTop: 20, textAlign: 'center', paddingHorizontal: 12 },
   // NO height. Three attempts at one -- 122, 118, 114 -- each trimmed a few
   // points off the bottom of the tiles, because a hand-computed height is
@@ -5240,7 +5444,7 @@ const styles = StyleSheet.create({
   // length -- "Fats & Oils" and "Condiments & Sauces" wrap to two lines,
   // which is what numberOfLines={2} and the fixed lineHeight are for.
   catTile: {
-    width: 82,
+    width: 74,
     // FIXED, not summed from paddings. Twice now the strip's height was
     // computed by adding up what is inside a tile, and twice the labels
     // came out clipped -- iOS gives a Text block a little more than
@@ -5248,42 +5452,47 @@ const styles = StyleSheet.create({
     // and the overflow spills under the food list below. Pinning the tile
     // and clipping it makes that impossible rather than unlikely: the row
     // is this number plus slack, and nothing inside can exceed it.
-    height: 102,
+    //
+    // 80 rather than the old 102 because the tile no longer carries a
+    // white art frame inside a bordered card -- the art sits directly on
+    // the tile now, which buys back the padding that frame needed.
+    height: 80,
     marginRight: 8,
     marginTop: 4,
     paddingTop: 6,
-    paddingBottom: 6,
-    paddingHorizontal: 4,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e3e3e8',
-    backgroundColor: '#fff',
+    paddingBottom: 5,
+    paddingHorizontal: 3,
+    borderRadius: RADIUS.tile,
+    backgroundColor: COLORS.card,
     alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOW.row,
   },
-  catTileActive: { backgroundColor: '#4f8ef7', borderColor: '#4f8ef7' },
+  catTileActive: { backgroundColor: COLORS.accent },
   // White, always -- see CategoryTile's comment: the icons carry no alpha,
-  // so this frame is what stops them looking like a torn-out rectangle on
-  // the selected tile.
+  // so this frame is what stops them looking like a torn-out rectangle.
   catTileArt: {
-    width: 50, height: 50, borderRadius: 11, backgroundColor: '#fff',
+    width: 42, height: 42, borderRadius: 10, backgroundColor: '#fff',
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
-  catTileImage: { width: 48, height: 48 },
-  catTileGlyph: { fontSize: 26, color: '#4f8ef7' },
+  catTileImage: { width: 40, height: 40 },
+  // Nothing to cut out, so no frame -- just the glyph, sized to occupy the
+  // same 42pt box the artwork does so both states are the same height.
+  catTileGlyphWrap: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   catTileText: {
-    marginTop: 4,
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#555',
+    marginTop: 3,
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: COLORS.text,
     textAlign: 'center',
-    lineHeight: 13,
+    lineHeight: 12.5,
     // Room for two lines and then some. Fixed so "Fruit" and "Condiments &
-    // Sauces" produce tiles of identical height -- but 30 rather than the
-    // exact 26 that two 13pt lines need, because that is precisely what
+    // Sauces" produce tiles of identical height -- but 28 rather than the
+    // exact 25 that two 12.5pt lines need, because that is precisely what
     // went wrong twice: iOS wants a shade more than lineHeight x lines to
     // lay a second line out, and given exactly enough it silently drops it.
     // "My Favorites" rendered as "My".
-    height: 30,
+    height: 28,
   },
   catTileTextActive: { color: '#fff' },
   // Shown above the list only while inside the Red Meat picker (Cuts step
@@ -5549,15 +5758,112 @@ const styles = StyleSheet.create({
   // (name + number, saved snapshot, Remove/Add buttons) plus, when
   // expanded, the full locked food card underneath it.
   favoriteListItem: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    // Vertical padding trimmed from 12 to 8 in v0.0.57 to pay for the 96pt
-    // icon the summary row gained -- same trade the browse rows made in
-    // v0.0.48. The picture, not the whitespace, sets the row height.
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 10,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.card,
+    padding: 14,
+    marginBottom: SPACE.rowGap,
+    ...SHADOW.card,
   },
+  favTop: { flexDirection: 'row', alignItems: 'flex-start' },
+
+  // The mockup floats the food picture on a pale blue tile. It cannot
+  // float: the food art became opaque JPEGs in v0.0.53, so every icon is a
+  // white square with no alpha and a tinted tile behind one just draws a
+  // coloured rectangle around it.
+  //
+  // So the tint becomes a frame instead of a backdrop -- a pale blue tile
+  // 4pt larger than the white picture on every side. Same colour from the
+  // mockup, reading as a deliberate border rather than a failed cut-out.
+  favArtTile: {
+    width: 80,
+    height: 80,
+    borderRadius: RADIUS.tile,
+    backgroundColor: '#eef5fb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  favArt: { borderRadius: 12 },
+
+  favBody: { flex: 1, minWidth: 0 },
+  favNameRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  favChevron: {
+    width: 26,
+    height: 26,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.caloriesSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  // Two lines then ellipsis. These names are built from a food row plus a
+  // number ("Beef Ribeye Steak 1") and run long.
+  favName: { flex: 1, fontSize: 17, fontWeight: '800', color: COLORS.text, lineHeight: 22 },
+  favCaption: { fontSize: 13.5, color: COLORS.textMuted, fontWeight: '600', marginTop: 3, marginLeft: 34 },
+
+  // Four equal chips. `flex: 1` plus `minWidth: 0` is what lets a
+  // four-digit calorie count shrink its own chip instead of pushing the
+  // row wider than the card.
+  // THE WIDTH BUDGET, because this row is the tightest thing on the screen
+  // and the numbers in it are the point of the card.
+  //
+  // On a 390pt phone: 358 card - 28 card padding - 92 (80pt art tile + 12
+  // margin) leaves 238 for this row. Four chips and three 6pt gaps put each
+  // chip at 55, and 7pt of padding a side leaves 41pt of text. "23.7g" at
+  // 14pt/800 is about 39. It fits, with two points spare.
+  //
+  // On a 375pt iPhone SE the same arithmetic leaves 37pt, and it does not
+  // fit -- which is what adjustsFontSizeToFit on the value is for. That is
+  // an iOS-only prop; Android ignores it and falls back to the one-line
+  // ellipsis, which is why the budget above is built to fit unaided at 390
+  // rather than leaning on the shrink.
+  chipRow: { flexDirection: 'row', gap: 6, marginTop: 9 },
+  chip: { flex: 1, minWidth: 0, borderRadius: 11, paddingHorizontal: 7, paddingVertical: 7 },
+  chipHead: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  chipDot: { width: 7, height: 7, borderRadius: RADIUS.pill },
+  chipLabel: { flex: 1, fontSize: 8, fontWeight: '800', letterSpacing: 0.3, color: COLORS.textSoft },
+  chipValue: { fontSize: 14, fontWeight: '800', color: COLORS.text, marginTop: 2 },
+
+  favServing: { fontSize: 13.5, color: COLORS.textSoft, marginTop: 9, fontWeight: '500' },
+  favServingValue: { fontWeight: '800', color: COLORS.text },
+
+  // The Favorites card's own buttons -- see the comment at the call site
+  // for why these do not reuse cardActionsRow/favBtn/addBtn.
+  favActions: { flexDirection: 'row', gap: 9, marginTop: 12 },
+  favRemoveBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 46,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    backgroundColor: COLORS.overSoft,
+    borderWidth: 1,
+    borderColor: '#fcd8dc',
+  },
+  favRemoveText: { color: COLORS.destructive, fontWeight: '700', fontSize: 13.5 },
+  // Wider than Remove, because it is the one people came here to press.
+  // The mockup's is a top-to-bottom blue gradient measured at #1484fd to
+  // #0878fd -- 2% apart in lightness, which no one will see. Flat.
+  // Named favQuickAdd, not favAdd: `favAddBtn` is already taken further up
+  // by the amber "Save Changes" / "Add to My Favorites & Today" button that
+  // CardActionButtons draws inside the drill-down cards. Two keys of the
+  // same name in one StyleSheet.create object is not an error -- the later
+  // one silently wins -- so this collision turned three amber buttons blue
+  // and full-width before a render probe caught it.
+  favQuickAddBtn: {
+    flex: 1.15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    height: 46,
+    borderRadius: 12,
+    backgroundColor: COLORS.accent,
+  },
+  favQuickAddText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   // The gap between a row's icon and its text. One value, so the Favorites
   // rows and the Today entries line their text up identically.
   rowIconSpacing: { marginRight: 12 },
