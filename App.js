@@ -202,27 +202,30 @@ export default function App() {
   // one first, rather than silently replacing an old one.
   const atSavedGoalsCap = savedGoals.length >= 5;
 
-  // Which saved goal (if any) is currently showing screens/FollowGoalScreen.js's
-  // "Follow this goal?" confirmation — the actual goal object being
-  // previewed, or null when that screen isn't open. Tapping "Follow this
-  // goal" on the Goals tab (see GoalsScreen.js's onRequestFollow) just
-  // sets this; it doesn't touch Supabase or `goals` until the user
-  // actually confirms with Yes on that screen (handleFollowConfirm below)
-  // — switching what you're tracking is meant to be a deliberate,
-  // visible choice, not an instant side effect of a list-row tap.
-  const [followPreviewGoal, setFollowPreviewGoal] = useState(null);
+  // Which saved goal (if any) is open as a full-screen card — the actual
+  // goal object, or null when no card is open. Set by tapping anywhere on
+  // a saved-goal row that isn't one of its two buttons (GoalsScreen.js's
+  // onOpenGoal), and rendered as FollowGoalScreen in mode="view".
+  //
+  // Up to v0.0.81 this state meant something different: it was the goal
+  // awaiting a "Follow this goal?" yes/no, because tapping Follow used to
+  // open a confirmation rather than act. That confirmation is gone —
+  // Follow is now one tap (handleFollowNow below) — so what's left here is
+  // purely "show me this goal's numbers", with its own Follow button for
+  // when looking turns into deciding.
+  const [viewedGoal, setViewedGoal] = useState(null);
 
   // Actually switches which saved goal is active: writes through to
   // Supabase (both flipping the is_active flag there and updating the
   // single `goals` row), then mirrors that locally — updating `goals`
   // directly rather than going through handleChangeGoals, since
   // activateSavedGoal already persisted the numbers server-side and a
-  // second debounced save would just be a redundant write. Left to throw
-  // on failure — FollowGoalScreen awaits this and shows the error inline
-  // itself (same pattern as SaveGoalModal's onConfirm), so the user stays
-  // on the confirmation screen and can just tap Yes again.
-  const handleFollowConfirm = async () => {
-    const goal = followPreviewGoal;
+  // second debounced save would just be a redundant write.
+  //
+  // Left to throw. Its two callers below need to report failure in two
+  // different places — an inline message on the goal card, an Alert over
+  // the list — so neither can be baked in here.
+  const followGoal = async (goal) => {
     await activateSavedGoal(session.user.id, goal);
     setSavedGoals((prev) => prev.map((g) => ({ ...g, is_active: g.id === goal.id })));
     // Merged onto the previous goals state (not a full replacement) so
@@ -231,14 +234,36 @@ export default function App() {
     // disappearing and taking screens/FollowGoalScreen.js's calorie-math
     // paragraph down with it next time this screen opens.
     setGoals((prev) => ({ ...prev, calories: goal.calories, protein: goal.protein, carbs: goal.carbs, fat: goal.fat }));
-    setFollowPreviewGoal(null);
+  };
+
+  // Follow straight from a row in the list (v0.0.82). Nothing navigates,
+  // so there is no screen to show an error on — hence the Alert, matching
+  // how deleting a saved goal reports its own failures. The row awaits
+  // this to keep its button in a "Following…" state while it's in flight,
+  // so this must not re-throw.
+  const handleFollowNow = async (goal) => {
+    try {
+      await followGoal(goal);
+    } catch (err) {
+      console.warn('Failed to follow goal', err);
+      Alert.alert("Couldn't follow this goal", 'Something went wrong. Please try again.');
+    }
+  };
+
+  // Follow from inside the opened card. Left to throw on failure —
+  // FollowGoalScreen awaits this and shows the error inline itself (same
+  // pattern as SaveGoalModal's onConfirm), so the user stays on the card
+  // and can just tap again.
+  const handleFollowFromCard = async () => {
+    await followGoal(viewedGoal);
+    setViewedGoal(null);
   };
 
   // Saves a brand-new "Set My Own Macro Goals" goal WITHOUT switching what
   // the app is currently tracking — the "Save the goal" button on
   // FollowGoalScreen's save-mode confirmation (see MacroGoalsScreen.js's
   // saveConfirm state). Left to throw on failure, same reasoning as
-  // handleFollowConfirm above: FollowGoalScreen awaits this and shows the
+  // handleFollowFromCard above: FollowGoalScreen awaits this and shows the
   // error inline itself, so the user stays on the confirmation and can
   // just try again.
   const handleSaveGoalOnly = async (name, newGoals) => {
@@ -584,16 +609,21 @@ export default function App() {
     );
   }
 
-  if (followPreviewGoal) {
+  if (viewedGoal) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" />
         <FollowGoalScreen
-          mode="follow"
-          goal={followPreviewGoal}
+          mode="view"
+          goal={viewedGoal}
+          // Looked up live rather than read off `viewedGoal` itself: that
+          // object is the snapshot taken when the card was tapped, and the
+          // whole point of this flag is to reflect a follow that may have
+          // happened since.
+          isActive={savedGoals.some((g) => g.id === viewedGoal.id && g.is_active)}
           currentTdee={goals.tdee}
-          onConfirm={handleFollowConfirm}
-          onCancel={() => setFollowPreviewGoal(null)}
+          onConfirm={handleFollowFromCard}
+          onCancel={() => setViewedGoal(null)}
         />
       </SafeAreaView>
     );
@@ -626,7 +656,8 @@ export default function App() {
             onRetakeQuiz={handleStartQuiz}
             onSetMacroGoals={() => setMacroGoalsOpen(true)}
             savedGoals={savedGoals}
-            onRequestFollow={setFollowPreviewGoal}
+            onFollowGoal={handleFollowNow}
+            onOpenGoal={setViewedGoal}
             onDeleteSavedGoal={handleDeleteSavedGoal}
             diet={diet}
             onChangeDiet={() => setDietPickerOpen(true)}

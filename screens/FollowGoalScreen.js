@@ -3,12 +3,20 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import MacroDonutChart from '../components/MacroDonutChart';
 import { buildFollowSummary } from '../utils/goals';
 
-// The confirmation page shown before a goal actually becomes the one this
-// app is tracking against — reused in two places, switched with `mode`:
+// One goal, full screen: its wheel, its numbers, and what following it
+// would do to your weight. Reused in three places, switched with `mode`:
 //
-//   mode="follow" (default) — from the Goals tab's "My Saved Goals" list
-//   (see GoalsScreen.js's onRequestFollow / App.js's followPreviewGoal):
-//   previewing an ALREADY-SAVED goal, with No/Yes at the bottom.
+//   mode="view" — tapping a saved-goal card on the Goals tab (see
+//   GoalsScreen.js's onOpen / App.js's viewedGoal). Added in v0.0.82. This
+//   is now the ONLY way this screen is reached from the list, and it is a
+//   readout, not a question: Close on its own if this is the goal you're
+//   already following, Close + "Follow this goal" if it isn't.
+//
+//   mode="follow" — the old two-tap confirmation, reached from nothing as
+//   of v0.0.82. Following from the list is one tap now (App.js's
+//   handleFollowNow) and never lands here. Kept because it costs one
+//   ternary and is the obvious shape to reuse if some future entry point
+//   does want a yes/no.
 //
 //   mode="save" — from "Set My Own Macro Goals" (see MacroGoalsScreen.js's
 //   own saveConfirm state, rendered as an early return from within that
@@ -35,6 +43,7 @@ export default function FollowGoalScreen({
   goal,
   currentTdee,
   mode = 'follow',
+  isActive = false,
   onCancel,
   onConfirm,
   onSaveOnly,
@@ -60,7 +69,27 @@ export default function FollowGoalScreen({
   const handleSaveAndFollow = () => runAction('saveAndFollow', onSaveAndFollow);
 
   const summary = buildFollowSummary(currentTdee, goal.calories);
-  const title = mode === 'save' ? 'Save this goal?' : 'Follow this goal?';
+
+  // 'view' is what tapping a saved-goal card opens (v0.0.82): the same
+  // numbers, but as a thing you are looking at rather than a question you
+  // are being asked. Following from the list is now one tap and doesn't
+  // come through here at all, so 'follow' is only reached from this
+  // screen's own button.
+  //
+  // The heading stays a short fixed phrase in every mode rather than
+  // becoming the goal's name — names here are user-typed and run to a full
+  // sentence ("My nutrition plan to gain muscle"), which at 28pt/800 would
+  // wrap to three lines and push the wheel off screen. The name already has
+  // its own line directly underneath, sized for exactly that.
+  const viewingActive = mode === 'view' && isActive;
+  const title =
+    mode === 'save'
+      ? 'Save this goal?'
+      : mode === 'view'
+      ? viewingActive
+        ? "You're following this"
+        : 'Saved goal'
+      : 'Follow this goal?';
 
   return (
     <View style={styles.container}>
@@ -73,7 +102,13 @@ export default function FollowGoalScreen({
         </View>
 
         <Text style={styles.hint}>
-          Do you want to make this your macro goal and replace your current one?
+          {/* Asking "do you want to replace your current one?" about the
+              goal you are already on reads as a bug. The paragraph below
+              it — the burn/surplus math — is the same either way and is
+              really the reason to open this screen at all. */}
+          {viewingActive
+            ? 'This is the goal your Today screen is measuring against.'
+            : 'Do you want to make this your macro goal and replace your current one?'}
           {summary.tdeeKnown && (
             <>
               {'\n\n'}
@@ -142,19 +177,28 @@ export default function FollowGoalScreen({
             onPress={onCancel}
             disabled={busy}
             accessibilityRole="button"
-            accessibilityLabel="No, don't follow this goal"
+            accessibilityLabel={mode === 'view' ? 'Close' : "No, don't follow this goal"}
           >
-            <Text style={[styles.noBtnText, busy && styles.navBtnTextDisabled]}>No</Text>
+            <Text style={[styles.noBtnText, busy && styles.navBtnTextDisabled]}>
+              {mode === 'view' ? 'Close' : 'No'}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.yesBtn, busy && styles.navBtnDisabled]}
-            onPress={handleYes}
-            disabled={busy}
-            accessibilityRole="button"
-            accessibilityLabel="Yes, follow this goal"
-          >
-            <Text style={styles.yesBtnText}>{busyAction === 'confirm' ? 'Following…' : 'Yes'}</Text>
-          </TouchableOpacity>
+          {/* The goal you're already following has nothing to confirm, so it
+              gets Close on its own rather than a button that would do
+              nothing. */}
+          {viewingActive ? null : (
+            <TouchableOpacity
+              style={[styles.yesBtn, busy && styles.navBtnDisabled]}
+              onPress={handleYes}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel="Follow this goal"
+            >
+              <Text style={styles.yesBtnText}>
+                {busyAction === 'confirm' ? 'Following…' : mode === 'view' ? 'Follow this goal' : 'Yes'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </View>

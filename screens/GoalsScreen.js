@@ -13,7 +13,7 @@
 // separate labelled chips makes the differing one findable by position
 // instead of by reading the whole string.
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import MacroDonutChart from '../components/MacroDonutChart';
@@ -41,11 +41,38 @@ const CHIPS = [
 // delete confirmation has one clear place to live rather than being inlined
 // into the list's .map().
 //
-// "Follow this goal" does NOT switch immediately -- it tells the parent
-// which goal to preview, and App.js opens FollowGoalScreen as a separate
-// confirmation showing that goal's numbers with a yes/no. Changing what you
-// track against should take two deliberate taps, not one stray one.
-function SavedGoalRow({ goal, onRequestFollow, onDelete }) {
+// TAP TARGETS, reworked in v0.0.82. Until then the card wasn't tappable at
+// all and "Follow this goal" opened FollowGoalScreen as a yes/no
+// confirmation -- the reasoning being that switching what you track should
+// take two deliberate taps. In practice that made the common case (I want
+// this goal) twice as long while giving you no way at all to just LOOK at a
+// goal's numbers. So the two are now separate gestures:
+//
+//   the Follow button  -> switches immediately, one tap
+//   anywhere else      -> opens that goal's card (FollowGoalScreen mode="view")
+//
+// The safety the confirmation used to provide is still there, just moved:
+// following is a single write that the next tap on another goal undoes, and
+// the card you land on if you meant to browse has its own Follow button. A
+// mis-tap costs one tap to correct, which is the right price for an action
+// this reversible.
+function SavedGoalRow({ goal, onFollow, onOpen, onDelete }) {
+  // Following writes to Supabase, so on a slow connection there is real
+  // latency between the tap and the row flipping to the "Following" pill.
+  // Without this the button just sits there looking untapped and invites a
+  // second tap.
+  const [busy, setBusy] = useState(false);
+
+  const handleFollow = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onFollow(goal);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleDelete = () => {
     Alert.alert(
       'Delete this goal?',
@@ -58,7 +85,18 @@ function SavedGoalRow({ goal, onRequestFollow, onDelete }) {
   };
 
   return (
-    <View style={[s.goalCard, goal.is_active && s.goalCardActive]}>
+    // The card itself is the "open" target. The two buttons inside are
+    // their own touchables and win over it -- RN gives the innermost
+    // responder the touch -- so Follow and Delete keep doing only their own
+    // thing, and every other pixel of the card opens it.
+    <TouchableOpacity
+      style={[s.goalCard, goal.is_active && s.goalCardActive]}
+      activeOpacity={0.85}
+      onPress={() => onOpen(goal)}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${goal.name}`}
+      accessibilityHint="Shows this goal's numbers"
+    >
       <View style={s.goalTop}>
         {/* Three lines, then ellipsis. Names are user-typed and run from a
             single character to a full sentence. */}
@@ -74,14 +112,15 @@ function SavedGoalRow({ goal, onRequestFollow, onDelete }) {
             </View>
           ) : (
             <TouchableOpacity
-              style={s.followBtn}
+              style={[s.followBtn, busy && s.followBtnBusy]}
               activeOpacity={0.8}
-              onPress={() => onRequestFollow(goal)}
+              onPress={handleFollow}
+              disabled={busy}
               accessibilityRole="button"
               accessibilityLabel={`Follow ${goal.name}`}
             >
-              <MaterialCommunityIcons name="flag-outline" size={15} color="#fff" />
-              <Text style={s.followText}>Follow this goal</Text>
+              <MaterialCommunityIcons name={busy ? 'flag' : 'flag-outline'} size={15} color="#fff" />
+              <Text style={s.followText}>{busy ? 'Following…' : 'Follow this goal'}</Text>
             </TouchableOpacity>
           )}
 
@@ -112,7 +151,7 @@ function SavedGoalRow({ goal, onRequestFollow, onDelete }) {
           </View>
         ))}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -145,11 +184,25 @@ export default function GoalsScreen({
   onRetakeQuiz,
   onSetMacroGoals,
   savedGoals = [],
-  onRequestFollow,
+  onFollowGoal,
+  onOpenGoal,
   onDeleteSavedGoal,
   diet = DEFAULT_DIET,
   onChangeDiet,
 }) {
+  // Whatever you're following goes first (v0.0.82). The list arrives in
+  // save order, which means the one goal you're actually tracking against
+  // could be sitting fifth, below four you're not -- so the answer to
+  // "what am I on right now?" needed scrolling to find. Everything else
+  // keeps its existing order: Array.prototype.sort has been required to be
+  // stable since ES2019 and both Hermes and JSC are, so comparing only the
+  // active flag leaves every other pair untouched. Copied first because
+  // `savedGoals` is App.js's state array and sort mutates in place.
+  const orderedGoals = useMemo(
+    () => [...savedGoals].sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0)),
+    [savedGoals]
+  );
+
   return (
     <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
       <View pointerEvents="none" style={s.blobs}>
@@ -200,11 +253,12 @@ export default function GoalsScreen({
               {savedGoals.length} of {MAX_SAVED_GOALS}
             </Text>
           </View>
-          {savedGoals.map((goal) => (
+          {orderedGoals.map((goal) => (
             <SavedGoalRow
               key={goal.id}
               goal={goal}
-              onRequestFollow={onRequestFollow}
+              onFollow={onFollowGoal}
+              onOpen={onOpenGoal}
               onDelete={onDeleteSavedGoal}
             />
           ))}
@@ -310,6 +364,7 @@ const s = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: RADIUS.pill,
   },
+  followBtnBusy: { opacity: 0.65 },
   followText: { color: '#fff', fontWeight: '700', fontSize: 13.5 },
   followingPill: {
     flexDirection: 'row',
