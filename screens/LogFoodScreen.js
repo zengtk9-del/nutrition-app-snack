@@ -399,7 +399,52 @@ const DailyCaloriesContext = React.createContext(0);
 // different USDA row and the numbers change. That is the reason this sits
 // at the top rather than the bottom: it is the readout the toggles are
 // driving, and you want to see it move.
-function FoodCardHead({ title, iconKey, food, optionCount, caption = 'PER 100G' }) {
+function FoodCardHead({ title, iconKey, food, grams = 0, servings = 0, optionCount }) {
+  // Two kinds of food, and they store their numbers differently: a weight
+  // food carries per-100g values, a count food (one egg, one slice) carries
+  // the absolute macros of a single serving. `factor` is how many of
+  // whichever base amount this portion is -- 213g of a per-100g food is
+  // 2.13 of them; three servings of a count food is 3.
+  const weightBased = food.caloriesPer100g != null;
+  const factor = weightBased ? grams / 100 : servings;
+  const live = factor > 0;
+
+  const base = weightBased
+    ? { calories: food.caloriesPer100g, protein: food.proteinPer100g, carbs: food.carbsPer100g, fat: food.fatPer100g }
+    : { calories: food.calories, protein: food.protein, carbs: food.carbs, fat: food.fat };
+
+  // With nothing typed yet there is no portion to scale to, so the chips
+  // fall back to the food's own base amount and the eyebrow says so. That
+  // is also the state every card opens in.
+  const values = live
+    ? {
+        calories: base.calories * factor,
+        protein: base.protein * factor,
+        carbs: base.carbs * factor,
+        fat: base.fat * factor,
+      }
+    : base;
+
+  // The eyebrow's whole job is saying WHAT the four numbers are for, which
+  // is the only thing stopping "107" and "22.5g" being ambiguous between a
+  // per-100g reading and a portion.
+  //
+  // The grams shown are the EFFECTIVE ones, matching TOTAL CALORIES below:
+  // type 213g of bone-in chicken and this says 170G, because 170g of meat
+  // is what the numbers describe. The amber note between them explains the
+  // conversion.
+  const caption = live
+    ? weightBased
+      // Whole grams from 10 up, matching the amber conversion note directly
+      // below it -- 170.4 and 170 sitting a line apart would read as two
+      // different numbers. Under 10 the decimal is the whole story: a 3.2g
+      // clove of garlic is not a 3g one.
+      ? `FOR ${grams >= 10 ? Math.round(grams) : Math.round(grams * 10) / 10}G`
+      : `FOR ${servings} ${servings === 1 ? 'SERVING' : 'SERVINGS'}`
+    : weightBased
+      ? 'PER 100G'
+      : (food.servingLabel || 'per serving').toUpperCase();
+
   return (
     <View style={styles.headRow}>
       <View style={styles.headArtTile}>
@@ -414,16 +459,10 @@ function FoodCardHead({ title, iconKey, food, optionCount, caption = 'PER 100G' 
             <Text style={styles.headOptionsText}>{optionCount} options</Text>
           </View>
         ) : null}
-        <Text style={styles.headEyebrow}>{caption}</Text>
-        <MacroChipRow
-          values={{
-            calories: food.caloriesPer100g,
-            protein: food.proteinPer100g,
-            carbs: food.carbsPer100g,
-            fat: food.fatPer100g,
-          }}
-          compact
-        />
+        <Text style={styles.headEyebrow} numberOfLines={1}>
+          {caption}
+        </Text>
+        <MacroChipRow values={values} compact />
       </View>
     </View>
   );
@@ -780,6 +819,7 @@ function PoultryCard({
         title={`${typeLabel} ${cutLabel}`}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
 
       {cutMeta.hasSkinToggle ? (
@@ -1075,6 +1115,7 @@ function SeafoodCard({
         title={`${typeLabel} ${cutLabel}`}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={edibleGrams}
       />
 
       {cutMeta.hasShellToggle ? (
@@ -1314,6 +1355,7 @@ function EggCard({
         title={`${birdTypeLabel} ${formLabel}`}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
 
       {hasPrepToggle ? (
@@ -1478,6 +1520,7 @@ function MilkCard({ milkFoods, initialSettings, favoriteId, locked, onAddFavorit
         title="Milk"
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
 
       <ToggleRow
@@ -1739,6 +1782,7 @@ function VegetableCard({
         title={vegetableTypeLabel}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
 
       {hasPrepToggle ? (
@@ -1930,6 +1974,7 @@ function GroundMeatCard({
         title={resolvedFood.name}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
 
       <ToggleRow
@@ -2183,6 +2228,7 @@ function TrimTierCard({
         title={baseFood.name}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
 
       <ToggleRow
@@ -2516,6 +2562,8 @@ function FruitCard({
         title={fruitTypeLabel}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={isCountMode ? 0 : grams}
+        servings={isCountMode ? servingsN : 0}
       />
 
       {hasFormToggle ? (
@@ -2739,6 +2787,7 @@ function YogurtCard({ dairyFoods, initialSettings, favoriteId, locked, onAddFavo
         title="Yogurt"
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
       <ToggleRow label="Style" value={style} onChange={setStyle} disabled={isLocked}
         options={YOGURT_STYLES.map((o) => ({ value: o.key, label: o.label }))} />
@@ -2824,6 +2873,7 @@ function ButterCard({ dairyFoods, initialSettings, favoriteId, locked, onAddFavo
         title="Butter"
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
       <ToggleRow label="Form" value={form} onChange={handleFormChange} disabled={isLocked}
         options={BUTTER_FORMS.map((o) => ({ value: o.key, label: o.label }))} />
@@ -2894,6 +2944,7 @@ function DairyVariantCard({ title, rows, toggleLabel, iconKey, variantField, var
         title={title}
         iconKey={iconKey(resolvedFood)}
         food={resolvedFood}
+        grams={grams}
       />
       {hasToggle ? (
         <ToggleRow
@@ -3068,6 +3119,7 @@ function LegumeCard({
         title={title}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
       {showFormToggle ? (
         <ToggleRow
@@ -3223,6 +3275,7 @@ function MeatCutCard({
         title={resolvedFood.name}
         iconKey={iconKey}
         food={resolvedFood}
+        grams={grams}
       />
 
       {hasPrepToggle ? (
