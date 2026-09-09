@@ -9,8 +9,9 @@ import { buildFollowSummary } from '../utils/goals';
 //   mode="view" — tapping a saved-goal card on the Goals tab (see
 //   GoalsScreen.js's onOpen / App.js's viewedGoal). Added in v0.0.82. This
 //   is now the ONLY way this screen is reached from the list, and it is a
-//   readout, not a question: Close on its own if this is the goal you're
-//   already following, Close + "Follow this goal" if it isn't.
+//   readout rather than a question: Close beside "Follow this goal", the
+//   same two buttons for every goal. `isActive` changes what it SAYS —
+//   the heading and the opening line — but never what you can do.
 //
 //   mode="follow" — the old two-tap confirmation, reached from nothing as
 //   of v0.0.82. Following from the list is one tap now (App.js's
@@ -183,22 +184,26 @@ export default function FollowGoalScreen({
               {mode === 'view' ? 'Close' : 'No'}
             </Text>
           </TouchableOpacity>
-          {/* The goal you're already following has nothing to confirm, so it
-              gets Close on its own rather than a button that would do
-              nothing. */}
-          {viewingActive ? null : (
-            <TouchableOpacity
-              style={[styles.yesBtn, busy && styles.navBtnDisabled]}
-              onPress={handleYes}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel="Follow this goal"
-            >
-              <Text style={styles.yesBtnText}>
-                {busyAction === 'confirm' ? 'Following…' : mode === 'view' ? 'Follow this goal' : 'Yes'}
-              </Text>
-            </TouchableOpacity>
-          )}
+          {/* Always here, including on the goal you are already following
+              (v0.0.83). It was briefly hidden in that one case on the
+              grounds that the action was already done — but that made an
+              opened card a different shape depending on which goal you
+              tapped, and left the top card, the one most likely to be
+              tapped, with a single lonely button. Re-following the active
+              goal is a genuine no-op: utils/db.js's activateSavedGoal
+              clears every active flag, sets this one, and upserts the same
+              four numbers it already holds. */}
+          <TouchableOpacity
+            style={[styles.yesBtn, busy && styles.navBtnDisabled]}
+            onPress={handleYes}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Follow this goal"
+          >
+            <Text style={styles.yesBtnText}>
+              {busyAction === 'confirm' ? 'Following…' : mode === 'view' ? 'Follow this goal' : 'Yes'}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
