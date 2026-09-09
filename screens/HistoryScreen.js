@@ -189,7 +189,7 @@ const s = StyleSheet.create({
   stripLabel: { fontSize: 11.5, fontWeight: '600', color: COLORS.textMuted, marginBottom: 6 },
   stripLabelToday: { color: COLORS.text, fontWeight: '700' },
   dot: { width: 15, height: 15, borderRadius: RADIUS.pill, borderWidth: 2 },
-  dotToday: { width: 19, height: 19, borderWidth: 3, borderColor: COLORS.calories },
+  dotToday: { width: 19, height: 19, borderWidth: 3, borderColor: COLORS.accent },
 
   eyebrow: { ...TYPE.eyebrow, color: COLORS.eyebrow },
 

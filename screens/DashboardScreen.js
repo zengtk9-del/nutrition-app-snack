@@ -76,8 +76,10 @@ function MacroRow({ label, unit, color, tint, macroKey, value, goal, target }) {
   // tells the four bars apart.
   const barColor =
     state === 'wayOver' ? COLORS.over : state === 'over' ? COLORS.warn : color;
+  // The darker twins: this colours the number and the pill's words, and the
+  // bright fills only manage about 2.4:1 as text on their own pale pill.
   const statusInk =
-    state === 'wayOver' ? COLORS.over : state === 'over' ? COLORS.warn : COLORS.good;
+    state === 'wayOver' ? COLORS.overInk : state === 'over' ? COLORS.warnInk : COLORS.goodInk;
   const statusSoft =
     state === 'wayOver' ? COLORS.overSoft : state === 'over' ? COLORS.warnSoft : COLORS.goodSoft;
 

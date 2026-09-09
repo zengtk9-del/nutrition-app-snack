@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
-import { COLORS } from '../utils/theme';
+import { COLORS, MACRO_GRADIENT } from '../utils/theme';
 
 // A donut chart showing the protein/carbs/fat calorie split, drawn entirely
 // from plain Views — no react-native-svg or any other native dependency.
@@ -94,7 +94,16 @@ function Wedge({ size, start, sweep, color }) {
 // MacroGoalsScreen's sliders — can use the exact same colors as this
 // chart's own wedges/legend, instead of a second hardcoded copy drifting
 // out of sync with this one.
-export const MACRO_COLORS = { protein: '#e0554f', carbs: '#4f8ef7', fat: '#f2b134' };
+// Taken from utils/theme.js since v0.0.80, rather than being a second
+// hand-written set. They used to be red/blue/amber here while the Today
+// screen drew the same three macros green/amber/purple -- so carbs were
+// blue on one screen and amber on the other, and amber meant carbs on one
+// and fat on the other. One source now, no drift possible.
+export const MACRO_COLORS = {
+  protein: COLORS.protein,
+  carbs: COLORS.carbs,
+  fat: COLORS.fat,
+};
 
 // The ring's thickness scales with `calories` — a slim ring at a low
 // calorie target, gradually thickening as the target climbs. Anchored to
@@ -164,7 +173,11 @@ const HOLE_RATIO = 0.46;
 // at roughly a fifth of the hole's width, which would mean giving up either
 // the small hole or the calorie-driven thickness above. A charting library
 // would not help: a round stroke cap is the same geometry.
-const WEDGE_GAP_DEG = 4;
+// 1.5, not the 4 this shipped with. Measured off the reference render: its
+// gaps are about 1 degree, and at 4 the wedges read as separated blocks
+// rather than one ring with seams cut in it. 1.5 rather than a literal 1 so
+// the seam survives at the smaller sizes this chart is also drawn at.
+const WEDGE_GAP_DEG = 1.5;
 // Below this a wedge is a sliver nobody can read as a quantity.
 const MIN_WEDGE_DEG = 0.5;
 
@@ -210,7 +223,39 @@ export function maxOuterSizeFor(size) {
 // size across the whole animation, and every ring is centered within it
 // the same way, the hole ends up at the exact same pixel position on
 // every single frame. Only the ring's outer edge visibly moves.
-function RingShape({ calories, proteinG, carbsG, fatG, size, thickness, stageSize }) {
+// How far the SMALLEST wedge pulls back from the outer edge, as a fraction
+// of it. 0.88 is what Damon picked from the previews.
+const PROTRUDE_MIN = 0.88;
+
+// Shades per wedge. React Native has no gradient without a library, so each
+// wedge is drawn as this many thin sectors with the colour stepped across
+// them. 20 puts each step around 5 degrees, which reads as smooth; the cost
+// is roughly 20 x 3 x 4 = 240 Views, fine sitting still.
+//
+// While the ring is ANIMATING it drops to 1 (see the `steps` prop below).
+// The guided walkthrough tweens for 2.2s at about 33 frames a second, and
+// re-rendering 240 Views that often would stutter on an older phone. Flat
+// for two seconds of motion is not something anyone will catch.
+const GRADIENT_STEPS = 20;
+
+// Each shade runs a fraction long so no hairline shows where two meet.
+const STEP_OVERLAP_DEG = 0.6;
+
+// Straight-line blend between two hex colours. Good enough over the short
+// distances these gradients cover, and it avoids pulling in a colour library.
+function mixHex(a, b, t) {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const ch = (shift) => {
+    const x = (pa >> shift) & 255;
+    const y = (pb >> shift) & 255;
+    return Math.round(x + (y - x) * t);
+  };
+  const hex = (v) => v.toString(16).padStart(2, '0');
+  return `#${hex(ch(16))}${hex(ch(8))}${hex(ch(0))}`;
+}
+
+function RingShape({ calories, proteinG, carbsG, fatG, size, thickness, stageSize, steps = GRADIENT_STEPS }) {
   const proteinKcal = proteinG * 4;
   const carbsKcal = carbsG * 4;
   const fatKcal = fatG * 9;
@@ -222,44 +267,76 @@ function RingShape({ calories, proteinG, carbsG, fatG, size, thickness, stageSiz
     { key: 'fat', kcal: fatKcal, color: MACRO_COLORS.fat },
   ];
 
+  const { holeSize, outerSize } = ringGeometryForCalories(calories, size, thickness);
+
+  // Each wedge gets its own outer radius, biggest share reaching furthest.
+  // Radius encodes what the angle already does, so this is depth rather than
+  // data -- and because area goes as the square of the radius it slightly
+  // overstates the largest macro. PROTRUDE_MIN is how far the smallest wedge
+  // pulls back; raise it toward 1 for less exaggeration and less depth.
+  const shares = slices.map((s) => (total > 0 ? s.kcal / total : 0));
+  const lo = Math.min(...shares);
+  const hi = Math.max(...shares);
+  const sizeForShare = (share) => {
+    const t = hi > lo ? (share - lo) / (hi - lo) : 1;
+    return outerSize * (PROTRUDE_MIN + (1 - PROTRUDE_MIN) * t);
+  };
+
+  const wedges = [];
   let cumulative = 0;
-  const { thickness: resolvedThickness, holeSize, outerSize } = ringGeometryForCalories(calories, size, thickness);
-  const wedges =
-    total > 0
-      ? slices.map((s) => {
-          const sweep = (s.kcal / total) * 360;
-          const start = cumulative;
-          cumulative += sweep;
-          // A macro at zero gets nothing rather than a hairline that reads
-          // as a rendering artefact.
-          if (sweep <= MIN_WEDGE_DEG) return null;
-          // Half the gap comes off each end, so a wedge stays centred on
-          // its true arc and the angles still encode the real split. A
-          // wedge narrower than the gap keeps a proportional sliver rather
-          // than inverting into a negative sweep.
-          const gap = Math.min(WEDGE_GAP_DEG, sweep * 0.4);
-          return (
-            <Wedge
-              key={s.key}
-              size={outerSize}
-              start={start + gap / 2}
-              sweep={sweep - gap}
-              color={s.color}
-            />
-          );
-        })
-      : null;
+  if (total > 0) {
+    for (const s of slices) {
+      const sweep = (s.kcal / total) * 360;
+      const start = cumulative;
+      cumulative += sweep;
+      // A macro at zero gets nothing rather than a hairline that reads as a
+      // rendering artefact.
+      if (sweep <= MIN_WEDGE_DEG) continue;
+      // Half the gap comes off each end, so a wedge stays centred on its
+      // true arc and the angles still encode the real split. A wedge
+      // narrower than the gap keeps a proportional sliver rather than
+      // inverting into a negative sweep.
+      const gap = Math.min(WEDGE_GAP_DEG, sweep * 0.4);
+      const from = start + gap / 2;
+      const span = sweep - gap;
+
+      const wedgeSize = sizeForShare(s.kcal / total);
+      // Wedges are absolutely positioned from their own top-left, so a
+      // shorter one has to be inset to stay concentric with the rest.
+      const inset = (outerSize - wedgeSize) / 2;
+      const ends = MACRO_GRADIENT[s.key];
+
+      for (let i = 0; i < steps; i++) {
+        const t0 = from + (span * i) / steps;
+        // Each step but the last runs a hair long, so no seam shows between
+        // one shade and the next.
+        const t1 = from + (span * (i + 1)) / steps + (i < steps - 1 ? STEP_OVERLAP_DEG : 0);
+        const color = ends ? mixHex(ends[0], ends[1], (i + 0.5) / steps) : s.color;
+        wedges.push(
+          <View
+            key={`${s.key}-${i}`}
+            style={{ position: 'absolute', left: inset, top: inset, width: wedgeSize, height: wedgeSize }}
+          >
+            <Wedge size={wedgeSize} start={t0} sweep={t1 - t0} color={color} />
+          </View>
+        );
+      }
+    }
+  }
 
   return (
     <View style={[styles.ringStage, { width: stageSize, height: stageSize }]}>
       <View style={[styles.container, { width: outerSize, height: outerSize, borderRadius: outerSize / 2 }]}>
         {wedges}
+        {/* Centred rather than inset by the thickness. Those were the same
+            number while every wedge shared one radius; with the wedges now
+            at different radii, centring is the one that stays true. */}
         <View
           style={[
             styles.hole,
             {
-              left: resolvedThickness,
-              top: resolvedThickness,
+              left: (outerSize - holeSize) / 2,
+              top: (outerSize - holeSize) / 2,
               width: holeSize,
               height: holeSize,
               borderRadius: holeSize / 2,
@@ -443,6 +520,7 @@ export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size
           size={size}
           thickness={thickness}
           stageSize={stageSize}
+          steps={animate ? 1 : GRADIENT_STEPS}
         />
         <View style={styles.holeNumberOverlay} pointerEvents="none">
           <View style={[styles.holeNumberBox, { width: holeSize, height: holeSize }]}>
@@ -521,14 +599,14 @@ const styles = StyleSheet.create({
   container: { position: 'relative', overflow: 'hidden' },
   rotator: { position: 'absolute', top: 0 },
   halfClip: { position: 'absolute', top: 0, overflow: 'hidden' },
-  // Green, not white, as of v0.0.79 -- the same pale green the KCAL chip on
-  // the Goals screen uses. The ring's three wedges are protein, carbs and
+  // Tinted, not white, as of v0.0.79 -- the same pale blue the KCAL chip on
+  // the Goals screen uses (it was green until the palette changed). The ring's three wedges are protein, carbs and
   // fat; the number in the middle is calories, and it is the only one of the
   // four with no colour of its own. Giving the hole the calorie green means
   // all four numbers on that screen are colour-matched to the chips below.
   hole: {
     position: 'absolute',
-    backgroundColor: COLORS.goodSoft,
+    backgroundColor: COLORS.caloriesSoft,
   },
   holeCalories: { fontSize: 22, fontWeight: '800', color: '#1a1a1a' },
   holeUnit: { fontSize: 13, fontWeight: '600', color: '#777', marginTop: 2 },

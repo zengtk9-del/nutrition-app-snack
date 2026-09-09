@@ -15,10 +15,13 @@ import { COLORS } from './theme';
 
 export function scoreTone(total) {
   if (total == null) return { label: '—', ink: COLORS.textMuted, soft: COLORS.line };
-  if (total >= 90) return { label: 'Excellent', ink: COLORS.protein, soft: COLORS.proteinSoft };
-  if (total >= 75) return { label: 'Good', ink: COLORS.protein, soft: COLORS.proteinSoft };
-  if (total >= 55) return { label: 'Off target', ink: COLORS.carbs, soft: COLORS.carbsSoft };
-  return { label: 'Way off', ink: COLORS.over, soft: COLORS.overSoft };
+  // good/warn/over, NOT the macro colours. A score is a verdict, not a
+  // nutrient, so it was always the wrong token -- and since v0.0.80 the
+  // macro colours are fill-only and far too light to read as words.
+  if (total >= 90) return { label: 'Excellent', ink: COLORS.goodInk, soft: COLORS.goodSoft };
+  if (total >= 75) return { label: 'Good', ink: COLORS.goodInk, soft: COLORS.goodSoft };
+  if (total >= 55) return { label: 'Off target', ink: COLORS.warnInk, soft: COLORS.warnSoft };
+  return { label: 'Way off', ink: COLORS.overInk, soft: COLORS.overSoft };
 }
 
 export default scoreTone;

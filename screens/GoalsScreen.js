@@ -16,7 +16,7 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import MacroDonutChart, { MACRO_COLORS } from '../components/MacroDonutChart';
+import MacroDonutChart from '../components/MacroDonutChart';
 import { DIET_IMAGES } from '../data/quizQuestions';
 import { DEFAULT_DIET } from '../data/dietOrder';
 import { dietLabel } from './DietPickerScreen';
@@ -25,15 +25,16 @@ import { ART_READY, MASCOT } from '../data/brandArt';
 
 const MAX_SAVED_GOALS = 5;
 
-// The four numbers on a saved goal, each with its own colour so the eye can
-// go straight to the one it wants. Calories takes the app's "good" green
-// rather than a macro colour -- it isn't one of the three the ring splits,
-// and giving it a macro's colour would imply it was.
+// The four numbers on a saved goal, each in its own macro colour, matching
+// the ring above them and the bars on the Today screen. Calories gets the
+// blue that the ring's hole and the Today calorie bar already use -- it
+// isn't one of the three the ring splits, but it is a quantity with its own
+// colour everywhere else in the app, so it keeps it here.
 const CHIPS = [
-  { key: 'calories', label: 'KCAL', dot: COLORS.good, tint: COLORS.goodSoft },
-  { key: 'protein', label: 'PROTEIN', dot: MACRO_COLORS.protein, tint: COLORS.overSoft, suffix: 'g' },
-  { key: 'carbs', label: 'CARBS', dot: MACRO_COLORS.carbs, tint: COLORS.caloriesSoft, suffix: 'g' },
-  { key: 'fat', label: 'FAT', dot: MACRO_COLORS.fat, tint: COLORS.carbsSoft, suffix: 'g' },
+  { key: 'calories', label: 'KCAL', dot: COLORS.calories, tint: COLORS.caloriesSoft },
+  { key: 'protein', label: 'PROTEIN', dot: COLORS.protein, tint: COLORS.proteinSoft, suffix: 'g' },
+  { key: 'carbs', label: 'CARBS', dot: COLORS.carbs, tint: COLORS.carbsSoft, suffix: 'g' },
+  { key: 'fat', label: 'FAT', dot: COLORS.fat, tint: COLORS.fatSoft, suffix: 'g' },
 ];
 
 // One row in "My Saved Goals". Kept as its own component mainly so the
@@ -294,7 +295,7 @@ const s = StyleSheet.create({
     borderColor: 'transparent',
     ...SHADOW.row,
   },
-  goalCardActive: { borderColor: COLORS.calories, backgroundColor: COLORS.goodSoft },
+  goalCardActive: { borderColor: COLORS.accent, backgroundColor: COLORS.goodSoft },
 
   goalTop: { flexDirection: 'row', alignItems: 'flex-start' },
   goalName: { flex: 1, fontSize: 16.5, fontWeight: '700', color: COLORS.text, lineHeight: 21, marginRight: 12 },
@@ -304,7 +305,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: COLORS.calories,
+    backgroundColor: COLORS.accent,
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: RADIUS.pill,

@@ -33,20 +33,41 @@ export const COLORS = {
   // The small uppercase label above a card's contents ("DAILY FUEL")
   eyebrow: '#5b86d6',
 
-  // One per macro. These carry meaning -- four bars that must be told apart
-  // at a glance -- so they are the least arbitrary colours here.
-  calories: '#2f80f0',
-  protein: '#2fae52',
-  carbs: '#f2b01f',
-  fat: '#a855e8',
+  // One per macro. These carry meaning -- four quantities that must be told
+  // apart at a glance -- so they are the least arbitrary colours here.
+  //
+  // Taken from the macro icon artwork (v0.0.80), so the flame, bicep, wheat
+  // and droplet on the Today screen and the bars, wedges, dots and tiles
+  // around them are all one colour per macro rather than three near-misses.
+  //
+  // FILLS ONLY. Three of the four are far too light to read as text on
+  // white -- protein is 1.7:1 and carbs 1.9:1, where 4.5 is the readable
+  // line. Anything that needs a coloured WORD uses `good`/`warn`/`over`
+  // below, which were chosen for exactly that. Putting one of these on text
+  // is the easy mistake here.
+  // Protein, carbs and fat are the DARK end of each gradient below. Using
+  // the dark end rather than the midpoint is what makes the small chip dots
+  // visible on their own tints -- protein and carbs went from about 1.5:1 to
+  // 3.9 and 3.3.
+  calories: '#3699f3',
+  protein: '#c84686',
+  carbs: '#2392a6',
+  fat: '#f3bf11',
 
-  // The same four, faded, for progress-bar tracks and icon tiles. Written
-  // out rather than derived: React Native has no colour-mix, and layering a
-  // low-opacity View over white costs a extra node per bar.
-  caloriesSoft: '#dde9fd',
-  proteinSoft: '#dcf0e2',
-  carbsSoft: '#fdefcf',
-  fatSoft: '#f1e0fc',
+  // The same four, faded, for progress-bar tracks, icon tiles and chips.
+  // Written out rather than derived: React Native has no colour-mix, and
+  // layering a low-opacity View over white costs an extra node per bar.
+  caloriesSoft: '#ddeafd',
+  proteinSoft: '#faecf3',
+  carbsSoft: '#e9f4f6',
+  fatSoft: '#fef9e7',
+
+  // Interface blue, kept separate from the calorie blue above. They are
+  // nearly the same colour and were briefly the same token, but a button
+  // and a chart wedge answer to different rules: white on the calorie blue
+  // is 3.0:1, which fails for 13pt bold button text. This one is darker for
+  // that reason and should be used for buttons, active states and borders.
+  accent: '#2f80f0',
 
   // --- Status, in three steps ---
   //
@@ -62,6 +83,14 @@ export const COLORS = {
   goodSoft: '#dcf0e2',
   warn: '#e08b0f',
   warnSoft: '#fdeed2',
+  // Darker twins of the three status colours, for when the status is a WORD
+  // rather than a bar. The bright ones read fine as a fill but only manage
+  // 2.4:1 as text on their own pale pill, where 4.5 is the line -- the score
+  // badge is a number people actually have to read, so it gets these
+  // instead. Same hues, enough darker to be legible: 4.5, 4.6 and 4.5 to 1.
+  goodInk: '#1c7a3a',
+  warnInk: '#946102',
+  overInk: '#cc3229',
   // The far end. Deliberately not the same red as Remove -- one is a status,
   // the other is a button, and they appear on screen together.
   over: '#e8463f',
@@ -83,6 +112,25 @@ export const COLORS = {
 // --- Type -----------------------------------------------------------------
 // Sizes and weights only. Colour stays at the call site, because the same
 // size is often used at two different emphases.
+// Light-to-dark ends for the donut's wedges, which shade across their arc.
+// Everything flat -- bars, dots, chips -- uses the dark end above, so a bar
+// and its wedge's deep edge are the same colour.
+//
+// TWO THINGS THE CONTRAST MATHS SAID, both accepted rather than designed
+// around, because the label beside each colour already names it:
+//
+//   - Fat's dot sits at about 1.5:1 on its own tint and no tint fixes that.
+//     Yellow on pale yellow has nowhere to go; darkening the tint moves both
+//     ends together. The only real fix is a fat that isn't yellow.
+//   - Calories (209deg) and carbs (189deg) are 19 degrees apart in hue, the
+//     closest pair by far. They only ever appear together in the chip row
+//     and Today's four bars, both of which are labelled.
+export const MACRO_GRADIENT = {
+  protein: ['#ef6a97', '#c84686'],
+  carbs: ['#2cbcbd', '#2392a6'],
+  fat: ['#ffd43a', '#f3bf11'],
+};
+
 export const TYPE = {
   screenTitle: { fontSize: 34, fontWeight: '800', letterSpacing: -0.5 },
   eyebrow: { fontSize: 12, fontWeight: '800', letterSpacing: 1.3 },
