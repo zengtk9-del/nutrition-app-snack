@@ -70,6 +70,14 @@ import { ART_READY, MASCOT } from '../data/brandArt';
 // only by shrinking the number underneath it, and the number is the point.
 // The dot's colour already says which macro it is; the letter is a
 // reminder, not the label.
+// The single-row toggle's geometry, named because the three numbers have
+// to agree: a segment's rounded end must be exactly the radius of the
+// space inside the border it sits in, or a crescent of the track shows
+// through at each end of the pill.
+const TOGGLE_RADIUS = 12;
+const TOGGLE_BORDER = 1.5;
+const TOGGLE_INNER_RADIUS = TOGGLE_RADIUS - TOGGLE_BORDER;
+
 const MACRO_CHIPS = [
   { key: 'calories', label: 'KCAL', short: 'KCAL', ...LOG_CHIP.calories },
   { key: 'protein', label: 'PROTEIN', short: 'P', ...LOG_CHIP.protein, suffix: 'g' },
@@ -485,13 +493,26 @@ function ToggleRow({ label, options, value, onChange, disabled }) {
             style={[
               styles.toggleOption,
               isWide && styles.toggleOptionWide,
-              value === opt.value && styles.toggleOptionActive,
+              // In wide mode a selected option paints its own blue fill.
+              // In single-row mode it paints NOTHING and lets the track's
+              // blue show through -- see toggleTrack for why.
+              value === opt.value && (isWide ? styles.toggleOptionActiveWide : styles.toggleOptionActive),
               // Wide-mode options each get their own full border (see
               // toggleOptionWide's comment below) since they can wrap onto
-              // more than one row -- the single-row "border on every option
-              // except the last" scheme below only makes sense when there's
-              // just one row to begin with.
-              !isWide && (i < options.length - 1 ? styles.toggleOptionFirst : styles.toggleOptionLast),
+              // more than one row -- the single-row divider-and-end-caps
+              // scheme below only makes sense when there's one row.
+
+              // THE END CAPS, and the reason they exist (v0.0.86): a
+              // selected segment is a square blue rectangle sitting inside
+              // a pill with rounded blue ends, so at each end of the track
+              // the corner arc between the two showed the track's white
+              // background -- a thin white crescent between the blue fill
+              // and the blue border. Rounding the outer corners of the
+              // first and last segments to the border's INNER radius fills
+              // that arc exactly. Interior segments stay square, which is
+              // right: they have a neighbour on both sides.
+              !isWide && i === 0 && styles.toggleOptionStart,
+              !isWide && i === options.length - 1 && styles.toggleOptionEnd,
             ]}
             activeOpacity={0.7}
             onPress={() => onChange(opt.value)}
@@ -5774,14 +5795,39 @@ const styles = StyleSheet.create({
   // 2-3 options: one pill, segments divided by a hairline. `alignSelf`
   // keeps it as wide as its content rather than stretching, which is what
   // lets Skin and Bone sit side by side on the mockup's first row.
+  //
+  // THERE IS NO BORDER HERE, and that is the point (v0.0.87).
+  //
+  // Measured off Damon's screenshot rather than guessed at: between the
+  // blue border and the blue fill of a selected segment sat exactly one
+  // pixel -- #b7e8fe down the left cap, #a6e1ff along the top. Pale,
+  // near-white, about a third of a point on a 3.28x screen. Thin, but a
+  // visible lighter line tracing the inside of every selected segment.
+  //
+  // v0.0.86 attacked the mechanism: drop `overflow: 'hidden'` so there is
+  // no clip edge to seam, and back the track in blue so any survivor
+  // renders blue on blue. Both sound, but both are mitigations resting on
+  // the diagnosis being right about WHERE the pale pixel came from.
+  //
+  // This removes the failure mode instead. The pill has no border and no
+  // clipping: it is a solid blue rounded rectangle, and the 1.5pt of
+  // `padding` and `gap` are the only blue you ever see -- padding draws
+  // the rim, gap draws the divider between segments. Unselected segments
+  // are white rectangles sitting on it; a SELECTED one paints nothing at
+  // all and simply lets the blue through.
+  //
+  // So a selected segment's fill and the rim around it are now the same
+  // View's background colour, with no boundary between them for a seam to
+  // appear at. Nothing to clip, nothing to antialias, nothing to line up.
+  //
+  // The height is unchanged: 1.5 of padding replaces 1.5 of border.
   toggleTrack: {
     flexDirection: 'row',
-    borderWidth: 1.5,
-    borderColor: COLORS.accent,
-    borderRadius: 12,
-    overflow: 'hidden',
+    borderRadius: TOGGLE_RADIUS,
+    backgroundColor: COLORS.accent,
+    padding: TOGGLE_BORDER,
+    gap: TOGGLE_BORDER,
     alignSelf: 'flex-start',
-    backgroundColor: COLORS.card,
   },
   toggleOption: {
     paddingVertical: 11,
@@ -5832,9 +5878,23 @@ const styles = StyleSheet.create({
     borderColor: COLORS.accent,
     borderRadius: 12,
   },
-  toggleOptionFirst: { borderRightWidth: 1.5, borderRightColor: COLORS.accent },
-  toggleOptionLast: {},
-  toggleOptionActive: { backgroundColor: COLORS.accent },
+  // Exactly the radius of the space inside the rim -- outer minus the
+  // 1.5pt of padding the segments sit in. Any smaller and the white
+  // segment's corner pulls away from the rim; any larger and it overhangs.
+  toggleOptionStart: {
+    borderTopLeftRadius: TOGGLE_INNER_RADIUS,
+    borderBottomLeftRadius: TOGGLE_INNER_RADIUS,
+  },
+  toggleOptionEnd: {
+    borderTopRightRadius: TOGGLE_INNER_RADIUS,
+    borderBottomRightRadius: TOGGLE_INNER_RADIUS,
+  },
+  // Single-row: paint nothing, let the track's blue show through. This is
+  // what makes a seam impossible.
+  toggleOptionActive: { backgroundColor: 'transparent' },
+  // Wide: each option is a standalone pill with its own border, so its own
+  // background fills its own border box and there is no seam to have.
+  toggleOptionActiveWide: { backgroundColor: COLORS.accent },
   toggleOptionText: { fontSize: 14.5, fontWeight: '700', color: COLORS.accent },
   toggleOptionTextWide: { fontSize: 12.5, textAlign: 'center' },
   toggleOptionTextActive: { color: '#fff' },
@@ -5915,7 +5975,8 @@ const styles = StyleSheet.create({
   // Grayed-out look for every toggle/input on a card opened from My
   // Favorites that hasn't had "Edit" tapped yet -- the saved settings stay
   // fully readable, just visibly non-interactive.
-  toggleTrackDisabled: { borderColor: COLORS.textFaint, opacity: 0.75 },
+  // The rim IS the background now, so dimming means recolouring it.
+  toggleTrackDisabled: { backgroundColor: COLORS.textFaint, opacity: 0.75 },
   toggleOptionTextDisabled: { color: COLORS.textMuted },
   gramsInputDisabled: { backgroundColor: COLORS.emptyBg, color: COLORS.textMuted, borderColor: COLORS.line },
   sizeOptionDisabled: { opacity: 0.5 },
