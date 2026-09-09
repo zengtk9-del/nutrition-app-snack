@@ -176,12 +176,18 @@ export default function GoalsScreen({
           proteinG={goals.protein}
           carbsG={goals.carbs}
           fatG={goals.fat}
-          // 100, not the 132 this started at. The ring reserves a fixed
-          // stage of 1.46x `size` so its hole never drifts as the band
-          // thickens, which meant 132 was quietly taking 193pt of a ~322pt
-          // card and squeezing the legend until "Protein" wrapped.
-          size={100}
-          layout="row"
+          // Back to 200, and back to the legend underneath.
+          //
+          // The mockup put them side by side, and that cannot work here.
+          // The hole is a fixed fraction of `size` (0.46), and it has to
+          // hold a text block measuring about 55x43pt -- so `size` can't go
+          // below about 165 without the number spilling over the ring. The
+          // ring also reserves a stage of 1.46x `size` so its hole doesn't
+          // drift as the band thickens. At the smallest legible size that
+          // stage is already 238pt of a ~322pt card, leaving 72pt for a
+          // legend that needs about 150. Side by side and a readable number
+          // are mutually exclusive at phone width.
+          size={200}
         />
       </View>
 

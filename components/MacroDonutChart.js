@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
+import { COLORS } from '../utils/theme';
 
 // A donut chart showing the protein/carbs/fat calorie split, drawn entirely
 // from plain Views — no react-native-svg or any other native dependency.
@@ -285,7 +286,7 @@ function HoleNumberText({ calories }) {
   );
 }
 
-function Legend({ proteinG, carbsG, fatG, inline }) {
+function Legend({ proteinG, carbsG, fatG }) {
   const proteinKcal = proteinG * 4;
   const carbsKcal = carbsG * 4;
   const fatKcal = fatG * 9;
@@ -298,17 +299,18 @@ function Legend({ proteinG, carbsG, fatG, inline }) {
   ];
 
   return (
-    <View style={[styles.legend, inline && styles.legendInline]}>
+    <View style={styles.legend}>
       {slices.map((s) => (
         <View key={s.key} style={styles.legendRow}>
           <View style={[styles.swatch, { backgroundColor: s.color }]} />
-          {/* numberOfLines={1} matters in the inline layout, where the
-              legend shares its width with the ring: without it "Protein"
-              wraps to "Prot / ein" the moment the column gets tight. */}
-          <Text style={[styles.legendLabel, inline && styles.legendLabelInline]} numberOfLines={1}>
+          {/* Kept from the abandoned side-by-side layout: with the legend
+              under the ring there is plenty of width, but a one-line clamp
+              is cheap insurance against "Protein" ever wrapping to
+              "Prot / ein" again. */}
+          <Text style={styles.legendLabel} numberOfLines={1}>
             {s.label}
           </Text>
-          <Text style={[styles.legendValue, inline && styles.legendValueInline]} numberOfLines={1}>
+          <Text style={styles.legendValue} numberOfLines={1}>
             {s.grams}g ({total > 0 ? Math.round((s.kcal / total) * 100) : 0}%)
           </Text>
         </View>
@@ -336,11 +338,7 @@ const NUMBER_FADE_MS = 400;
 // this is what every normal, non-guided drag anywhere in the app should
 // do, exactly as before. Only MacroGoalsScreen's guided walkthrough ever
 // passes `animate={true}`, and only while it's actually running.
-// `layout`: 'column' (the default, and what every existing caller gets)
-// stacks the legend under the ring. 'row' puts it alongside, which is what
-// the redesigned Goals screen wants -- the ring alone is a lot of vertical
-// space on a screen that already scrolls past two viewports.
-export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size = 180, thickness, animate = false, layout = 'column' }) {
+export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size = 180, thickness, animate = false }) {
   const stageSize = maxOuterSizeFor(size);
   const holeSize = size * HOLE_RATIO;
 
@@ -435,7 +433,7 @@ export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size
   }, [calories, animate]);
 
   return (
-    <View style={[styles.wrap, layout === 'row' && styles.wrapRow]}>
+    <View style={styles.wrap}>
       <View style={[styles.stage, { width: stageSize, height: stageSize }]}>
         <RingShape
           calories={ringNumbers.calories}
@@ -462,7 +460,7 @@ export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size
         </View>
       </View>
 
-      <Legend proteinG={proteinG} carbsG={carbsG} fatG={fatG} inline={layout === 'row'} />
+      <Legend proteinG={proteinG} carbsG={carbsG} fatG={fatG} />
     </View>
   );
 }
@@ -484,7 +482,6 @@ const styles = StyleSheet.create({
   // circle and legend still end up visually centered underneath it via
   // `alignItems: 'center'` exactly as before.
   wrap: { alignItems: 'center', marginBottom: 14, width: '100%' },
-  wrapRow: { flexDirection: 'row', marginBottom: 0 },
   // `position: 'relative'` is what makes holeNumberOverlay's absolute
   // positioning below resolve against THIS box (the fixed-size ring
   // stage) instead of drifting up to some more distant positioned
@@ -524,18 +521,18 @@ const styles = StyleSheet.create({
   container: { position: 'relative', overflow: 'hidden' },
   rotator: { position: 'absolute', top: 0 },
   halfClip: { position: 'absolute', top: 0, overflow: 'hidden' },
+  // Green, not white, as of v0.0.79 -- the same pale green the KCAL chip on
+  // the Goals screen uses. The ring's three wedges are protein, carbs and
+  // fat; the number in the middle is calories, and it is the only one of the
+  // four with no colour of its own. Giving the hole the calorie green means
+  // all four numbers on that screen are colour-matched to the chips below.
   hole: {
     position: 'absolute',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.goodSoft,
   },
   holeCalories: { fontSize: 22, fontWeight: '800', color: '#1a1a1a' },
   holeUnit: { fontSize: 13, fontWeight: '600', color: '#777', marginTop: 2 },
   legend: { marginTop: 16, width: '100%', maxWidth: 280 },
-  // Alongside the ring instead of under it. `width: 'auto'` and
-  // `maxWidth: undefined` are doing real work here -- they undo the two
-  // rules above, which exist to stop the column layout clipping its labels
-  // and would pin this to 280pt in a track that is usually narrower.
-  legendInline: { marginTop: 0, marginLeft: 12, flex: 1, width: 'auto', maxWidth: undefined },
   legendRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   // flexShrink: 0 on the swatch and value, plus flexShrink: 1 + minWidth: 0
   // on the label, is a defensive belt-and-suspenders on top of the `wrap`
@@ -547,8 +544,4 @@ const styles = StyleSheet.create({
   swatch: { width: 12, height: 12, borderRadius: 3, marginRight: 8, flexShrink: 0 },
   legendLabel: { fontSize: 16, fontWeight: '600', color: '#1a1a1a', flex: 1, flexShrink: 1, minWidth: 0 },
   legendValue: { fontSize: 16, fontWeight: '700', color: '#555', flexShrink: 0, marginLeft: 8 },
-  // A size down in the inline layout, where the legend has the ring beside
-  // it instead of the full card width to itself.
-  legendLabelInline: { fontSize: 14.5 },
-  legendValueInline: { fontSize: 14.5, marginLeft: 6 },
 });
