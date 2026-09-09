@@ -65,11 +65,16 @@ import { ART_READY, MASCOT } from '../data/brandArt';
 //
 // Colours come from LOG_CHIP rather than COLORS -- this screen is the one
 // place the two disagree, on purpose. See utils/theme.js.
+// `short` is what the food cards use. Their chip row shares its width with
+// a 96pt picture, which leaves about 40pt per chip -- enough for "PROTEIN"
+// only by shrinking the number underneath it, and the number is the point.
+// The dot's colour already says which macro it is; the letter is a
+// reminder, not the label.
 const MACRO_CHIPS = [
-  { key: 'calories', label: 'KCAL', ...LOG_CHIP.calories },
-  { key: 'protein', label: 'PROTEIN', ...LOG_CHIP.protein, suffix: 'g' },
-  { key: 'carbs', label: 'CARBS', ...LOG_CHIP.carbs, suffix: 'g' },
-  { key: 'fat', label: 'FAT', ...LOG_CHIP.fat, suffix: 'g' },
+  { key: 'calories', label: 'KCAL', short: 'KCAL', ...LOG_CHIP.calories },
+  { key: 'protein', label: 'PROTEIN', short: 'P', ...LOG_CHIP.protein, suffix: 'g' },
+  { key: 'carbs', label: 'CARBS', short: 'C', ...LOG_CHIP.carbs, suffix: 'g' },
+  { key: 'fat', label: 'FAT', short: 'F', ...LOG_CHIP.fat, suffix: 'g' },
 ];
 
 // The macro chip row. `values` is whatever four numbers the caller wants
@@ -80,18 +85,18 @@ const MACRO_CHIPS = [
 // One decimal at most, and never a trailing ".0": the data carries values
 // like 23.7 and 0.1 that matter, alongside plenty of flat 0s and 291s that
 // would look like false precision written as 291.0.
-function MacroChipRow({ values }) {
+function MacroChipRow({ values, compact }) {
   return (
-    <View style={styles.chipRow}>
+    <View style={[styles.chipRow, compact && styles.chipRowCompact]}>
       {MACRO_CHIPS.map((c) => {
         const raw = values[c.key];
         const n = typeof raw === 'number' ? Math.round(raw * 10) / 10 : 0;
         return (
-          <View key={c.key} style={[styles.chip, { backgroundColor: c.tint }]}>
+          <View key={c.key} style={[styles.chip, compact && styles.chipCompact, { backgroundColor: c.tint }]}>
             <View style={styles.chipHead}>
               <View style={[styles.chipDot, { backgroundColor: c.dot }]} />
               <Text style={styles.chipLabel} numberOfLines={1}>
-                {c.label}
+                {compact ? c.short : c.label}
               </Text>
             </View>
             <Text style={styles.chipValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -362,6 +367,105 @@ function BackRow({ label, onPress }) {
 // and stops taps from doing anything -- used for every toggle on a card
 // opened from My Favorites that hasn't had "Edit" tapped yet, so the saved
 // settings are clearly visible but can't be accidentally changed.
+// The day's calorie goal, for the share bar under TOTAL CALORIES.
+//
+// Context rather than a prop. PortionTotal is rendered from inside
+// thirteen different card components, several of them three levels down
+// (FavoriteListItem -> GroundMeatCard -> DairyPortion), and threading one
+// read-only number through all of that would touch far more code than the
+// feature is worth. Defaults to 0, which PortionTotal reads as "no goal,
+// draw no bar" -- so a card rendered outside the provider (a test, a
+// future screen) degrades rather than dividing by zero.
+const DailyCaloriesContext = React.createContext(0);
+
+// The top of every food card (v0.0.85): picture on the left, then the
+// name, an optional "N options" pill, and the four macro chips.
+//
+// Replaces two things that used to sit apart -- a title line above a 192pt
+// centred picture, and a run-on "per 100g: 291 kcal · P23.7 C0 F21.8" line
+// further down the card, below the toggles. Both are here now, and the
+// picture is a quarter the size, which is what buys the room.
+//
+// The chips read whatever `food` is CURRENTLY resolved, so they move as
+// you work the toggles above them -- switching Skin On to Skinless is a
+// different USDA row and the numbers change. That is the reason this sits
+// at the top rather than the bottom: it is the readout the toggles are
+// driving, and you want to see it move.
+function FoodCardHead({ title, iconKey, food, optionCount, caption = 'PER 100G' }) {
+  return (
+    <View style={styles.headRow}>
+      <View style={styles.headArtTile}>
+        <FoodIcon iconKey={iconKey} size={88} />
+      </View>
+      <View style={styles.headBody}>
+        <Text style={styles.poultryCardTitle} numberOfLines={3}>
+          {title}
+        </Text>
+        {optionCount > 1 ? (
+          <View style={styles.headOptionsPill}>
+            <Text style={styles.headOptionsText}>{optionCount} options</Text>
+          </View>
+        ) : null}
+        <Text style={styles.headEyebrow}>{caption}</Text>
+        <MacroChipRow
+          values={{
+            calories: food.caloriesPer100g,
+            protein: food.proteinPer100g,
+            carbs: food.carbsPer100g,
+            fat: food.fatPer100g,
+          }}
+          compact
+        />
+      </View>
+    </View>
+  );
+}
+
+// The readout under whichever amount picker a card is showing. `grams` of
+// nothing is not an error, it is the state every card opens in when the
+// weight box is empty, so that says "Enter an amount above" rather than a
+// confident 0 kcal.
+//
+// The bar is this portion as a share of the day's calorie goal -- 220 of
+// 2,000 is a tenth of the bar. It only appears when a goal has actually
+// been threaded down (App.js -> LogFoodScreen's `dailyCalories`); with no
+// goal there is no denominator and so no bar, rather than a full one.
+function PortionTotal({ kcal }) {
+  const dailyCalories = React.useContext(DailyCaloriesContext);
+  if (!(kcal > 0)) return <Text style={styles.totalEmpty}>Enter an amount above</Text>;
+  const share = dailyCalories > 0 ? Math.min(1, kcal / dailyCalories) : null;
+  return (
+    <>
+      <Text style={styles.totalEyebrow}>TOTAL CALORIES</Text>
+      <Text style={styles.totalValue}>{kcal.toLocaleString()} kcal</Text>
+      {share != null ? (
+        <View style={styles.totalBarTrack}>
+          <View style={[styles.totalBarFill, { width: `${Math.max(2, share * 100)}%` }]} />
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+// Redesigned in v0.0.85, and this one component is most of the card
+// redesign: every variant picker in the app is a ToggleRow, so the
+// twenty-five cards all change shape together rather than one at a time.
+//
+// The shape, from Damon's Chicken Breast mockup: a small grey label above
+// a white pill with a hairline blue border, the selected segment filled
+// solid blue with white text, the rest blue text on white.
+//
+// TWO WIDTHS, and the split is still at 3 options, unchanged from the old
+// design:
+//
+//   2-3 options -- one row, segments share a single pill.
+//   4+ options  -- each option gets its own bordered pill and the group
+//                  wraps. Five options of "Dry Roasted, Unsalted" cannot
+//                  share a row on a 390pt screen at any readable size.
+//
+// `disabled` is what a saved favourite looks like before you tap Edit:
+// dimmed, and the selected segment keeps its fill so you can still see
+// what was saved.
 function ToggleRow({ label, options, value, onChange, disabled }) {
   const isWide = options.length > 3;
   return (
@@ -462,28 +566,6 @@ function CardActionButtons({ mode, onEdit, onSaveChanges, onAddFavorite, onAddFo
   );
 }
 
-// Real icon when one exists for this exact iconKey (data/foodIconImages.js),
-// otherwise the original fixed-size placeholder standing in for the cartoon
-// icon Damon described -- a dashed box with the icon's key spelled out in
-// small text, so the reserved size and exactly which variation belongs here
-// is obvious for every iconKey that doesn't have real artwork yet. Icons are
-// being filled in gradually (cut by cut), so both cases have to keep working
-// side by side indefinitely, not just during a transition.
-function IconPlaceholder({ iconKey }) {
-  const image = getFoodIconImage(iconKey);
-  if (image) {
-    return (
-      <View style={styles.iconImageWrap}>
-        <Image source={image} style={styles.iconImage} resizeMode="contain" />
-      </View>
-    );
-  }
-  return (
-    <View style={styles.iconPlaceholder}>
-      <Text style={styles.iconPlaceholderText}>{iconKey}</Text>
-    </View>
-  );
-}
 
 // The card shown after picking a Poultry Cut -- Damon's spec: an icon
 // placeholder up top that changes with the toggles below it (skin on/off,
@@ -673,11 +755,11 @@ function PoultryCard({
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>
-        {typeLabel} {cutLabel}
-      </Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={`${typeLabel} ${cutLabel}`}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       {cutMeta.hasSkinToggle ? (
         <ToggleRow
@@ -725,75 +807,71 @@ function PoultryCard({
 
       {matchNote ? <Text style={styles.matchNote}>{matchNote}</Text> : null}
 
-      <Text style={styles.poultryPer100g}>
-        per 100g edible: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C
-        {resolvedFood.carbsPer100g} F{resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <ToggleRow
-        value={portionMode}
-        onChange={setPortionMode}
-        disabled={isLocked}
-        options={[
-          { value: 'weight', label: 'Enter Weight' },
-          { value: 'size', label: 'Small / Medium / Large' },
-        ]}
-      />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      <ToggleRow
+          value={portionMode}
+          onChange={setPortionMode}
+          disabled={isLocked}
+          options={[
+            { value: 'weight', label: 'Enter Weight' },
+            { value: 'size', label: 'Small / Medium / Large' },
+          ]}
+        />
 
-      {portionMode === 'weight' ? (
-        <View style={styles.gramsRow}>
-          <TextInput
-            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-            value={weightValue}
-            onChangeText={setWeightValue}
-            keyboardType="numeric"
-            placeholder={weightUnit}
-            editable={!isLocked}
-          />
-          <ToggleRow
-            value={weightUnit}
-            onChange={handleWeightUnitChange}
-            disabled={isLocked}
-            options={[
-              { value: 'g', label: 'g' },
-              { value: 'oz', label: 'oz' },
-            ]}
-          />
-        </View>
-      ) : (
-        <View>
-          <View style={styles.sizeRow}>
-            {['small', 'medium', 'large'].map((s) => (
-              <TouchableOpacity
-                key={s}
-                disabled={isLocked}
-                style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
-                activeOpacity={0.7}
-                onPress={() => setSizeChoice(s)}
-              >
-                <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
-                </Text>
-                <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  ~{sizes[s]}g
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {portionMode === 'weight' ? (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit}
+              editable={!isLocked}
+            />
+            <ToggleRow
+              value={weightUnit}
+              onChange={handleWeightUnitChange}
+              disabled={isLocked}
+              options={[
+                { value: 'g', label: 'g' },
+                { value: 'oz', label: 'oz' },
+              ]}
+            />
           </View>
-          <Text style={styles.sizeEstimateNote}>
-            Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
-            serving weight; Small/Large are +/-30% around it.
-          </Text>
-        </View>
-      )}
+        ) : (
+          <View>
+            <View style={styles.sizeRow}>
+              {['small', 'medium', 'large'].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  disabled={isLocked}
+                  style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
+                  activeOpacity={0.7}
+                  onPress={() => setSizeChoice(s)}
+                >
+                  <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
+                  </Text>
+                  <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    ~{sizes[s]}g
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.sizeEstimateNote}>
+              Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
+              serving weight; Small/Large are +/-30% around it.
+            </Text>
+          </View>
+        )}
 
-      {boneNote ? <Text style={styles.matchNote}>{boneNote}</Text> : null}
+        {boneNote ? <Text style={styles.matchNote}>{boneNote}</Text> : null}
 
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
+        <PortionTotal kcal={previewCalories} />
 
+      </View>
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -972,11 +1050,11 @@ function SeafoodCard({
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>
-        {typeLabel} {cutLabel}
-      </Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={`${typeLabel} ${cutLabel}`}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       {cutMeta.hasShellToggle ? (
         <ToggleRow
@@ -1003,75 +1081,71 @@ function SeafoodCard({
         />
       ) : null}
 
-      <Text style={styles.poultryPer100g}>
-        per 100g edible: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C
-        {resolvedFood.carbsPer100g} F{resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <ToggleRow
-        value={portionMode}
-        onChange={setPortionMode}
-        disabled={isLocked}
-        options={[
-          { value: 'weight', label: 'Enter Weight' },
-          { value: 'size', label: 'Small / Medium / Large' },
-        ]}
-      />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      <ToggleRow
+          value={portionMode}
+          onChange={setPortionMode}
+          disabled={isLocked}
+          options={[
+            { value: 'weight', label: 'Enter Weight' },
+            { value: 'size', label: 'Small / Medium / Large' },
+          ]}
+        />
 
-      {portionMode === 'weight' ? (
-        <View style={styles.gramsRow}>
-          <TextInput
-            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-            value={weightValue}
-            onChangeText={setWeightValue}
-            keyboardType="numeric"
-            placeholder={weightUnit}
-            editable={!isLocked}
-          />
-          <ToggleRow
-            value={weightUnit}
-            onChange={handleWeightUnitChange}
-            disabled={isLocked}
-            options={[
-              { value: 'g', label: 'g' },
-              { value: 'oz', label: 'oz' },
-            ]}
-          />
-        </View>
-      ) : (
-        <View>
-          <View style={styles.sizeRow}>
-            {['small', 'medium', 'large'].map((s) => (
-              <TouchableOpacity
-                key={s}
-                disabled={isLocked}
-                style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
-                activeOpacity={0.7}
-                onPress={() => setSizeChoice(s)}
-              >
-                <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
-                </Text>
-                <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  ~{sizes[s]}g
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {portionMode === 'weight' ? (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit}
+              editable={!isLocked}
+            />
+            <ToggleRow
+              value={weightUnit}
+              onChange={handleWeightUnitChange}
+              disabled={isLocked}
+              options={[
+                { value: 'g', label: 'g' },
+                { value: 'oz', label: 'oz' },
+              ]}
+            />
           </View>
-          <Text style={styles.sizeEstimateNote}>
-            Estimated -- USDA doesn't grade seafood by size the way it does eggs. Medium is this food's typical
-            serving weight; Small/Large are +/-30% around it.
-          </Text>
-        </View>
-      )}
+        ) : (
+          <View>
+            <View style={styles.sizeRow}>
+              {['small', 'medium', 'large'].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  disabled={isLocked}
+                  style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
+                  activeOpacity={0.7}
+                  onPress={() => setSizeChoice(s)}
+                >
+                  <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
+                  </Text>
+                  <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    ~{sizes[s]}g
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.sizeEstimateNote}>
+              Estimated -- USDA doesn't grade seafood by size the way it does eggs. Medium is this food's typical
+              serving weight; Small/Large are +/-30% around it.
+            </Text>
+          </View>
+        )}
 
-      {shellNote ? <Text style={styles.matchNote}>{shellNote}</Text> : null}
+        {shellNote ? <Text style={styles.matchNote}>{shellNote}</Text> : null}
 
-      <Text style={styles.gramsUnit}>{edibleGrams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
+        <PortionTotal kcal={previewCalories} />
 
+      </View>
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -1215,11 +1289,11 @@ function EggCard({
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>
-        {birdTypeLabel} {formLabel}
-      </Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={`${birdTypeLabel} ${formLabel}`}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       {hasPrepToggle ? (
         <ToggleRow
@@ -1251,28 +1325,24 @@ function EggCard({
         </Text>
       ) : null}
 
-      <Text style={styles.poultryPer100g}>
-        per 100g edible: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C
-        {resolvedFood.carbsPer100g} F{resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>How Many?</Text>
-      <View style={styles.gramsRow}>
-        <TextInput
-          style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-          value={quantity}
-          onChangeText={setQuantity}
-          keyboardType="numeric"
-          placeholder="1"
-          editable={!isLocked}
-        />
-        <Text style={styles.poultryPer100g}>egg{qty === 1 ? '' : 's'} ({grams}g total)</Text>
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>How Many?</Text>      <View style={styles.gramsRow}>
+          <TextInput
+            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+            value={quantity}
+            onChangeText={setQuantity}
+            keyboardType="numeric"
+            placeholder="1"
+            editable={!isLocked}
+          />
+          <Text style={styles.poultryPer100g}>egg{qty === 1 ? '' : 's'} ({grams}g total)</Text>
+        </View>
+
+        <PortionTotal kcal={previewCalories} />
+
       </View>
-
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter a quantity above'}</Text>
-
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -1383,9 +1453,11 @@ function MilkCard({ milkFoods, initialSettings, favoriteId, locked, onAddFavorit
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>Milk</Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title="Milk"
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       <ToggleRow
         label="Fat %"
@@ -1405,36 +1477,32 @@ function MilkCard({ milkFoods, initialSettings, favoriteId, locked, onAddFavorit
         ]}
       />
 
-      <Text style={styles.poultryPer100g}>
-        per 100g: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C{resolvedFood.carbsPer100g} F
-        {resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <View style={styles.gramsRow}>
-        <TextInput
-          style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-          value={weightValue}
-          onChangeText={setWeightValue}
-          keyboardType="numeric"
-          placeholder={weightUnit}
-          editable={!isLocked}
-        />
-        <ToggleRow
-          value={weightUnit}
-          onChange={handleWeightUnitChange}
-          disabled={isLocked}
-          options={[
-            { value: 'g', label: 'g' },
-            { value: 'oz', label: 'oz' },
-          ]}
-        />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      <View style={styles.gramsRow}>
+          <TextInput
+            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+            value={weightValue}
+            onChangeText={setWeightValue}
+            keyboardType="numeric"
+            placeholder={weightUnit}
+            editable={!isLocked}
+          />
+          <ToggleRow
+            value={weightUnit}
+            onChange={handleWeightUnitChange}
+            disabled={isLocked}
+            options={[
+              { value: 'g', label: 'g' },
+              { value: 'oz', label: 'oz' },
+            ]}
+          />
+        </View>
+
+        <PortionTotal kcal={previewCalories} />
+
       </View>
-
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
-
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -1646,9 +1714,11 @@ function VegetableCard({
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>{vegetableTypeLabel}</Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={vegetableTypeLabel}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       {hasPrepToggle ? (
         <ToggleRow
@@ -1670,52 +1740,48 @@ function VegetableCard({
         />
       ) : null}
 
-      <Text style={styles.poultryPer100g}>
-        per 100g: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C{resolvedFood.carbsPer100g} F
-        {resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      {portion.unit ? (
-        <ToggleRow
-          value={portion.mode}
-          onChange={portion.setMode}
-          disabled={isLocked}
-          options={[
-            { value: 'count', label: `By ${portion.unit.noun}` },
-            { value: 'weight', label: 'Exact weight' },
-          ]}
-        />
-      ) : null}
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      {portion.unit ? (
+          <ToggleRow
+            value={portion.mode}
+            onChange={portion.setMode}
+            disabled={isLocked}
+            options={[
+              { value: 'count', label: `By ${portion.unit.noun}` },
+              { value: 'weight', label: 'Exact weight' },
+            ]}
+          />
+        ) : null}
 
-      {portion.unit && portion.mode === 'count' ? (
-        <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
-      ) : (
-      <><View style={styles.gramsRow}>
-        <TextInput
-          style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-          value={weightValue}
-          onChangeText={setWeightValue}
-          keyboardType="numeric"
-          placeholder={weightUnit}
-          editable={!isLocked}
-        />
-        <ToggleRow
-          value={weightUnit}
-          onChange={handleWeightUnitChange}
-          disabled={isLocked}
-          options={[
-            { value: 'g', label: 'g' },
-            { value: 'oz', label: 'oz' },
-          ]}
-        />
+        {portion.unit && portion.mode === 'count' ? (
+          <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
+        ) : (
+        <><View style={styles.gramsRow}>
+          <TextInput
+            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+            value={weightValue}
+            onChangeText={setWeightValue}
+            keyboardType="numeric"
+            placeholder={weightUnit}
+            editable={!isLocked}
+          />
+          <ToggleRow
+            value={weightUnit}
+            onChange={handleWeightUnitChange}
+            disabled={isLocked}
+            options={[
+              { value: 'g', label: 'g' },
+              { value: 'oz', label: 'oz' },
+            ]}
+          />
+        </View>
+
+        <PortionTotal kcal={previewCalories} /></>
+        )}
+
       </View>
-
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text></>
-      )}
-
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -1839,9 +1905,11 @@ function GroundMeatCard({
           Poultry/Seafood's cut labels, Beef's food names already include
           "Beef" where relevant (see data/foodsRedMeat.js), so there's no
           separate typeLabel to prepend here. */}
-      <Text style={styles.poultryCardTitle}>{resolvedFood.name}</Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={resolvedFood.name}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       <ToggleRow
         label="Fat %"
@@ -1866,73 +1934,69 @@ function GroundMeatCard({
         ]}
       />
 
-      <Text style={styles.poultryPer100g}>
-        per 100g: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C{resolvedFood.carbsPer100g} F
-        {resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <ToggleRow
-        value={portionMode}
-        onChange={setPortionMode}
-        disabled={isLocked}
-        options={[
-          { value: 'weight', label: 'Enter Weight' },
-          { value: 'size', label: 'Small / Medium / Large' },
-        ]}
-      />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      <ToggleRow
+          value={portionMode}
+          onChange={setPortionMode}
+          disabled={isLocked}
+          options={[
+            { value: 'weight', label: 'Enter Weight' },
+            { value: 'size', label: 'Small / Medium / Large' },
+          ]}
+        />
 
-      {portionMode === 'weight' ? (
-        <View style={styles.gramsRow}>
-          <TextInput
-            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-            value={weightValue}
-            onChangeText={setWeightValue}
-            keyboardType="numeric"
-            placeholder={weightUnit}
-            editable={!isLocked}
-          />
-          <ToggleRow
-            value={weightUnit}
-            onChange={handleWeightUnitChange}
-            disabled={isLocked}
-            options={[
-              { value: 'g', label: 'g' },
-              { value: 'oz', label: 'oz' },
-            ]}
-          />
-        </View>
-      ) : (
-        <View>
-          <View style={styles.sizeRow}>
-            {['small', 'medium', 'large'].map((s) => (
-              <TouchableOpacity
-                key={s}
-                disabled={isLocked}
-                style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
-                activeOpacity={0.7}
-                onPress={() => setSizeChoice(s)}
-              >
-                <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
-                </Text>
-                <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  ~{sizes[s]}g
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {portionMode === 'weight' ? (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit}
+              editable={!isLocked}
+            />
+            <ToggleRow
+              value={weightUnit}
+              onChange={handleWeightUnitChange}
+              disabled={isLocked}
+              options={[
+                { value: 'g', label: 'g' },
+                { value: 'oz', label: 'oz' },
+              ]}
+            />
           </View>
-          <Text style={styles.sizeEstimateNote}>
-            Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
-            serving weight; Small/Large are +/-30% around it.
-          </Text>
-        </View>
-      )}
+        ) : (
+          <View>
+            <View style={styles.sizeRow}>
+              {['small', 'medium', 'large'].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  disabled={isLocked}
+                  style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
+                  activeOpacity={0.7}
+                  onPress={() => setSizeChoice(s)}
+                >
+                  <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
+                  </Text>
+                  <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    ~{sizes[s]}g
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.sizeEstimateNote}>
+              Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
+              serving weight; Small/Large are +/-30% around it.
+            </Text>
+          </View>
+        )}
 
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
+        <PortionTotal kcal={previewCalories} />
 
+      </View>
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -2094,9 +2158,11 @@ function TrimTierCard({
     <View style={styles.poultryCard}>
       {/* baseFood.name (e.g. "Beef Ribeye Steak"), same reasoning as
           GroundMeatCard's title above. */}
-      <Text style={styles.poultryCardTitle}>{baseFood.name}</Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={baseFood.name}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       <ToggleRow
         label="Fat Trim"
@@ -2155,73 +2221,69 @@ function TrimTierCard({
         </>
       ) : null}
 
-      <Text style={styles.poultryPer100g}>
-        per 100g: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C{resolvedFood.carbsPer100g} F
-        {resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <ToggleRow
-        value={portionMode}
-        onChange={setPortionMode}
-        disabled={isLocked}
-        options={[
-          { value: 'weight', label: 'Enter Weight' },
-          { value: 'size', label: 'Small / Medium / Large' },
-        ]}
-      />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      <ToggleRow
+          value={portionMode}
+          onChange={setPortionMode}
+          disabled={isLocked}
+          options={[
+            { value: 'weight', label: 'Enter Weight' },
+            { value: 'size', label: 'Small / Medium / Large' },
+          ]}
+        />
 
-      {portionMode === 'weight' ? (
-        <View style={styles.gramsRow}>
-          <TextInput
-            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-            value={weightValue}
-            onChangeText={setWeightValue}
-            keyboardType="numeric"
-            placeholder={weightUnit}
-            editable={!isLocked}
-          />
-          <ToggleRow
-            value={weightUnit}
-            onChange={handleWeightUnitChange}
-            disabled={isLocked}
-            options={[
-              { value: 'g', label: 'g' },
-              { value: 'oz', label: 'oz' },
-            ]}
-          />
-        </View>
-      ) : (
-        <View>
-          <View style={styles.sizeRow}>
-            {['small', 'medium', 'large'].map((s) => (
-              <TouchableOpacity
-                key={s}
-                disabled={isLocked}
-                style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
-                activeOpacity={0.7}
-                onPress={() => setSizeChoice(s)}
-              >
-                <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
-                </Text>
-                <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  ~{sizes[s]}g
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {portionMode === 'weight' ? (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit}
+              editable={!isLocked}
+            />
+            <ToggleRow
+              value={weightUnit}
+              onChange={handleWeightUnitChange}
+              disabled={isLocked}
+              options={[
+                { value: 'g', label: 'g' },
+                { value: 'oz', label: 'oz' },
+              ]}
+            />
           </View>
-          <Text style={styles.sizeEstimateNote}>
-            Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
-            serving weight; Small/Large are +/-30% around it.
-          </Text>
-        </View>
-      )}
+        ) : (
+          <View>
+            <View style={styles.sizeRow}>
+              {['small', 'medium', 'large'].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  disabled={isLocked}
+                  style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
+                  activeOpacity={0.7}
+                  onPress={() => setSizeChoice(s)}
+                >
+                  <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
+                  </Text>
+                  <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    ~{sizes[s]}g
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.sizeEstimateNote}>
+              Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
+              serving weight; Small/Large are +/-30% around it.
+            </Text>
+          </View>
+        )}
 
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
+        <PortionTotal kcal={previewCalories} />
 
+      </View>
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -2429,9 +2491,11 @@ function FruitCard({
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>{fruitTypeLabel}</Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={fruitTypeLabel}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       {hasFormToggle ? (
         <ToggleRow
@@ -2475,69 +2539,62 @@ function FruitCard({
         />
       ) : null}
 
-      <Text style={styles.poultryPer100g}>
-        {isCountMode
-          ? `${resolvedFood.servingLabel}: ${resolvedFood.calories} kcal · P${resolvedFood.protein} C${resolvedFood.carbs} F${resolvedFood.fat}`
-          : `per 100g: ${resolvedFood.caloriesPer100g} kcal · P${resolvedFood.proteinPer100g} C${resolvedFood.carbsPer100g} F${resolvedFood.fatPer100g}`}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      {portion.unit ? (
-        <ToggleRow
-          value={portion.mode}
-          onChange={portion.setMode}
-          disabled={isLocked}
-          options={[
-            { value: 'count', label: `By ${portion.unit.noun}` },
-            { value: 'weight', label: 'Exact weight' },
-          ]}
-        />
-      ) : null}
-
-      {isCountMode ? (
-        <View style={styles.gramsRow}>
-          <TextInput
-            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-            value={servings}
-            onChangeText={setServings}
-            keyboardType="numeric"
-            placeholder="servings"
-            editable={!isLocked}
-          />
-          <Text style={styles.matchNote}>× {resolvedFood.servingLabel}</Text>
-        </View>
-      ) : portion.unit && portion.mode === 'count' ? (
-        <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
-      ) : (
-        <View style={styles.gramsRow}>
-          <TextInput
-            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-            value={weightValue}
-            onChangeText={setWeightValue}
-            keyboardType="numeric"
-            placeholder={weightUnit}
-            editable={!isLocked}
-          />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      {portion.unit ? (
           <ToggleRow
-            value={weightUnit}
-            onChange={handleWeightUnitChange}
+            value={portion.mode}
+            onChange={portion.setMode}
             disabled={isLocked}
             options={[
-              { value: 'g', label: 'g' },
-              { value: 'oz', label: 'oz' },
+              { value: 'count', label: `By ${portion.unit.noun}` },
+              { value: 'weight', label: 'Exact weight' },
             ]}
           />
-        </View>
-      )}
+        ) : null}
 
-      {portion.unit && portion.mode === 'count' && !isCountMode ? null : (
-        <Text style={styles.gramsUnit}>
-          {previewCalories > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}
-        </Text>
-      )}
+        {isCountMode ? (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+              value={servings}
+              onChangeText={setServings}
+              keyboardType="numeric"
+              placeholder="servings"
+              editable={!isLocked}
+            />
+            <Text style={styles.matchNote}>× {resolvedFood.servingLabel}</Text>
+          </View>
+        ) : portion.unit && portion.mode === 'count' ? (
+          <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
+        ) : (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit}
+              editable={!isLocked}
+            />
+            <ToggleRow
+              value={weightUnit}
+              onChange={handleWeightUnitChange}
+              disabled={isLocked}
+              options={[
+                { value: 'g', label: 'g' },
+                { value: 'oz', label: 'oz' },
+              ]}
+            />
+          </View>
+        )}
 
+        {portion.unit && portion.mode === 'count' && !isCountMode ? null : (
+          <PortionTotal kcal={previewCalories} />
+        )}
+
+      </View>
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -2571,44 +2628,41 @@ function DairyPortion({ resolvedFood, weightUnit, setWeightUnit, weightValue, se
   };
   return (
     <>
-      <Text style={styles.poultryPer100g}>
-        per 100g: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C{resolvedFood.carbsPer100g} F
-        {resolvedFood.fatPer100g}
-      </Text>
       <View style={styles.divider} />
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      {portion && portion.unit ? (
-        <ToggleRow
-          value={portion.mode}
-          onChange={portion.setMode}
-          disabled={isLocked}
-          options={[
-            { value: 'count', label: `By ${portion.unit.noun}` },
-            { value: 'weight', label: 'Exact weight' },
-          ]}
-        />
-      ) : null}
-      {counting ? (
-        <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
-      ) : (
-      <><View style={styles.gramsRow}>
-        <TextInput
-          style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-          value={weightValue}
-          onChangeText={setWeightValue}
-          keyboardType="numeric"
-          placeholder={weightUnit}
-          editable={!isLocked}
-        />
-        <ToggleRow
-          value={weightUnit}
-          onChange={handleUnit}
-          disabled={isLocked}
-          options={[{ value: 'g', label: 'g' }, { value: 'oz', label: 'oz' }]}
-        />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      {portion && portion.unit ? (
+          <ToggleRow
+            value={portion.mode}
+            onChange={portion.setMode}
+            disabled={isLocked}
+            options={[
+              { value: 'count', label: `By ${portion.unit.noun}` },
+              { value: 'weight', label: 'Exact weight' },
+            ]}
+          />
+        ) : null}
+        {counting ? (
+          <CountPortion state={portion} kcal={previewCalories} disabled={isLocked} />
+        ) : (
+        <><View style={styles.gramsRow}>
+          <TextInput
+            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+            value={weightValue}
+            onChangeText={setWeightValue}
+            keyboardType="numeric"
+            placeholder={weightUnit}
+            editable={!isLocked}
+          />
+          <ToggleRow
+            value={weightUnit}
+            onChange={handleUnit}
+            disabled={isLocked}
+            options={[{ value: 'g', label: 'g' }, { value: 'oz', label: 'oz' }]}
+          />
+        </View>
+        <PortionTotal kcal={previewCalories} /></>
+        )}
       </View>
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text></>
-      )}
       <CardActionButtons mode={mode} onEdit={onEdit} onSaveChanges={onSaveChanges} onAddFavorite={onAddFavorite} onAddFood={onAddFood} />
     </>
   );
@@ -2660,8 +2714,11 @@ function YogurtCard({ dairyFoods, initialSettings, favoriteId, locked, onAddFavo
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>Yogurt</Text>
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title="Yogurt"
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
       <ToggleRow label="Style" value={style} onChange={setStyle} disabled={isLocked}
         options={YOGURT_STYLES.map((o) => ({ value: o.key, label: o.label }))} />
       <ToggleRow label="Fat" value={fat} onChange={setFat} disabled={isLocked}
@@ -2742,8 +2799,11 @@ function ButterCard({ dairyFoods, initialSettings, favoriteId, locked, onAddFavo
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>Butter</Text>
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title="Butter"
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
       <ToggleRow label="Form" value={form} onChange={handleFormChange} disabled={isLocked}
         options={BUTTER_FORMS.map((o) => ({ value: o.key, label: o.label }))} />
       {hasSaltToggle ? (
@@ -2809,8 +2869,11 @@ function DairyVariantCard({ title, rows, toggleLabel, iconKey, variantField, var
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>{title}</Text>
-      <IconPlaceholder iconKey={iconKey(resolvedFood)} />
+      <FoodCardHead
+        title={title}
+        iconKey={iconKey(resolvedFood)}
+        food={resolvedFood}
+      />
       {hasToggle ? (
         <ToggleRow
           label={toggleLabel}
@@ -2980,8 +3043,11 @@ function LegumeCard({
 
   return (
     <View style={styles.poultryCard}>
-      <Text style={styles.poultryCardTitle}>{title}</Text>
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={title}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
       {showFormToggle ? (
         <ToggleRow
           label={toggleLabel}
@@ -3132,9 +3198,11 @@ function MeatCutCard({
     <View style={styles.poultryCard}>
       {/* resolvedFood.name (e.g. "Beef Flank Steak"), same reasoning as
           TrimTierCard's title above. */}
-      <Text style={styles.poultryCardTitle}>{resolvedFood.name}</Text>
-
-      <IconPlaceholder iconKey={iconKey} />
+      <FoodCardHead
+        title={resolvedFood.name}
+        iconKey={iconKey}
+        food={resolvedFood}
+      />
 
       {hasPrepToggle ? (
         <ToggleRow
@@ -3149,73 +3217,69 @@ function MeatCutCard({
         />
       ) : null}
 
-      <Text style={styles.poultryPer100g}>
-        per 100g: {resolvedFood.caloriesPer100g} kcal · P{resolvedFood.proteinPer100g} C{resolvedFood.carbsPer100g} F
-        {resolvedFood.fatPer100g}
-      </Text>
-
       <View style={styles.divider} />
 
-      <Text style={styles.poultrySectionTitle}>Portion</Text>
-      <ToggleRow
-        value={portionMode}
-        onChange={setPortionMode}
-        disabled={isLocked}
-        options={[
-          { value: 'weight', label: 'Enter Weight' },
-          { value: 'size', label: 'Small / Medium / Large' },
-        ]}
-      />
+      <View style={styles.portionPanel}>
+  <Text style={styles.poultrySectionTitle}>Portion</Text>      <ToggleRow
+          value={portionMode}
+          onChange={setPortionMode}
+          disabled={isLocked}
+          options={[
+            { value: 'weight', label: 'Enter Weight' },
+            { value: 'size', label: 'Small / Medium / Large' },
+          ]}
+        />
 
-      {portionMode === 'weight' ? (
-        <View style={styles.gramsRow}>
-          <TextInput
-            style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
-            value={weightValue}
-            onChangeText={setWeightValue}
-            keyboardType="numeric"
-            placeholder={weightUnit}
-            editable={!isLocked}
-          />
-          <ToggleRow
-            value={weightUnit}
-            onChange={handleWeightUnitChange}
-            disabled={isLocked}
-            options={[
-              { value: 'g', label: 'g' },
-              { value: 'oz', label: 'oz' },
-            ]}
-          />
-        </View>
-      ) : (
-        <View>
-          <View style={styles.sizeRow}>
-            {['small', 'medium', 'large'].map((s) => (
-              <TouchableOpacity
-                key={s}
-                disabled={isLocked}
-                style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
-                activeOpacity={0.7}
-                onPress={() => setSizeChoice(s)}
-              >
-                <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
-                </Text>
-                <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
-                  ~{sizes[s]}g
-                </Text>
-              </TouchableOpacity>
-            ))}
+        {portionMode === 'weight' ? (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={[styles.gramsInput, isLocked && styles.gramsInputDisabled]}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit}
+              editable={!isLocked}
+            />
+            <ToggleRow
+              value={weightUnit}
+              onChange={handleWeightUnitChange}
+              disabled={isLocked}
+              options={[
+                { value: 'g', label: 'g' },
+                { value: 'oz', label: 'oz' },
+              ]}
+            />
           </View>
-          <Text style={styles.sizeEstimateNote}>
-            Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
-            serving weight; Small/Large are +/-30% around it.
-          </Text>
-        </View>
-      )}
+        ) : (
+          <View>
+            <View style={styles.sizeRow}>
+              {['small', 'medium', 'large'].map((s) => (
+                <TouchableOpacity
+                  key={s}
+                  disabled={isLocked}
+                  style={[styles.sizeOption, sizeChoice === s && styles.sizeOptionActive, isLocked && styles.sizeOptionDisabled]}
+                  activeOpacity={0.7}
+                  onPress={() => setSizeChoice(s)}
+                >
+                  <Text style={[styles.sizeOptionLabel, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    {s === 'small' ? 'Small' : s === 'medium' ? 'Medium' : 'Large'}
+                  </Text>
+                  <Text style={[styles.sizeOptionGrams, sizeChoice === s && styles.sizeOptionLabelActive]}>
+                    ~{sizes[s]}g
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.sizeEstimateNote}>
+              Estimated -- USDA doesn't grade meat cuts by size the way it does eggs. Medium is this food's typical
+              serving weight; Small/Large are +/-30% around it.
+            </Text>
+          </View>
+        )}
 
-      <Text style={styles.gramsUnit}>{grams > 0 ? `${previewCalories} kcal` : 'Enter an amount above'}</Text>
+        <PortionTotal kcal={previewCalories} />
 
+      </View>
       <CardActionButtons
         mode={mode}
         onEdit={() => setIsLocked(false)}
@@ -3919,6 +3983,10 @@ export default function LogFoodScreen({
   // an unknown or missing value falls back to 'balanced', which is the
   // identity ordering.
   diet = DEFAULT_DIET,
+  // The user's daily calorie target, used only to draw the share bar under
+  // a card's TOTAL CALORIES. Optional: with no goal the bar is simply not
+  // drawn (see PortionTotal).
+  dailyCalories = 0,
   // Test-only, same reasoning as QuizScreen.js's initialAnswers/
   // initialStepIndex — lets the local render-test harness render straight
   // into the "My Favorites" filter without needing to simulate a real tap
@@ -5191,6 +5259,7 @@ export default function LogFoodScreen({
   }
 
   return (
+    <DailyCaloriesContext.Provider value={dailyCalories}>
     <View style={styles.container}>
       {/* The same soft shapes the other three tabs put behind their title.
           Non-interactive and behind everything, so the search bar and tiles
@@ -5384,6 +5453,7 @@ export default function LogFoodScreen({
         </View>
       ) : null}
     </View>
+    </DailyCaloriesContext.Provider>
   );
 }
 
@@ -5511,12 +5581,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   cardTopRow: { flexDirection: 'row', alignItems: 'center' },
+  // Two buttons, equal width, filling the card. Was right-aligned and
+  // content-width until v0.0.85 -- fine when the labels were "+ Add", much
+  // worse once one says "Add to My Favorites & Today".
   cardActionsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 10,
-    gap: 8,
+    alignItems: 'stretch',
+    marginTop: 12,
+    gap: 9,
   },
   // Fixed width (rather than sizing to whatever's inside) so this stays a
   // reserved, same-sized placeholder box now that every food's icon is
@@ -5526,19 +5598,20 @@ const styles = StyleSheet.create({
   icon: { fontSize: 28, width: 28, marginRight: 12 },
   name: { fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
   sub: { fontSize: 14, color: '#777', marginTop: 2 },
-  gramsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  gramsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 10 },
   gramsInput: {
-    backgroundColor: '#f7f7fa',
-    borderWidth: 1,
-    borderColor: '#e3e3e8',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    width: 68,
-    fontSize: 15,
-    marginRight: 6,
+    backgroundColor: COLORS.card,
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    minWidth: 92,
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.text,
   },
-  gramsUnit: { fontSize: 14, color: '#777' },
+  gramsUnit: { fontSize: 14, color: COLORS.textSoft, fontWeight: '600' },
   favBtn: {
     borderWidth: 1,
     borderColor: '#e3e3e8',
@@ -5550,8 +5623,18 @@ const styles = StyleSheet.create({
   favBtnActive: { borderColor: '#f2b134', backgroundColor: '#fff8e8' },
   favBtnText: { color: '#777', fontWeight: '600', fontSize: 14 },
   favBtnTextActive: { color: '#b3860f' },
-  addBtn: { backgroundColor: '#4f8ef7', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 },
-  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  addBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    minHeight: 48,
+    backgroundColor: COLORS.accent,
+    paddingHorizontal: 12,
+    borderRadius: 13,
+  },
+  addBtnText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   // Red Meat drill-down rows (Types, then Cuts) — plain tappable list rows
   // rather than full food cards, since there's no nutrition info to show
   // yet at these two steps, just a name and a hint there's another screen
@@ -5587,15 +5670,68 @@ const styles = StyleSheet.create({
   // rather than a list of rows, since there's only ever one food shown at
   // this step (whichever one the toggles currently resolve to).
   poultryCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.card,
     padding: 16,
-    marginBottom: 10,
+    marginBottom: SPACE.rowGap,
+    ...SHADOW.card,
   },
-  poultryCardTitle: { fontSize: 19, fontWeight: '700', color: '#1a1a1a', marginBottom: 12 },
-  poultrySectionTitle: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginTop: 4, marginBottom: 8 },
-  poultryPer100g: { fontSize: 14, color: '#777', marginTop: 10 },
-  divider: { height: 1, backgroundColor: '#eee', marginVertical: 16 },
+  poultryCardTitle: { fontSize: 22, fontWeight: '800', color: COLORS.text, lineHeight: 27 },
+  poultrySectionTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginBottom: 10 },
+  // Still used for the loose inline readouts a couple of cards put beside
+  // an input ("eggs (150g total)"). The per-100g SUMMARY it used to draw is
+  // now FoodCardHead's chip row.
+  poultryPer100g: { fontSize: 14, color: COLORS.textSoft, fontWeight: '600' },
+  divider: { height: 1, backgroundColor: COLORS.line, marginVertical: 14 },
+
+  // --- The card header (FoodCardHead) ---
+  headRow: { flexDirection: 'row', alignItems: 'flex-start' },
+  headArtTile: {
+    width: 96,
+    height: 96,
+    borderRadius: RADIUS.tile,
+    backgroundColor: '#eef5fb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  headBody: { flex: 1, minWidth: 0 },
+  headOptionsPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.caloriesSoft,
+    borderRadius: RADIUS.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginTop: 5,
+  },
+  headOptionsText: { fontSize: 11.5, fontWeight: '800', color: COLORS.accent },
+  headEyebrow: { ...TYPE.eyebrow, fontSize: 9.5, color: COLORS.textMuted, marginTop: 7 },
+
+  // --- The Portion panel ---
+  // A tinted box around the amount picker, so "which variant" (above) and
+  // "how much" (here) read as two separate questions rather than one long
+  // column of controls.
+  portionPanel: {
+    backgroundColor: '#f1f7fd',
+    borderRadius: RADIUS.tile,
+    padding: 14,
+    marginBottom: 12,
+  },
+
+  // --- The total, under the picker ---
+  totalEyebrow: { ...TYPE.eyebrow, fontSize: 9.5, color: COLORS.textMuted, marginTop: 12 },
+  totalValue: { fontSize: 30, fontWeight: '800', color: COLORS.text, marginTop: 2 },
+  totalEmpty: { fontSize: 15, color: COLORS.textMuted, marginTop: 4, fontWeight: '600' },
+  // How much of today's calorie goal this one portion is. Absent when no
+  // goal has been threaded in.
+  totalBarTrack: {
+    height: 7,
+    borderRadius: RADIUS.pill,
+    backgroundColor: '#e2eefb',
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  totalBarFill: { height: 7, borderRadius: RADIUS.pill, backgroundColor: '#a9d4fb' },
   // A fixed 192x192 box standing in for a future cartoon icon — dashed
   // border + the icon's key spelled out in small text so it's obvious both
   // how much space is reserved and exactly which of the (up to) 8
@@ -5631,20 +5767,28 @@ const styles = StyleSheet.create({
   iconImage: { width: 192, height: 192 },
   // One toggle row (Skin / Bone / Prep / weight unit / portion mode) — a
   // small label above a two-button segmented control.
+  // A toggle and its label. 12pt below, so two stacked toggles have air
+  // between them without the label of the second crowding the first.
   toggleGroup: { marginBottom: 12 },
-  toggleLabel: { fontSize: 13, fontWeight: '600', color: '#777', marginBottom: 6 },
+  toggleLabel: { fontSize: 12.5, fontWeight: '700', color: COLORS.textSoft, marginBottom: 6 },
+  // 2-3 options: one pill, segments divided by a hairline. `alignSelf`
+  // keeps it as wide as its content rather than stretching, which is what
+  // lets Skin and Bone sit side by side on the mockup's first row.
   toggleTrack: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#4f8ef7',
-    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+    borderRadius: 12,
     overflow: 'hidden',
     alignSelf: 'flex-start',
+    backgroundColor: COLORS.card,
   },
   toggleOption: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: '#fff',
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    backgroundColor: COLORS.card,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // Wide mode (4+ options, e.g. Eggs' Prep/Size, Milk's Fat %, Beef's Fat %,
   // Vegetables' Prep) -- see ToggleRow's header comment for why this
@@ -5673,54 +5817,86 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderRadius: 0,
     overflow: 'visible',
+    backgroundColor: 'transparent',
   },
   toggleOptionWide: {
     flexGrow: 1,
     flexBasis: '30%',
-    paddingHorizontal: 6,
-    paddingVertical: 10,
-    marginRight: 6,
-    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 11,
+    marginRight: 7,
+    marginBottom: 7,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#4f8ef7',
-    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+    borderRadius: 12,
   },
-  toggleOptionFirst: { borderRightWidth: 1, borderRightColor: '#4f8ef7' },
+  toggleOptionFirst: { borderRightWidth: 1.5, borderRightColor: COLORS.accent },
   toggleOptionLast: {},
-  toggleOptionActive: { backgroundColor: '#4f8ef7' },
-  toggleOptionText: { fontSize: 14, fontWeight: '600', color: '#4f8ef7' },
-  toggleOptionTextWide: { fontSize: 12, textAlign: 'center' },
+  toggleOptionActive: { backgroundColor: COLORS.accent },
+  toggleOptionText: { fontSize: 14.5, fontWeight: '700', color: COLORS.accent },
+  toggleOptionTextWide: { fontSize: 12.5, textAlign: 'center' },
   toggleOptionTextActive: { color: '#fff' },
-  matchNote: { fontSize: 12, color: '#b3860f', backgroundColor: '#fff8e8', padding: 8, borderRadius: 8, marginBottom: 4 },
-  reminderNote: { fontSize: 12, color: '#4f8ef7', backgroundColor: '#eef4ff', padding: 8, borderRadius: 8, marginBottom: 10 },
-  gradeSectionHeader: { paddingVertical: 6 },
-  gradeSectionHeaderText: { fontSize: 14, fontWeight: '600', color: '#4f8ef7' },
+  // The two note boxes. Same shape, different job and so different
+  // colour: amber is "the number you typed is not the number being
+  // counted" (bone-in weight converted to edible meat, a substituted
+  // variant); blue is advice you can ignore.
+  matchNote: {
+    fontSize: 12.5,
+    color: COLORS.warnInk,
+    backgroundColor: '#fdf6e3',
+    padding: 11,
+    borderRadius: 12,
+    marginBottom: 8,
+    lineHeight: 17,
+  },
+  reminderNote: {
+    fontSize: 12.5,
+    color: COLORS.accent,
+    backgroundColor: COLORS.caloriesSoft,
+    padding: 11,
+    borderRadius: 12,
+    marginBottom: 10,
+    lineHeight: 17,
+  },
+  gradeSectionHeader: { paddingVertical: 8 },
+  gradeSectionHeaderText: { fontSize: 14, fontWeight: '700', color: COLORS.accent },
   gradeSectionBody: { marginTop: 8, marginBottom: 4 },
-  sizeRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  sizeRow: { flexDirection: 'row', gap: 8, marginTop: 2 },
   sizeOption: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#e3e3e8',
-    borderRadius: 8,
-    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    paddingVertical: 11,
     alignItems: 'center',
+    backgroundColor: COLORS.card,
   },
-  sizeOptionActive: { borderColor: '#4f8ef7', backgroundColor: '#eef4ff' },
-  sizeOptionLabel: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
-  sizeOptionLabelActive: { color: '#4f8ef7' },
-  sizeOptionGrams: { fontSize: 13, color: '#777', marginTop: 2 },
-  sizeEstimateNote: { fontSize: 12, color: '#999', marginTop: 8, fontStyle: 'italic' },
+  sizeOptionActive: { borderColor: COLORS.accent, backgroundColor: COLORS.caloriesSoft },
+  sizeOptionLabel: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  sizeOptionLabelActive: { color: COLORS.accent },
+  sizeOptionGrams: { fontSize: 12.5, color: COLORS.textSoft, marginTop: 2, fontWeight: '600' },
+  sizeEstimateNote: { fontSize: 12, color: COLORS.textMuted, marginTop: 9, lineHeight: 16 },
+  // Kept amber rather than folded into the blue. It is the secondary
+  // action on every card, and the mockup keeps it amber too -- two blue
+  // buttons side by side would make you read both to find the one you
+  // want.
   favAddBtn: {
-    borderWidth: 1,
-    borderColor: '#f2b134',
-    backgroundColor: '#fff8e8',
-    paddingHorizontal: 12,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    paddingHorizontal: 10,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#f0c14b',
+    backgroundColor: '#fffaf0',
+    borderRadius: 13,
   },
-  favAddBtnText: { color: '#b3860f', fontWeight: '700', fontSize: 14 },
+  favAddBtnText: { color: COLORS.warnInk, fontWeight: '800', fontSize: 13.5, textAlign: 'center' },
   toast: {
     position: 'absolute',
     bottom: 24,
@@ -5739,21 +5915,26 @@ const styles = StyleSheet.create({
   // Grayed-out look for every toggle/input on a card opened from My
   // Favorites that hasn't had "Edit" tapped yet -- the saved settings stay
   // fully readable, just visibly non-interactive.
-  toggleTrackDisabled: { borderColor: '#ccc' },
-  toggleOptionTextDisabled: { color: '#aaa' },
-  gramsInputDisabled: { backgroundColor: '#f0f0f0', color: '#999' },
+  toggleTrackDisabled: { borderColor: COLORS.textFaint, opacity: 0.75 },
+  toggleOptionTextDisabled: { color: COLORS.textMuted },
+  gramsInputDisabled: { backgroundColor: COLORS.emptyBg, color: COLORS.textMuted, borderColor: COLORS.line },
   sizeOptionDisabled: { opacity: 0.5 },
   // "Edit" button -- CardActionButtons' 'locked' mode, and
   // FavoriteWeightCard's own locked state.
   editBtn: {
-    borderWidth: 1,
-    borderColor: '#4f8ef7',
-    backgroundColor: '#eef4ff',
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.caloriesSoft,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 13,
   },
-  editBtnText: { color: '#4f8ef7', fontWeight: '700', fontSize: 14 },
+  editBtnText: { color: COLORS.accent, fontWeight: '800', fontSize: 14.5 },
   // One row in the My Favorites tab (FavoriteListItem) -- the summary strip
   // (name + number, saved snapshot, Remove/Add buttons) plus, when
   // expanded, the full locked food card underneath it.
@@ -5819,6 +6000,13 @@ const styles = StyleSheet.create({
   // rather than leaning on the shrink.
   chipRow: { flexDirection: 'row', gap: 6, marginTop: 9 },
   chip: { flex: 1, minWidth: 0, borderRadius: 11, paddingHorizontal: 7, paddingVertical: 7 },
+  // The food-card variant. Same row, tighter, because it shares its width
+  // with a 96pt picture rather than an 80pt one: 358 card - 32 padding - 108
+  // (96 tile + 12 margin) leaves 218, so four chips and three 5pt gaps put
+  // each at 50.75 and 6pt of padding a side leaves 38.75pt of text. The
+  // single-letter labels are what make that work.
+  chipRowCompact: { gap: 5, marginTop: 6 },
+  chipCompact: { paddingHorizontal: 6, paddingVertical: 6, borderRadius: 10 },
   chipHead: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   chipDot: { width: 7, height: 7, borderRadius: RADIUS.pill },
   chipLabel: { flex: 1, fontSize: 8, fontWeight: '800', letterSpacing: 0.3, color: COLORS.textSoft },

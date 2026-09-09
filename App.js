@@ -645,6 +645,7 @@ export default function App() {
             onUpdateFavorite={handleUpdateFavorite}
             onRemoveFavorite={handleRemoveFavorite}
             diet={diet}
+            dailyCalories={goals.calories}
           />
         )}
         {activeTab === 'history' && <HistoryScreen entries={entries} goals={goals} />}
