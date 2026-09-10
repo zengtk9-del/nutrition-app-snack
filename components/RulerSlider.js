@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, PanResponder, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, PanResponder, StyleSheet } from 'react-native';
 import { COLORS } from '../utils/theme';
 
 // A HORIZONTAL ruler control (v0.1.1): a tape of tick marks slides left and
@@ -77,6 +77,14 @@ export default function RulerSlider({
   minimumValue = 0,
   maximumValue = 100,
   step = 1,
+  // What the -/+ buttons move by, as opposed to `step`, which is the
+  // spacing of the ticks and therefore the granularity of a DRAG (v0.1.3).
+  //
+  // They are different jobs. A tick every kcal would make the tape six
+  // times longer than a thumb can comfortably cross, so dragging works in
+  // fives; but "812" is a real number off a label and has to be typeable
+  // somehow. The buttons are that somehow.
+  fineStep = 1,
   majorEvery = 10,
   onValueChange,
   onSlidingStart,
@@ -130,9 +138,27 @@ export default function RulerSlider({
     const { valueMin: min, valueMax: max } = propsRef.current;
     return Math.max(min, Math.min(max, raw));
   };
-  const clampToStep = (raw) => {
+  // Snapping, with a direction (v0.1.3).
+  //
+  // Plain nearest-tick rounding is right whenever the drag STARTED on a
+  // tick, and wrong the moment the -/+ buttons have left the value between
+  // two. From 302, nearest is 300 -- so a drag upward would report a
+  // number LOWER than where it began, which is the one thing a ruler must
+  // never do.
+  //
+  // So an off-grid start is resolved the way you are already travelling:
+  // the first movement lands on the next tick in that direction, and from
+  // there it is on the grid and ordinary rounding takes over. Damon's
+  // case, from 303: drag up and it reads 303, 305, 310; drag down and it
+  // reads 303, 300, 295.
+  const snapForDrag = (raw) => {
     const { step: s } = propsRef.current;
-    return clamp(Math.round(raw / s) * s);
+    const from = dragStartValueRef.current;
+    const nearest = Math.round(raw / s) * s;
+    if (Math.abs(from / s - Math.round(from / s)) < 1e-9) return clamp(nearest);
+    if (raw > from) return clamp(Math.max(Math.ceil(from / s) * s, nearest));
+    if (raw < from) return clamp(Math.min(Math.floor(from / s) * s, nearest));
+    return clamp(from);
   };
 
   // Follow `value` when something other than this drag changed it -- the
@@ -172,20 +198,35 @@ export default function RulerSlider({
         const rawValue = dragStartValueRef.current - (g.dx / PX_PER_TICK) * s;
         lastRawValueRef.current = rawValue;
         setLiveValue(clamp(rawValue));
-        if (onChange) onChange(clampToStep(rawValue));
+        if (onChange) onChange(snapForDrag(rawValue));
       },
       onPanResponderRelease: () => {
         isDraggingRef.current = false;
-        setLiveValue(clampToStep(lastRawValueRef.current));
+        setLiveValue(snapForDrag(lastRawValueRef.current));
         if (propsRef.current.onSlidingComplete) propsRef.current.onSlidingComplete();
       },
       onPanResponderTerminate: () => {
         isDraggingRef.current = false;
-        setLiveValue(clampToStep(lastRawValueRef.current));
+        setLiveValue(snapForDrag(lastRawValueRef.current));
         if (propsRef.current.onSlidingComplete) propsRef.current.onSlidingComplete();
       },
     })
   ).current;
+
+  // One kcal at a time, for the number a label actually says. Same
+  // onSlidingStart -> onValueChange -> onSlidingComplete lifecycle a real
+  // drag fires, so the form's drag-baseline snapshot needs no special
+  // case: from its side a tap is just a very short drag.
+  const nudge = (direction) => {
+    const { value: v, valueMin: lo, valueMax: hi, onValueChange: onChange, onSlidingStart: onStart, onSlidingComplete: onDone } =
+      propsRef.current;
+    const next = Math.max(lo, Math.min(hi, v + direction * (fineStep > 0 ? fineStep : 1)));
+    if (next === v) return;
+    if (onStart) onStart();
+    setLiveValue(next);
+    if (onChange) onChange(next);
+    if (onDone) onDone();
+  };
 
   const safeStep = step > 0 ? step : 1;
   const tickCount = Math.max(1, Math.round((maximumValue - minimumValue) / safeStep) + 1);
@@ -230,18 +271,42 @@ export default function RulerSlider({
         </Text>
       </View>
 
-      <View
-        style={styles.viewport}
-        onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-        {...panResponder.panHandlers}
-        accessibilityRole="adjustable"
-        accessibilityLabel={label}
-        accessibilityValue={{ min: reachMin, max: reachMax, now: Math.round(value) }}
-      >
-        <View style={[styles.tape, { transform: [{ translateX }] }]}>{ticks}</View>
-        {/* The pointer. Fixed dead centre -- it is the one thing on this
-            control that never moves. */}
-        <View style={[styles.pointer, { backgroundColor: color }]} pointerEvents="none" />
+      <View style={styles.row}>
+        <TouchableOpacity
+          onPress={() => nudge(-1)}
+          disabled={value <= reachMin}
+          style={[styles.stepBtn, value <= reachMin && styles.stepBtnOff]}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Decrease ${label} by ${fineStep} ${unit}`}
+        >
+          <Text style={[styles.stepBtnText, value <= reachMin && styles.stepBtnTextOff]}>{'\u2212'}</Text>
+        </TouchableOpacity>
+
+        <View
+          style={styles.viewport}
+          onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+          {...panResponder.panHandlers}
+          accessibilityRole="adjustable"
+          accessibilityLabel={label}
+          accessibilityValue={{ min: reachMin, max: reachMax, now: Math.round(value) }}
+        >
+          <View style={[styles.tape, { transform: [{ translateX }] }]}>{ticks}</View>
+          {/* The pointer. Fixed dead centre -- it is the one thing on this
+              control that never moves. */}
+          <View style={[styles.pointer, { backgroundColor: color }]} pointerEvents="none" />
+        </View>
+
+        <TouchableOpacity
+          onPress={() => nudge(1)}
+          disabled={value >= reachMax}
+          style={[styles.stepBtn, value >= reachMax && styles.stepBtnOff]}
+          hitSlop={{ top: 10, bottom: 10, left: 6, right: 10 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Increase ${label} by ${fineStep} ${unit}`}
+        >
+          <Text style={[styles.stepBtnText, value >= reachMax && styles.stepBtnTextOff]}>+</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -252,7 +317,25 @@ const styles = StyleSheet.create({
   label: { fontSize: 16, fontWeight: '700', color: COLORS.text },
   readout: { fontSize: 26, fontWeight: '800' },
   readoutUnit: { fontSize: 14, fontWeight: '700', color: COLORS.textMuted },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  // Deliberately the same 30pt circle MacroSlider puts either side of its
+  // track, so the calories control and the three macro rows under it read
+  // as one family of things rather than two.
+  stepBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f0f1f5',
+    borderWidth: 1,
+    borderColor: '#e3e3e8',
+  },
+  stepBtnOff: { backgroundColor: '#f7f7fa', borderColor: '#eceef2' },
+  stepBtnText: { fontSize: 18, fontWeight: '700', color: '#444', marginTop: -1 },
+  stepBtnTextOff: { color: '#ccc' },
   viewport: {
+    flex: 1,
     height: TAPE_HEIGHT,
     overflow: 'hidden',
     backgroundColor: COLORS.card,
