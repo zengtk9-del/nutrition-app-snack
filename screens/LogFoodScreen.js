@@ -749,21 +749,10 @@ function PoultryCard({
     setWeightUnit(nextUnit);
   };
 
-  // Same pattern as SeafoodCard's handleShellChange -- convert what's typed
-  // rather than silently resetting it, so flipping Bone In/Boneless keeps
-  // describing the same real amount of chicken/turkey, just in bone-in vs.
-  // edible-only terms. Only converts when a real boneYieldPercent exists;
-  // otherwise this is just setBone, same as before.
-  const handleBoneChange = (nextBone) => {
-    if (boneYieldPercent) {
-      const n = parseFloat(weightValue);
-      if (Number.isFinite(n)) {
-        const converted = nextBone === 'in' ? n / boneYieldPercent : n * boneYieldPercent;
-        setWeightValue(String(Math.round(converted * 10) / 10));
-      }
-    }
-    setBone(nextBone);
-  };
+  // Same change as Seafood's shell toggle, same reasoning — see
+  // handleShellChange in SeafoodCard. Bone In and Boneless describe what
+  // the number in the box was weighing; they no longer rewrite it.
+  const handleBoneChange = (nextBone) => setBone(nextBone);
 
   const handleAddFood = () => {
     if (grams <= 0) return;
@@ -1055,16 +1044,24 @@ function SeafoodCard({
   // toggle -- convert what's typed rather than silently resetting it, so
   // flipping the toggle keeps describing the same real amount of shrimp/
   // crab/etc., just in shell-on vs. edible-only terms.
-  const handleShellChange = (nextShell) => {
-    if (yieldPercent) {
-      const n = parseFloat(weightValue);
-      if (Number.isFinite(n)) {
-        const converted = nextShell === 'on' ? n / yieldPercent : n * yieldPercent;
-        setWeightValue(String(Math.round(converted * 10) / 10));
-      }
-    }
-    setShell(nextShell);
-  };
+  // Flipping this does NOT touch the weight you typed (v0.0.91).
+  //
+  // It used to: turning Shell On divided the box by the yield and turning
+  // it Off multiplied back, so the edible grams — and therefore every
+  // number on the card — came out identical either way. The toggle looked
+  // dead, which is how Damon found it.
+  //
+  // The reasoning behind that was "one physical portion, re-expressed",
+  // treating shell on/off like g↔oz. But it is not like g↔oz: 100g and
+  // 3.5oz are the same quantity, whereas "133g including shells" and "133g
+  // of shelled meat" are two different amounts of shrimp. And the toggle
+  // sits in the variant section beside Prep, where every other control
+  // changes the numbers.
+  //
+  // So it now describes the reading rather than rewriting it: type what
+  // the scale said, then say what the scale was holding. 133g of shrimp is
+  // 100g of meat with the shells on and 133g without — 85 kcal against 113.
+  const handleShellChange = (nextShell) => setShell(nextShell);
 
   const handleAddFood = () => {
     if (edibleGrams <= 0) return;
