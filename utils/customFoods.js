@@ -17,31 +17,34 @@
 
 import { ozToGrams } from './units';
 
-// The unit list, and the thing that decides which of the two shapes a
-// custom food takes. `grams` is how many grams one unit is, for the three
-// that have an answer; the countable ones do not have one and do not need
-// one, because their macros are already per-serving.
+// TWO WAYS TO SAY HOW MUCH, and only two (v0.0.97).
 //
-// ml is treated as 1g. That is wrong for oil and for spirits and right for
-// almost everything else people drink, and the alternative is asking for a
+// v0.0.95 offered fifteen units and let you put a number in front of any
+// of them, which produced "What is in 100 servings?" -- a question nobody
+// has ever needed to answer. The mistake was treating a serving as a unit
+// of measurement. It is not: a cup, a scoop, a bowl, a plate, a bar and a
+// packet are all the same statement, "one of these", and the only number
+// that ever goes with it is one.
+//
+// So:
+//
+//   serving -- no amount. The macros are for one of the thing. What you
+//              type is what a label calls a serving.
+//   g/ml/oz -- an amount, because a weight can be divided and therefore
+//              re-portioned later.
+//
+// ml is treated as 1g. Wrong for oil and spirits, right for almost
+// everything else people drink, and the alternative is asking for a
 // density, which nobody has.
 export const CUSTOM_UNITS = [
+  { key: 'serving', label: 'serving', kind: 'count' },
   { key: 'g', label: 'g', kind: 'weight', grams: 1 },
   { key: 'ml', label: 'ml', kind: 'weight', grams: 1 },
   { key: 'oz', label: 'oz', kind: 'weight', grams: null }, // via ozToGrams
-  { key: 'piece', label: 'piece', kind: 'count' },
-  { key: 'slice', label: 'slice', kind: 'count' },
-  { key: 'cup', label: 'cup', kind: 'count' },
-  { key: 'bowl', label: 'bowl', kind: 'count' },
-  { key: 'plate', label: 'plate', kind: 'count' },
-  { key: 'glass', label: 'glass', kind: 'count' },
-  { key: 'bottle', label: 'bottle', kind: 'count' },
-  { key: 'can', label: 'can', kind: 'count' },
-  { key: 'scoop', label: 'scoop', kind: 'count' },
-  { key: 'bar', label: 'bar', kind: 'count' },
-  { key: 'packet', label: 'packet', kind: 'count' },
-  { key: 'serving', label: 'serving', kind: 'count' },
 ];
+
+// The three that take a number. `serving` never does.
+export const WEIGHT_UNITS = CUSTOM_UNITS.filter((u) => u.kind === 'weight');
 
 export const unitMeta = (key) => CUSTOM_UNITS.find((u) => u.key === key) || CUSTOM_UNITS[0];
 export const isWeightUnit = (key) => unitMeta(key).kind === 'weight';
@@ -85,13 +88,21 @@ export const isCustomFoodId = (id) => typeof id === 'string' && id.startsWith(CU
 // else gets no category at all, which reads as unflagged.
 export function customFoodToFood(row) {
   if (!row) return null;
+  // No category, ever (v0.0.97). Damon's call: a food you define yourself
+  // does not cost the score its quality points just for existing. The
+  // scorer decides what is junk by resolving an entry to a food's
+  // category, and with none it reads as unflagged -- which is now the
+  // intended answer rather than the gap it was in v0.0.95.
+  //
+  // The fast_food column stays in the table and is simply not read, so a
+  // row created by v0.0.95 with it set does not keep penalising anyone.
   const base = {
     id: customFoodId(row),
     name: row.name,
     icon: row.icon,
     isCustom: true,
-    category: row.fast_food ? 'mixed_dish' : null,
-    subcategory: row.fast_food ? 'restaurant' : null,
+    category: null,
+    subcategory: null,
   };
 
   const amount = Number(row.amount) || 0;
@@ -128,16 +139,17 @@ export function customFoodToFood(row) {
 export function customFoodSummary(row) {
   if (!row) return '';
   const u = unitMeta(row.unit);
-  const amount = Number(row.amount) || 0;
-  const unitText = u.kind === 'weight' ? u.label : ` ${u.label}${amount === 1 ? '' : 's'}`;
-  return `${amount}${unitText} · ${Math.round(Number(row.calories) || 0)} kcal`;
+  const kcal = Math.round(Number(row.calories) || 0);
+  if (u.kind !== 'weight') return `1 serving · ${kcal} kcal`;
+  return `${Number(row.amount) || 0}${u.label} · ${kcal} kcal`;
 }
 
 // Everything the create form has to get right before Save can do anything.
 // Returns a message, or null when it is fine.
-export function validateCustomFood({ name, amount, calories, protein, carbs, fat }) {
+export function validateCustomFood({ name, unit, amount, calories, protein, carbs, fat }) {
   if (!String(name || '').trim()) return 'Give this food a name.';
-  if (!(Number(amount) > 0)) return 'Enter how much this is.';
+  // A serving has no amount to get wrong; only the weight modes do.
+  if (isWeightUnit(unit) && !(Number(amount) > 0)) return 'Enter how much this is.';
   const macros = { calories, protein, carbs, fat };
   for (const [k, v] of Object.entries(macros)) {
     if (String(v ?? '').trim() === '') return `Enter the ${k === 'calories' ? 'calories' : k}.`;

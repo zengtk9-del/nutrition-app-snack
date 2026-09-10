@@ -8,18 +8,23 @@
 // its serving is called, whether the score counts it against you -- is
 // derived from those (utils/customFoods.js) rather than asked for.
 //
-// THE ONE NON-OBVIOUS FIELD is the amount, and it is non-obvious in the
-// same way it was when Damon and I settled it: the macros are for the
-// amount typed, not per 100g. "330 ml, 139 kcal" means that whole can is
-// 139. The caption under the macro block says so, because a packet label
-// can mean either and getting it backwards is a silent 3x error.
+// HOW MUCH IS THIS is two choices, not fifteen (v0.0.97). Either the
+// macros are for one serving -- whatever the label calls a serving -- or
+// they are for a weight you type. v0.0.95 let a number sit in front of
+// any of fifteen units and asked "What is in 100 servings?", which is not
+// a question anyone has. A cup, a scoop, a bowl and a bar are all just
+// "one of these".
+//
+// Either way the macros are for what is described above them, never per
+// 100g. The heading over the macro block restates it, because a packet
+// label can mean either and getting it backwards is a silent 3x error.
 
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Switch } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import FoodIcon from './FoodIcon';
 import IconPicker from './IconPicker';
-import { CUSTOM_UNITS, unitMeta, isWeightUnit, validateCustomFood, glyphRef } from '../utils/customFoods';
+import { WEIGHT_UNITS, unitMeta, isWeightUnit, validateCustomFood, glyphRef } from '../utils/customFoods';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
 
 const DEFAULT_ICON = glyphRef('silverware-fork-knife');
@@ -44,7 +49,6 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
     carbs: existing ? String(existing.carbs) : '',
     fat: existing ? String(existing.fat) : '',
   });
-  const [fastFood, setFastFood] = useState(!!existing?.fast_food);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -52,7 +56,7 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
   const setMacro = (key, value) => setMacros((prev) => ({ ...prev, [key]: value }));
 
   const handleSave = async () => {
-    const problem = validateCustomFood({ name, amount, ...macros });
+    const problem = validateCustomFood({ name, unit, amount, ...macros });
     if (problem) {
       setError(problem);
       return;
@@ -66,12 +70,12 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
       // be divided down and re-portioned later, a bowl cannot.
       servingType: isWeightUnit(unit) ? 'weight' : 'count',
       unit,
-      amount: Number(amount),
+      // A serving is always one of itself; only a weight carries a number.
+      amount: isWeightUnit(unit) ? Number(amount) : 1,
       calories: Number(macros.calories),
       protein: Number(macros.protein),
       carbs: Number(macros.carbs),
       fat: Number(macros.fat),
-      fastFood,
     });
     setBusy(false);
     if (!saved) setError('Could not save. Please try again.');
@@ -82,6 +86,7 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
   }
 
   const u = unitMeta(unit);
+  const weightMode = isWeightUnit(unit);
 
   return (
     <View style={s.wrap}>
@@ -106,17 +111,43 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
         </TouchableOpacity>
 
         <Text style={s.label}>How much is this?</Text>
-        <View style={s.amountRow}>
-          <TextInput
-            style={[s.input, s.amountInput]}
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="numeric"
-            placeholder="100"
-            placeholderTextColor={COLORS.textMuted}
-          />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.unitScroll}>
-            {CUSTOM_UNITS.map((opt) => (
+        {/* Two columns, one of them chosen. Not a unit list: "1 serving"
+            and "a weight" are different kinds of statement, and mixing
+            them is what produced "What is in 100 servings?". */}
+        <View style={s.modeRow}>
+          <TouchableOpacity
+            style={[s.modeCard, !weightMode && s.modeCardOn]}
+            activeOpacity={0.75}
+            onPress={() => setUnit('serving')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: !weightMode }}
+          >
+            <Text style={[s.modeTitle, !weightMode && s.modeTitleOn]}>1 Serving</Text>
+            <Text style={[s.modeSub, !weightMode && s.modeSubOn]}>However it comes</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[s.modeCard, weightMode && s.modeCardOn]}
+            activeOpacity={0.75}
+            onPress={() => setUnit(isWeightUnit(unit) ? unit : 'g')}
+            accessibilityRole="button"
+            accessibilityState={{ selected: weightMode }}
+          >
+            <Text style={[s.modeTitle, weightMode && s.modeTitleOn]}>A weight</Text>
+            <Text style={[s.modeSub, weightMode && s.modeSubOn]}>g, ml or oz</Text>
+          </TouchableOpacity>
+        </View>
+
+        {weightMode ? (
+          <View style={s.amountRow}>
+            <TextInput
+              style={[s.input, s.amountInput]}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="numeric"
+              placeholder="100"
+              placeholderTextColor={COLORS.textMuted}
+            />
+            {WEIGHT_UNITS.map((opt) => (
               <TouchableOpacity
                 key={opt.key}
                 style={[s.unitChip, unit === opt.key && s.unitChipOn]}
@@ -128,18 +159,15 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
                 <Text style={[s.unitChipText, unit === opt.key && s.unitChipTextOn]}>{opt.label}</Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
-        </View>
+          </View>
+        ) : null}
         <Text style={s.hint}>
-          {u.kind === 'weight'
+          {weightMode
             ? 'Measured by weight, so you can log any amount of it later.'
-            : `Counted, so you will log it in whole ${u.label}s — like an egg.`}
+            : 'Logged one serving at a time, the way an egg is.'}
         </Text>
 
-        <Text style={s.label}>
-          What is in {amount || '…'} {u.label}
-          {u.kind !== 'weight' && amount !== '1' ? 's' : ''}?
-        </Text>
+        <Text style={s.label}>{weightMode ? `What is in ${amount || '…'} ${u.label}?` : 'What is in one serving?'}</Text>
         <View style={s.macroGrid}>
           {MACRO_FIELDS.map((f) => (
             <View key={f.key} style={s.macroCell}>
@@ -157,22 +185,6 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
               </View>
             </View>
           ))}
-        </View>
-
-        {/* The score decides what is junk by looking at a food's category,
-            and a food you invented has none. Without this switch a
-            takeaway logged here would score as clean eating -- see
-            utils/customFoods.js. */}
-        <View style={s.switchRow}>
-          <View style={s.switchText}>
-            <Text style={s.switchLabel}>Fast food or restaurant meal</Text>
-            <Text style={s.switchHint}>Counts against your daily score, the same as a takeaway from the food list.</Text>
-          </View>
-          <Switch
-            value={fastFood}
-            onValueChange={setFastFood}
-            trackColor={{ true: COLORS.accent, false: COLORS.line }}
-          />
         </View>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
@@ -224,9 +236,24 @@ const s = StyleSheet.create({
   },
   iconRowText: { flex: 1, fontSize: 16, fontWeight: '700', color: COLORS.text },
 
-  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  amountInput: { width: 92 },
-  unitScroll: { flex: 1 },
+  modeRow: { flexDirection: 'row', gap: 10 },
+  modeCard: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.tile,
+    borderWidth: 2,
+    borderColor: COLORS.line,
+    paddingVertical: 13,
+    paddingHorizontal: 12,
+  },
+  modeCardOn: { borderColor: COLORS.accent, backgroundColor: COLORS.caloriesSoft },
+  modeTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text },
+  modeTitleOn: { color: COLORS.accent },
+  modeSub: { fontSize: 12.5, color: COLORS.textMuted, marginTop: 3 },
+  modeSubOn: { color: COLORS.accent },
+
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  amountInput: { flex: 1 },
   unitChip: {
     paddingHorizontal: 13,
     paddingVertical: 9,
@@ -247,11 +274,6 @@ const s = StyleSheet.create({
   macroInputRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   macroInput: { flex: 1 },
   macroSuffix: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted, width: 30 },
-
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 20 },
-  switchText: { flex: 1 },
-  switchLabel: { fontSize: 15, fontWeight: '700', color: COLORS.text },
-  switchHint: { fontSize: 12.5, color: COLORS.textMuted, marginTop: 3, lineHeight: 17 },
 
   error: { color: COLORS.overInk, fontSize: 14, fontWeight: '600', marginTop: 14 },
 

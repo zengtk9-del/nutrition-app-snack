@@ -1,125 +1,165 @@
-// Choosing a picture for a food you invented (v0.0.95).
+// Choosing a picture for a food you invented (v0.0.95, restructured in
+// v0.0.97).
 //
-// Two sources in one screen: twelve vector category marks, always shown,
-// and all 1,737 drawn food icons behind a search box.
+// TWO LEVELS, because they are two different kinds of choosing.
 //
-// SEARCH-FIRST FOR THE ARTWORK, and that is a performance decision rather
-// than a taste one. The drawn icons are not bundled -- they are URLs on
-// jsDelivr (utils/assetHost.js) -- so a grid showing all of them would
-// pull 1,737 images over the network. The list stays empty until you
-// type, which also happens to be how emoji pickers behave.
+//   Level one: twelve vector category marks -- takeaway box, coffee cup,
+//   shaker -- and one card, "Use our food icons", carrying the same All
+//   artwork the category strip uses. Twelve is a glance; you either see
+//   what you want or you go looking.
 //
-// The search itself lives in data/customFoodIcons.js; see the notes there
-// on why it matches word starts rather than substrings, and why the
-// synonyms point at category keys rather than words.
+//   Level two: all 1,737 drawn food icons with a search bar on top, the
+//   way an emoji picker works. Type "vegetable" and get 183; type
+//   "zucchini" and get 2.
+//
+// v0.0.95 folded both into one screen, with the artwork hidden behind an
+// empty search box. That made the second source invisible unless you
+// guessed it was there. A card you can see and press is the fix.
+//
+// The search itself is in data/customFoodIcons.js -- see the notes there
+// on matching word starts rather than substrings, and on why the synonyms
+// point at category keys rather than words.
+//
+// ON LOADING: the drawn icons are jsDelivr URLs, not bundled files
+// (utils/assetHost.js), so the level-two grid streams in as you scroll
+// rather than appearing at once. FlatList only mounts the rows on screen,
+// which is what keeps 1,737 remote images survivable.
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, Image, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import FoodIcon from './FoodIcon';
-import { CUSTOM_GLYPHS, searchFoodIcons } from '../data/customFoodIcons';
+import { CUSTOM_GLYPHS, searchFoodIcons, allFoodIcons } from '../data/customFoodIcons';
+import { getCategoryIcon } from '../data/categoryIcons';
 import { glyphRef, artRef, refValue, isGlyphRef } from '../utils/customFoods';
 import { COLORS, TYPE, RADIUS, SHADOW } from '../utils/theme';
 
 const COLUMNS = 4;
 
-export default function IconPicker({ value, onPick, onCancel }) {
-  const [query, setQuery] = useState('');
-  const results = useMemo(() => searchFoodIcons(query, 200), [query]);
-  const searching = query.trim().length > 0;
-
+function BackBar({ label, onPress }) {
   return (
-    <View style={s.wrap}>
-      <TouchableOpacity style={s.back} activeOpacity={0.6} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Back to the food form">
-        <MaterialCommunityIcons name="chevron-left" size={20} color={COLORS.accent} />
-        <Text style={s.backText}>Back</Text>
-      </TouchableOpacity>
+    <TouchableOpacity style={s.back} activeOpacity={0.6} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+      <MaterialCommunityIcons name="chevron-left" size={20} color={COLORS.accent} />
+      <Text style={s.backText}>Back</Text>
+    </TouchableOpacity>
+  );
+}
 
-      <Text style={s.heading}>Choose a picture</Text>
+function Tile({ on, label, onPress, children }) {
+  return (
+    <TouchableOpacity
+      style={[s.cell, on && s.cellOn]}
+      activeOpacity={0.7}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: !!on }}
+      accessibilityLabel={label}
+    >
+      {children}
+      <Text style={s.cellText} numberOfLines={2}>
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
 
-      <View style={s.searchWrap}>
-        <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSoft} />
-        <TextInput
-          style={s.search}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search 1,737 foods (try fruit, or zucchini)"
-          placeholderTextColor={COLORS.textMuted}
-          autoCorrect={false}
-          returnKeyType="search"
-        />
-        {query ? (
-          <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Clear search">
-            <MaterialCommunityIcons name="close-circle" size={19} color={COLORS.textFaint} />
-          </TouchableOpacity>
-        ) : null}
-      </View>
+export default function IconPicker({ value, onPick, onCancel }) {
+  const [browsing, setBrowsing] = useState(false);
+  const [query, setQuery] = useState('');
 
-      {searching ? (
+  // No query means the whole set, in index order. Only what is on screen
+  // is ever mounted, so this costs a screenful of requests, not 1,737.
+  const results = useMemo(
+    () => (query.trim() ? searchFoodIcons(query, 400) : allFoodIcons()),
+    [query]
+  );
+
+  if (browsing) {
+    return (
+      <View style={s.wrap}>
+        <BackBar label="Back to the icon list" onPress={() => setBrowsing(false)} />
+        <Text style={s.heading}>Our food icons</Text>
+
+        <View style={s.searchWrap}>
+          <MaterialCommunityIcons name="magnify" size={20} color={COLORS.textSoft} />
+          <TextInput
+            style={s.search}
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search — try fruit, or zucchini"
+            placeholderTextColor={COLORS.textMuted}
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {query ? (
+            <TouchableOpacity onPress={() => setQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Clear search">
+              <MaterialCommunityIcons name="close-circle" size={19} color={COLORS.textFaint} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         <FlatList
           data={results}
-          key="art"
           numColumns={COLUMNS}
           keyExtractor={(item) => item.key}
           contentContainerStyle={s.grid}
           keyboardShouldPersistTaps="handled"
+          initialNumToRender={20}
+          windowSize={5}
+          removeClippedSubviews
           ListEmptyComponent={<Text style={s.empty}>Nothing matches “{query}”. Try a broader word.</Text>}
           renderItem={({ item }) => {
             const ref = artRef(item.key);
-            const on = value === ref;
             return (
-              <TouchableOpacity
-                style={[s.cell, on && s.cellOn]}
-                activeOpacity={0.7}
-                onPress={() => onPick(ref)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={item.label}
-              >
+              <Tile on={value === ref} label={item.label} onPress={() => onPick(ref)}>
                 <FoodIcon iconKey={item.key} size={54} />
-                <Text style={s.cellText} numberOfLines={2}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
+              </Tile>
             );
           }}
         />
-      ) : (
-        <FlatList
-          data={CUSTOM_GLYPHS}
-          key="glyphs"
-          numColumns={COLUMNS}
-          keyExtractor={(item) => item.key}
-          contentContainerStyle={s.grid}
-          keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={
-            <Text style={s.sectionNote}>
-              Twelve general marks, or search above for one of the drawn foods.
-            </Text>
-          }
-          renderItem={({ item }) => {
-            const ref = glyphRef(item.key);
-            const on = value === ref || (isGlyphRef(value) && refValue(value) === item.key);
-            return (
-              <TouchableOpacity
-                style={[s.cell, on && s.cellOn]}
-                activeOpacity={0.7}
-                onPress={() => onPick(ref)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: on }}
-                accessibilityLabel={item.label}
-              >
-                <View style={s.glyphTile}>
-                  <MaterialCommunityIcons name={item.key} size={28} color={COLORS.accent} />
-                </View>
-                <Text style={s.cellText} numberOfLines={2}>
-                  {item.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      )}
+      </View>
+    );
+  }
+
+  return (
+    <View style={s.wrap}>
+      <BackBar label="Back to the food form" onPress={onCancel} />
+      <Text style={s.heading}>Choose a picture</Text>
+
+      <FlatList
+        data={CUSTOM_GLYPHS}
+        numColumns={COLUMNS}
+        keyExtractor={(item) => item.key}
+        contentContainerStyle={s.grid}
+        keyboardShouldPersistTaps="handled"
+        renderItem={({ item }) => {
+          const ref = glyphRef(item.key);
+          const on = value === ref || (isGlyphRef(value) && refValue(value) === item.key);
+          return (
+            <Tile on={on} label={item.label} onPress={() => onPick(ref)}>
+              <View style={s.glyphTile}>
+                <MaterialCommunityIcons name={item.key} size={28} color={COLORS.accent} />
+              </View>
+            </Tile>
+          );
+        }}
+        ListFooterComponent={
+          <TouchableOpacity
+            style={s.browseCard}
+            activeOpacity={0.8}
+            onPress={() => setBrowsing(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Use our food icons"
+          >
+            <Image source={getCategoryIcon('all')} style={s.browseArt} resizeMode="contain" />
+            <View style={s.browseText}>
+              <Text style={s.browseTitle}>Use our food icons</Text>
+              <Text style={s.browseSub}>Search every food picture in the app</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        }
+      />
     </View>
   );
 }
@@ -141,7 +181,6 @@ const s = StyleSheet.create({
     ...SHADOW.row,
   },
   search: { flex: 1, fontSize: 15.5, color: COLORS.text, padding: 0 },
-  sectionNote: { fontSize: 13, color: COLORS.textMuted, marginBottom: 10, lineHeight: 18 },
   grid: { paddingBottom: 30 },
   cell: {
     flex: 1 / COLUMNS,
@@ -163,5 +202,24 @@ const s = StyleSheet.create({
     justifyContent: 'center',
   },
   cellText: { fontSize: 10.5, fontWeight: '700', color: COLORS.textSoft, textAlign: 'center', marginTop: 5, lineHeight: 13 },
+
+  // The way through to the 1,737. Carries the same All artwork the
+  // category strip uses, so it reads as "the app's own food pictures"
+  // rather than as a thirteenth glyph.
+  browseCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.row,
+    padding: 12,
+    marginTop: 10,
+    ...SHADOW.row,
+  },
+  browseArt: { width: 52, height: 52, borderRadius: RADIUS.tile, backgroundColor: COLORS.card },
+  browseText: { flex: 1 },
+  browseTitle: { fontSize: 16, fontWeight: '800', color: COLORS.text },
+  browseSub: { fontSize: 12.5, color: COLORS.textMuted, marginTop: 3 },
+
   empty: { fontSize: 14.5, color: COLORS.textMuted, textAlign: 'center', marginTop: 24, lineHeight: 20 },
 });

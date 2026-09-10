@@ -463,7 +463,9 @@ const customFoodPayload = (food) => ({
   protein: Number(food.protein),
   carbs: Number(food.carbs),
   fat: Number(food.fat),
-  fast_food: !!food.fastFood,
+  // Always false since v0.0.97 -- nothing in the app sets it, and writing
+  // it explicitly clears any row created by v0.0.95 with it true.
+  fast_food: false,
 });
 
 export async function addCustomFood(userId, food) {
