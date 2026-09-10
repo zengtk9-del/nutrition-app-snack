@@ -20,6 +20,7 @@
 // than saved).
 
 import { customFoodToFood, customFoodId, isCustomFoodId, CUSTOM_ID_PREFIX } from './customFoods';
+import { makeEntryFromFood } from './nutrition';
 
 // Damon's number. Enforced here, in the UI, and in the table's own check
 // constraint -- the publishable key is in a public repo, so the UI is not
@@ -43,6 +44,17 @@ export const isComboId = (id) => typeof id === 'string' && id.startsWith(COMBO_I
 // A favourite's `foodId` is what the score resolves for flagging, so it
 // has to survive onto the entry -- which is why `food.id` below is the
 // favourite's foodId and not the favourite's own id.
+
+// What one item contributes, worked out by makeEntryFromFood -- the same
+// function that will build the real entry when the combo is logged.
+// Deliberately not a second copy of the same arithmetic: a preview that
+// computes its own totals is a preview that can disagree with the thing
+// it is previewing.
+function contributionOf(food, amount) {
+  const e = makeEntryFromFood(food, amount);
+  return { calories: e.calories, protein: e.protein, carbs: e.carbs, fat: e.fat };
+}
+
 export function pickableFoods(favorites = [], customFoods = []) {
   const fromFavorites = favorites.map((f) => {
     const isWeight = f.servingType === 'weight';
@@ -53,8 +65,7 @@ export function pickableFoods(favorites = [], customFoods = []) {
       name: f.name,
       foodId: f.foodId,
       amount: isWeight ? f.grams : 1,
-      subtitle: isWeight ? `${f.grams}g · ${Math.round(f.caloriesPer100g * (f.grams / 100))} kcal` : `${f.servingLabel} · ${Math.round(f.calories)} kcal`,
-      calories: isWeight ? Math.round(f.caloriesPer100g * (f.grams / 100)) : Math.round(f.calories),
+      amountLabel: isWeight ? `${f.grams}g` : f.servingLabel,
       food: isWeight
         ? {
             id: f.foodId,
@@ -82,7 +93,6 @@ export function pickableFoods(favorites = [], customFoods = []) {
     const food = customFoodToFood(row);
     const isWeight = food.servingType === 'weight';
     const amount = isWeight ? food.typicalGrams : 1;
-    const kcal = isWeight ? Math.round((food.caloriesPer100g * amount) / 100) : Math.round(food.calories);
     return {
       key: `custom:${row.id}`,
       source: 'custom',
@@ -91,13 +101,32 @@ export function pickableFoods(favorites = [], customFoods = []) {
       foodId: customFoodId(row),
       icon: row.icon,
       amount,
-      subtitle: isWeight ? `${Math.round(amount)}g · ${kcal} kcal` : `1 serving · ${kcal} kcal`,
-      calories: kcal,
+      amountLabel: isWeight ? `${Math.round(amount)}g` : '1 serving',
       food,
     };
   });
 
-  return [...fromFavorites, ...fromCustom];
+  // One pass at the end rather than twice above: every option gets its
+  // macros the same way, whichever list it came from.
+  return [...fromFavorites, ...fromCustom].map((o) => {
+    const c = contributionOf(o.food, o.amount);
+    return { ...o, ...c, subtitle: `${o.amountLabel} · ${c.calories} kcal` };
+  });
+}
+
+// What a whole combo comes to. Sums the same per-item contributions, so
+// the block under the Add button and the rows above it always agree.
+export function comboTotals(parts = []) {
+  const round1 = (n) => Math.round(n * 10) / 10;
+  return parts.reduce(
+    (t, p) => ({
+      calories: t.calories + (p.calories || 0),
+      protein: round1(t.protein + (p.protein || 0)),
+      carbs: round1(t.carbs + (p.carbs || 0)),
+      fat: round1(t.fat + (p.fat || 0)),
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
 }
 
 // Turn a saved combo's references back into the things they point at.

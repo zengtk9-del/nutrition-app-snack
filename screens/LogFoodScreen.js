@@ -5948,24 +5948,25 @@ export default function LogFoodScreen({
           under Create New Food in My Own Food. A combo is built from both
           lists, so it can be started from either.
 
-          Outlined rather than filled, because in My Own Food it sits
-          directly under a filled blue button and two solid primaries
-          stacked would make you read both to find the one you want -- the
-          same reasoning that keeps the favourites card's secondary
-          action amber. */}
+          Damon's call in v0.2.1: the same button as Create New Food,
+          not a quieter outlined one. My reasoning for the outline was
+          that two solid primaries stacked make you read both to find the
+          one you want -- but they are not competing for the same job.
+          They are two ways to add something, both wanted equally often,
+          and demoting one implied a hierarchy that is not there. */}
       {(category === 'favorites' || category === 'custom') &&
       listMode !== 'customForm' &&
       listMode !== 'comboForm' &&
       listMode !== 'favoriteCard' ? (
         <TouchableOpacity
-          style={styles.createComboBtn}
+          style={[styles.createFoodBtn, styles.createComboBtn]}
           activeOpacity={0.8}
           onPress={() => setComboFormFor(true)}
           accessibilityRole="button"
           accessibilityLabel="Create a combo"
         >
-          <MaterialCommunityIcons name="playlist-plus" size={19} color={COLORS.accent} />
-          <Text style={styles.createComboText}>Create Combo</Text>
+          <MaterialCommunityIcons name="playlist-plus" size={19} color="#fff" />
+          <Text style={styles.createFoodText}>Create Combo</Text>
         </TouchableOpacity>
       ) : null}
 
@@ -6229,19 +6230,10 @@ const styles = StyleSheet.create({
   },
   comboMoreText: { fontSize: 13, fontWeight: '800', color: COLORS.textSoft },
   favQuickAddBtnOff: { backgroundColor: '#b9c6d8' },
-  createComboBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    minHeight: 46,
-    borderRadius: 13,
-    borderWidth: 1.5,
-    borderColor: COLORS.accent,
-    backgroundColor: COLORS.caloriesSoft,
-    marginBottom: SPACE.rowGap,
-  },
-  createComboText: { color: COLORS.accent, fontWeight: '800', fontSize: 15 },
+  // Everything about this button is createFoodBtn's -- it is applied on
+  // top of it, not instead of it, so the two can never drift apart. All
+  // that is left here is the gap between them.
+  createComboBtn: { marginTop: SPACE.rowGap },
   createFoodBtn: {
     flexDirection: 'row',
     alignItems: 'center',

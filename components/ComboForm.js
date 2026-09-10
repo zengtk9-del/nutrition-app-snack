@@ -11,11 +11,13 @@
 // checkboxes and no multi-select, because a combo is an ordered thing you
 // are assembling rather than a set you are filtering.
 //
-// TWO ACROSS, WRAPPING. "Listed horizontally" with a limit of twenty
-// cannot be one row, so it is a two-column grid: the first two cards sit
-// side by side exactly as described, and the third starts a new row rather
-// than scrolling sideways off the screen. A horizontal scroller would hide
-// most of a full combo behind a gesture.
+// ONE PER ROW (v0.2.1). The first version read "2 cards listed
+// horizontally" as a two-column grid. Damon looked at it and asked for a
+// vertical list of flat, full-width rows instead, which is right: two
+// columns spends horizontal room on whitespace and vertical room on tall
+// cards, and a twenty-item combo is a LIST. The same four things are on
+// each row -- picture, name, how much, calories -- just laid along it
+// rather than stacked down it, so ten items fit where four did.
 //
 // AN EMPTY CARD IS NOT AN ERROR. You can add a card and leave it blank --
 // pressing Add twice by accident should not trap you. Blanks are dropped
@@ -25,10 +27,19 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import FoodIcon from './FoodIcon';
-import { pickableFoods, validateCombo, MAX_COMBO_ITEMS, INITIAL_COMBO_CARDS } from '../utils/combos';
+import { pickableFoods, comboTotals, validateCombo, MAX_COMBO_ITEMS, INITIAL_COMBO_CARDS } from '../utils/combos';
 import { iconKeyForFoodId } from '../utils/foodIcon';
 import foods from '../data/foods';
-import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
+import { COLORS, LOG_CHIP, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
+
+// The four totals chips, in the order every other card on the Log Food
+// tab shows them, and from the same palette.
+const TOTAL_CHIPS = [
+  { key: 'calories', label: 'KCAL', suffix: '', ...LOG_CHIP.calories },
+  { key: 'protein', label: 'P', suffix: 'g', ...LOG_CHIP.protein },
+  { key: 'carbs', label: 'C', suffix: 'g', ...LOG_CHIP.carbs },
+  { key: 'fat', label: 'F', suffix: 'g', ...LOG_CHIP.fat },
+];
 
 // The picture for a pickable row, whichever list it came from. A custom
 // food carries its own icon reference; a favourite has to be resolved
@@ -118,7 +129,7 @@ export default function ComboForm({ existing, favorites, customFoods, onCancel, 
   const [busy, setBusy] = useState(false);
 
   const filled = slots.filter(Boolean);
-  const totalKcal = filled.reduce((sum, p) => sum + (p.calories || 0), 0);
+  const totals = comboTotals(filled);
   const atLimit = slots.length >= MAX_COMBO_ITEMS;
 
   if (pickingFor != null) {
@@ -171,11 +182,10 @@ export default function ComboForm({ existing, favorites, customFoods, onCancel, 
           <Text style={s.label}>Foods</Text>
           <Text style={s.count}>
             {filled.length} of {MAX_COMBO_ITEMS}
-            {totalKcal > 0 ? ` · ${totalKcal} kcal` : ''}
           </Text>
         </View>
 
-        <View style={s.grid}>
+        <View style={s.list}>
           {slots.map((slot, i) => (
             <TouchableOpacity
               key={i}
@@ -187,30 +197,33 @@ export default function ComboForm({ existing, favorites, customFoods, onCancel, 
             >
               {slot ? (
                 <>
-                  {/* Clearing a card is its own target, small and in the
-                      corner: tapping the card itself already means
-                      "change this", and one gesture cannot mean both. */}
+                  <FoodIcon iconKey={iconFor(slot)} size={44} />
+                  <View style={s.cardBody}>
+                    <Text style={s.cardName} numberOfLines={1}>
+                      {slot.name}
+                    </Text>
+                    <Text style={s.cardSub} numberOfLines={1}>
+                      {slot.amountLabel}
+                    </Text>
+                  </View>
+                  <Text style={s.cardKcal}>{slot.calories} kcal</Text>
+                  {/* Clearing a row is its own target: tapping the row
+                      already means "change this", and one gesture cannot
+                      mean both. */}
                   <TouchableOpacity
                     style={s.clearBtn}
                     onPress={() => setSlots((prev) => prev.map((sl, j) => (j === i ? null : sl)))}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     accessibilityRole="button"
                     accessibilityLabel={`Remove ${slot.name} from this combo`}
                   >
-                    <MaterialCommunityIcons name="close" size={14} color={COLORS.textMuted} />
+                    <MaterialCommunityIcons name="close" size={15} color={COLORS.textMuted} />
                   </TouchableOpacity>
-                  <FoodIcon iconKey={iconFor(slot)} size={56} />
-                  <Text style={s.cardName} numberOfLines={2}>
-                    {slot.name}
-                  </Text>
-                  <Text style={s.cardSub} numberOfLines={1}>
-                    {slot.subtitle}
-                  </Text>
                 </>
               ) : (
                 <>
                   <View style={s.emptyMark}>
-                    <MaterialCommunityIcons name="plus" size={24} color={COLORS.accent} />
+                    <MaterialCommunityIcons name="plus" size={20} color={COLORS.accent} />
                   </View>
                   <Text style={s.cardEmptyText}>Choose a food</Text>
                 </>
@@ -232,6 +245,32 @@ export default function ComboForm({ existing, favorites, customFoods, onCancel, 
             {atLimit ? `That's all ${MAX_COMBO_ITEMS}` : 'Add'}
           </Text>
         </TouchableOpacity>
+
+        {/* What the whole combo comes to, under Add and above the
+            buttons (v0.2.1). Same four chips the food cards use, same
+            colours, so a total reads like the numbers it is a total of.
+            The figures come from comboTotals, which sums the same
+            per-item contributions makeEntryFromFood will produce at log
+            time -- this cannot quietly disagree with what gets logged. */}
+        {filled.length > 0 ? (
+          <View style={s.totals}>
+            <Text style={s.totalsTitle}>Combo total</Text>
+            <View style={s.totalsRow}>
+              {TOTAL_CHIPS.map((c) => (
+                <View key={c.key} style={[s.totalChip, { backgroundColor: c.tint }]}>
+                  <View style={s.totalChipHead}>
+                    <View style={[s.totalDot, { backgroundColor: c.dot }]} />
+                    <Text style={s.totalChipLabel}>{c.label}</Text>
+                  </View>
+                  <Text style={s.totalChipValue} numberOfLines={1} adjustsFontSizeToFit>
+                    {Math.round(totals[c.key] * 10) / 10}
+                    {c.suffix}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
 
         {error ? <Text style={s.error}>{error}</Text> : null}
 
@@ -276,23 +315,23 @@ const s = StyleSheet.create({
   foodsHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
   count: { fontSize: 13, fontWeight: '700', color: COLORS.textMuted, marginBottom: 7 },
 
-  // Two across, wrapping. `flexBasis: 47%` plus a gap rather than a fixed
-  // width, so the pair fills the row at any phone size.
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  // One per row, full width, flat (v0.2.1). A fixed 64pt height rather
+  // than padding around content, so twenty of them stack predictably and
+  // an empty row is exactly as tall as a filled one -- no reflow when you
+  // pick something.
+  list: { gap: 8 },
   card: {
-    flexBasis: '47%',
-    flexGrow: 1,
-    minHeight: 132,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    gap: 12,
+    height: 64,
+    paddingHorizontal: 12,
     borderRadius: RADIUS.row,
     backgroundColor: COLORS.card,
     ...SHADOW.row,
   },
   // A dashed outline says "there is meant to be something here" in a way a
-  // plain empty card does not -- the same language FoodIcon's placeholder
+  // plain empty row does not -- the same language FoodIcon's placeholder
   // already uses.
   cardEmpty: {
     borderWidth: 1.5,
@@ -303,28 +342,47 @@ const s = StyleSheet.create({
     elevation: 0,
   },
   emptyMark: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#e2ecfb',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardEmptyText: { fontSize: 13, fontWeight: '700', color: COLORS.accent, marginTop: 9 },
-  cardName: { fontSize: 14, fontWeight: '800', color: COLORS.text, textAlign: 'center', marginTop: 8, lineHeight: 18 },
-  cardSub: { fontSize: 12, fontWeight: '600', color: COLORS.textMuted, marginTop: 3 },
+  cardEmptyText: { fontSize: 14.5, fontWeight: '700', color: COLORS.accent },
+  cardBody: { flex: 1, minWidth: 0 },
+  cardName: { fontSize: 15.5, fontWeight: '800', color: COLORS.text },
+  cardSub: { fontSize: 12.5, fontWeight: '600', color: COLORS.textMuted, marginTop: 2 },
+  // Right-aligned and its own column, so the calorie figures line up down
+  // the list instead of starting wherever each name happens to end.
+  cardKcal: { fontSize: 13.5, fontWeight: '800', color: COLORS.textSoft },
   clearBtn: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: '#eef1f6',
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 2,
   },
+
+  // The whole combo's macros, under Add.
+  totals: {
+    marginTop: 16,
+    padding: 12,
+    borderRadius: RADIUS.row,
+    backgroundColor: COLORS.card,
+    ...SHADOW.row,
+  },
+  totalsTitle: { ...TYPE.eyebrow, color: COLORS.textSoft, marginBottom: 9 },
+  totalsRow: { flexDirection: 'row', gap: 6 },
+  // Same four-equal-chips arithmetic as the food cards: flex 1 with
+  // minWidth 0 is what lets a four-digit calorie count shrink its own
+  // chip rather than pushing the row wider than the card.
+  totalChip: { flex: 1, minWidth: 0, borderRadius: 11, paddingHorizontal: 7, paddingVertical: 7 },
+  totalChipHead: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  totalDot: { width: 6, height: 6, borderRadius: 3 },
+  totalChipLabel: { fontSize: 10, fontWeight: '800', color: COLORS.textSoft, letterSpacing: 0.4 },
+  totalChipValue: { fontSize: 16, fontWeight: '800', color: COLORS.text, marginTop: 3 },
 
   addBtn: {
     flexDirection: 'row',
