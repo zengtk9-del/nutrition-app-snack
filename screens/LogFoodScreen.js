@@ -336,12 +336,31 @@ function DrillDownRow({ label, onPress, iconKey }) {
   );
 }
 
-// The "‹ Back to X" row shown above whichever drill-down list is currently
-// on screen — always the first row, via FlatList's ListHeaderComponent.
+// The way out of a drill-down. Two things changed in v0.0.93.
+//
+// It says "Back" now, not "Back to Beef Cuts". The destination was already
+// written above it in a breadcrumb trail, and both are gone: knowing which
+// list you are about to land on is not worth a line of chrome on every
+// screen, and the list itself says where you are the moment you arrive.
+//
+// And it no longer scrolls away. It used to be the FlatList's
+// ListHeaderComponent, so on a long Cuts list the only way out went off
+// the top of the screen and you had to scroll back up to find it. It now
+// sits above the list instead of inside it.
+//
+// `label` survives as the accessibility label, since "Back" alone tells a
+// screen reader nothing about where it goes.
 function BackRow({ label, onPress }) {
   return (
-    <TouchableOpacity style={styles.backRow} activeOpacity={0.6} onPress={onPress}>
-      <Text style={styles.backRowText}>‹ {label}</Text>
+    <TouchableOpacity
+      style={styles.backRow}
+      activeOpacity={0.6}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label || 'Back'}
+    >
+      <MaterialCommunityIcons name="chevron-left" size={20} color={COLORS.accent} />
+      <Text style={styles.backRowText}>Back</Text>
     </TouchableOpacity>
   );
 }
@@ -4218,7 +4237,15 @@ export default function LogFoodScreen({
   const [expandedCardKey, setExpandedCardKey] = useState(null);
   const [fatOilType, setFatOilType] = useState(null);
   const [fatOilItem, setFatOilItem] = useState(null);
-  useEffect(() => {
+  // Everything that says "you are somewhere inside a category", cleared
+  // in one place (v0.0.93).
+  //
+  // This used to live only inside the effect below, which fires when
+  // `category` CHANGES -- so tapping the chip you were already on did
+  // nothing at all. Tapping Fruit while three levels deep in Fruit is a
+  // clear "take me back", so the chip calls this directly now, and the
+  // effect calls it too for a real category switch.
+  const resetDrillDown = () => {
     setMeatSubcategory(null);
     setMeatCut(null);
     setPoultryType(null);
@@ -4245,7 +4272,9 @@ export default function LogFoodScreen({
     setSimpleType(null);
     setSimpleItem(null);
     setExpandedCardKey(null);
-  }, [category]);
+  };
+  useEffect(resetDrillDown, [category]);
+
   useEffect(() => {
     setLegumeItem(null);
   }, [legumeType]);
@@ -4836,6 +4865,48 @@ export default function LogFoodScreen({
   // One FlatList, whichever of the four things is on screen — swapping
   // its data/renderItem/header rather than four separately-rendered lists
   // keeps the "no results" empty state and scrolling behavior consistent.
+  // --- Coming back to a list, where you left it ------------------------
+  //
+  // Going back used to drop you at the top of the list you came from, so
+  // after opening the fortieth fruit you had to scroll all the way down
+  // again to reach the forty-first. The list's scroll position is now
+  // remembered per list and restored on the way back, which lands you on
+  // the row you opened.
+  //
+  // Keyed by list mode AND category, because several categories share a
+  // mode name and their lists have nothing to do with each other.
+  //
+  // Kept in a ref, not state: it changes on every scroll frame and must
+  // never cause a render.
+  // Tapping a chip you are already on is a "take me out of here", not a
+  // no-op -- see resetDrillDown. Tapping a different one just switches,
+  // and the effect on `category` clears the old drill-down for us.
+  const handleCategoryPress = (key) => {
+    if (category === key) resetDrillDown();
+    else setCategory(key);
+  };
+
+  const listRef = useRef(null);
+  const scrollMemory = useRef({});
+  const listKey = `${category}|${listMode}`;
+  const handleListScroll = (e) => {
+    scrollMemory.current[listKeyRef.current] = e.nativeEvent.contentOffset.y;
+  };
+  // The scroll handler fires against whichever list is on screen, which is
+  // not necessarily the one this render is building -- hence a ref rather
+  // than closing over listKey.
+  const listKeyRef = useRef(listKey);
+  useEffect(() => {
+    listKeyRef.current = listKey;
+    const y = scrollMemory.current[listKey] || 0;
+    // Next frame, not this one: the new list has not been laid out yet, and
+    // scrolling a list shorter than the offset just clamps to the bottom.
+    const id = requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: y, animated: false });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [listKey]);
+
   let listData;
   let listKeyExtractor;
   let listRenderItem;
@@ -5409,13 +5480,13 @@ export default function LogFoodScreen({
           label="Favorites"
           glyph="star"
           active={category === 'favorites'}
-          onPress={() => setCategory('favorites')}
+          onPress={() => handleCategoryPress('favorites')}
         />
         <CategoryTile
           label="All"
           iconKey="all"
           active={category === 'all'}
-          onPress={() => setCategory('all')}
+          onPress={() => handleCategoryPress('all')}
         />
         {/* Order comes from the user's diet, not data/foods.js — see
             data/dietOrder.js. All 18 are always present; only their order
@@ -5427,105 +5498,23 @@ export default function LogFoodScreen({
             label={CATEGORIES.find((c) => c.key === key)?.label || key}
             iconKey={key}
             active={category === key}
-            onPress={() => setCategory(key)}
+            onPress={() => handleCategoryPress(key)}
           />
         ))}
       </ScrollView>
 
-      {listMode === 'meatCuts' ||
-      listMode === 'meatFoods' ||
-      listMode === 'groundMeatCard' ||
-      listMode === 'trimTierCard' ||
-      listMode === 'meatCutCard' ? (
-        <Text style={styles.breadcrumb}>
-          Red Meat › {subcategoryLabel}
-          {listMode !== 'meatCuts' ? ` › ${cutLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'poultryCuts' || listMode === 'poultryCard' ? (
-        <Text style={styles.breadcrumb}>
-          Poultry › {poultryTypeLabel}
-          {listMode === 'poultryCard' ? ` › ${poultryCutLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'seafoodCuts' || listMode === 'seafoodCard' ? (
-        <Text style={styles.breadcrumb}>
-          Seafood › {seafoodSubcategoryLabel}
-          {listMode === 'seafoodCard' ? ` › ${seafoodCutLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'fruitCard' ? (
-        <Text style={styles.breadcrumb}>
-          Fruit › {fruitTypeLabel}
-          {''}
-        </Text>
-      ) : null}
-      {listMode === 'eggForms' || listMode === 'eggCard' ? (
-        <Text style={styles.breadcrumb}>
-          Eggs › {eggTypeLabel}
-          {listMode === 'eggCard' ? ` › ${eggFormLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'dairyFoods' ||
-      listMode === 'milkCard' ||
-      listMode === 'cheeseTypes' ||
-      listMode === 'creamGroups' ||
-      listMode === 'yogurtCard' ||
-      listMode === 'butterCard' ||
-      listMode === 'cheeseCard' ||
-      listMode === 'creamCard' ||
-      listMode === 'dairyItemCard' ? (
-        <Text style={styles.breadcrumb}>
-          Dairy › {dairyTypeLabel}
-          {listMode === 'cheeseCard' ? ` › ${cheeseTypeLabel}` : ''}
-          {listMode === 'creamCard' ? ` › ${creamGroupLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'grainTypes' || listMode === 'grainItems' || listMode === 'grainCard' ? (
-        <Text style={styles.breadcrumb}>
-          Grains{grainType ? ` › ${grainTypeLabel}` : ''}
-          {listMode === 'grainCard' ? ` › ${grainItemLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'simpleTypes' || listMode === 'simpleItems' || listMode === 'simpleCard' ? (
-        <Text style={styles.breadcrumb}>
-          {simpleCfg?.label}
-          {effectiveSimpleType && !simpleOnlyType ? ` › ${simpleTypeLabel}` : ''}
-          {listMode === 'simpleCard' ? ` › ${simpleItemLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'fatOilTypes' ||
-      listMode === 'fatOilItems' ||
-      listMode === 'fatOilCard' ||
-      listMode === 'fatOilButterCard' ? (
-        <Text style={styles.breadcrumb}>
-          Fats &amp; Oils{fatOilType ? ` › ${fatOilTypeLabel}` : ''}
-          {listMode === 'fatOilCard' ? ` › ${fatOilItemLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'nutTypes' || listMode === 'nutItems' || listMode === 'nutCard' ? (
-        <Text style={styles.breadcrumb}>
-          Nuts &amp; Seeds{nutType ? ` › ${nutTypeLabel}` : ''}
-          {listMode === 'nutCard' ? ` › ${nutItemLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'legumeTypes' || listMode === 'legumeItems' || listMode === 'legumeCard' ? (
-        <Text style={styles.breadcrumb}>
-          Legumes{legumeType ? ` › ${legumeTypeLabel}` : ''}
-          {listMode === 'legumeCard' && legumeTypeMeta?.shape !== 'card' ? ` › ${legumeItemLabel}` : ''}
-        </Text>
-      ) : null}
-      {listMode === 'vegetableCard' ? (
-        <Text style={styles.breadcrumb}>Vegetables › {vegetableTypeLabel}</Text>
-      ) : null}
+
+      {listHeader}
 
       <FlatList
+        ref={listRef}
         data={listData}
         keyExtractor={listKeyExtractor}
         contentContainerStyle={{ paddingBottom: 40 }}
-        ListHeaderComponent={listHeader}
         ListEmptyComponent={<Text style={styles.emptyText}>{emptyText}</Text>}
         renderItem={listRenderItem}
+        onScroll={handleListScroll}
+        scrollEventThrottle={64}
       />
 
       {toast ? (
@@ -5654,11 +5643,6 @@ const styles = StyleSheet.create({
     height: 28,
   },
   catTileTextActive: { color: '#fff' },
-  // Shown above the list only while inside the Red Meat picker (Cuts step
-  // or final Foods step) — a plain-text trail so it's always clear which
-  // Type/Cut you're currently inside of, since the category chip row above
-  // only ever shows "Red Meat", not which branch of it you've drilled into.
-  breadcrumb: { fontSize: 13, color: '#888', marginBottom: 8, marginTop: -4 },
   // The card itself grew from a single horizontal row into two stacked
   // rows — the icon/name/info up top, favorite + add actions in their own
   // row below — specifically to give the new favorite button real room
@@ -5753,8 +5737,18 @@ const styles = StyleSheet.create({
   // it. That is the point of the slot: the picture should be the thing you
   // scan, not a stamp next to the words.
   pickerRowChevron: { fontSize: 20, color: '#bbb', fontWeight: '600' },
-  backRow: { paddingVertical: 10, marginBottom: 4 },
-  backRowText: { fontSize: 15, fontWeight: '600', color: '#4f8ef7' },
+  // Pinned above the list, so it needs to read as its own bar rather than
+  // as the list's first row.
+  backRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 2,
+    paddingVertical: 8,
+    paddingRight: 14,
+    marginBottom: 6,
+  },
+  backRowText: { fontSize: 16, fontWeight: '700', color: COLORS.accent },
   // The Poultry toggle card (PoultryCard, above) — a taller single card
   // rather than a list of rows, since there's only ever one food shown at
   // this step (whichever one the toggles currently resolve to).
