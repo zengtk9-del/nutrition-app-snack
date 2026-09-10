@@ -382,6 +382,10 @@ function rowToEntry(row) {
     carbs: row.carbs,
     fat: row.fat,
     loggedAt: row.logged_at,
+    // v0.2.0. Null for anything logged on its own, which is almost
+    // everything; set for the entries that came from one tap on a combo.
+    comboGroup: row.combo_group ?? null,
+    comboName: row.combo_name ?? null,
   };
 }
 
@@ -389,7 +393,7 @@ function rowToEntry(row) {
 export async function fetchEntries(userId) {
   const { data, error } = await supabase
     .from('entries')
-    .select('id, food_id, food_name, servings, serving_label, calories, protein, carbs, fat, logged_at')
+    .select('id, food_id, food_name, servings, serving_label, calories, protein, carbs, fat, logged_at, combo_group, combo_name')
     .eq('user_id', userId)
     .order('logged_at', { ascending: false });
 
@@ -414,7 +418,7 @@ export async function insertEntry(userId, entry) {
       fat: entry.fat,
       logged_at: entry.loggedAt,
     })
-    .select('id, food_id, food_name, servings, serving_label, calories, protein, carbs, fat, logged_at')
+    .select('id, food_id, food_name, servings, serving_label, calories, protein, carbs, fat, logged_at, combo_group, combo_name')
     .single();
 
   if (error) throw error;
@@ -510,5 +514,105 @@ export async function removeCustomFood(id) {
     .from('custom_foods')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id);
+  if (error) throw error;
+}
+
+// --- Combos (v0.2.0) -----------------------------------------------------
+//
+// A named group of up to twenty saved foods, logged in one tap. The row
+// stores REFERENCES only -- which favourite, which custom food -- so a
+// combo follows its members when they change. See utils/combos.js and
+// add-combos-table.sql for why that is right for a shortcut and wrong for
+// history, and how the two are kept apart.
+
+const COMBO_COLUMNS = 'id, name, items, created_at';
+
+export async function fetchCombos(userId) {
+  const { data, error } = await supabase
+    .from('combos')
+    .select(COMBO_COLUMNS)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map((row) => ({ ...row, items: row.items || [] }));
+}
+
+const comboPayload = (combo) => ({
+  name: String(combo.name).trim(),
+  items: (combo.items || []).slice(0, 20),
+});
+
+export async function addCombo(userId, combo) {
+  const { data, error } = await supabase
+    .from('combos')
+    .insert({ user_id: userId, ...comboPayload(combo) })
+    .select(COMBO_COLUMNS)
+    .single();
+  if (error) throw error;
+  return { ...data, items: data.items || [] };
+}
+
+export async function updateCombo(id, combo) {
+  const { data, error } = await supabase
+    .from('combos')
+    .update({ ...comboPayload(combo), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select(COMBO_COLUMNS)
+    .single();
+  if (error) throw error;
+  return { ...data, items: data.items || [] };
+}
+
+// Soft, same as custom_foods: entries logged from this combo carry their
+// own copies of everything, but a grouped Today row reads its name from
+// the entry rather than from here, so nothing breaks either way.
+export async function removeCombo(id) {
+  const { error } = await supabase
+    .from('combos')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// Logging a combo: one insert, many rows.
+//
+// Each food becomes a real entry with its own name, macros and food_id --
+// the score resolves food_id back to a category to decide what is junk
+// (utils/score.js), and a single merged row would have no food behind it
+// and would therefore score as clean eating whatever was inside it.
+//
+// What makes Damon's single line on Today possible is `combo_group`: the
+// entries from ONE tap share one, and the Today list collapses a shared
+// group into one row. Per log, not per combo, so the same combo logged
+// twice in a day is two rows rather than one doubled one.
+export async function insertComboEntries(userId, entries, { comboGroup, comboName }) {
+  const { data, error } = await supabase
+    .from('entries')
+    .insert(
+      entries.map((entry) => ({
+        user_id: userId,
+        food_id: entry.foodId ?? null,
+        food_name: entry.name,
+        servings: entry.servings,
+        serving_label: entry.servingLabel ?? null,
+        calories: entry.calories,
+        protein: entry.protein,
+        carbs: entry.carbs,
+        fat: entry.fat,
+        logged_at: entry.loggedAt,
+        combo_group: comboGroup,
+        combo_name: comboName,
+      }))
+    )
+    .select('id, food_id, food_name, servings, serving_label, calories, protein, carbs, fat, logged_at, combo_group, combo_name');
+  if (error) throw error;
+  return (data || []).map(rowToEntry);
+}
+
+// Removing a combo's row on Today removes every entry that came from that
+// one tap, which is what a single row implies.
+export async function deleteEntriesByComboGroup(comboGroup) {
+  const { error } = await supabase.from('entries').delete().eq('combo_group', comboGroup);
   if (error) throw error;
 }

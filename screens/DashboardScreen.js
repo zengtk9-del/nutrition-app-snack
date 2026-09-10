@@ -139,8 +139,51 @@ function MacroRow({ label, unit, color, tint, macroKey, value, goal, target }) {
   );
 }
 
-export default function DashboardScreen({ entries, goals, onDeleteEntry, customFoods = [] }) {
+// Newest first, with the entries from one tap on a combo collapsed into
+// a single row (v0.2.0).
+//
+// Damon's call: a combo should read as one line, not six. It is done here
+// rather than in the database because the score decides what is junk by
+// resolving each entry's food_id back to a category -- a genuinely merged
+// row would have no food behind it, so every combo would score as clean
+// eating and a combo would become the place to hide a takeaway. Keeping
+// real entries underneath costs nothing visible and keeps that honest.
+//
+// A group keeps the position of its newest member, so a combo sits where
+// it was logged rather than jumping to wherever its first item landed.
+export function groupEntries(entries) {
+  const rows = [];
+  const seen = new Map();
+  for (const e of entries.slice().reverse()) {
+    if (!e.comboGroup) {
+      rows.push({ key: e.id, entry: e, combo: false });
+      continue;
+    }
+    const already = seen.get(e.comboGroup);
+    if (already) {
+      already.entries.push(e);
+      already.calories += e.calories || 0;
+      continue;
+    }
+    const row = {
+      key: e.comboGroup,
+      combo: true,
+      name: e.comboName || 'Combo',
+      entries: [e],
+      calories: e.calories || 0,
+    };
+    seen.set(e.comboGroup, row);
+    rows.push(row);
+  }
+  return rows;
+}
+
+export default function DashboardScreen({ entries, goals, onDeleteEntry, onDeleteComboGroup, customFoods = [] }) {
   const totals = sumEntries(entries);
+  // Grouped once, not once per read: the heading counts rows and the list
+  // renders them, and calling it twice would rebuild the whole thing for
+  // a number.
+  const rows = useMemo(() => groupEntries(entries), [entries]);
   // null on a day with nothing logged -- see utils/score.js. The chip simply
   // doesn't render then, rather than showing a zero nobody earned.
   // The scorer decides what is junk by resolving each entry back to a
@@ -207,7 +250,7 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry, customF
       </View>
 
       <View style={s.sectionRow}>
-        <Text style={s.sectionTitle}>Logged today ({entries.length})</Text>
+        <Text style={s.sectionTitle}>Logged today ({rows.length})</Text>
         {/* Reserved for the XP badge from the mockup. There is no points
             system in this app yet, and inventing a number to fill a badge
             would be worse than an empty corner -- so the slot exists, the
@@ -225,29 +268,56 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry, customF
           </Text>
         </View>
       ) : (
-        entries
-          .slice()
-          .reverse()
-          .map((e) => (
-            <View key={e.id} style={s.entryRow}>
+        rows.map((row) =>
+          row.combo ? (
+            /* A combo, as one line (v0.2.0). Underneath it is still one
+               real entry per food -- see utils/db.js's insertComboEntries
+               for why they are not merged into a single row in the
+               database. This is the merge, and it is a display one. */
+            <View key={row.key} style={s.entryRow}>
+              <View style={s.comboStack}>
+                {row.entries.slice(0, 3).map((e, i) => (
+                  <FoodIcon
+                    key={e.id}
+                    iconKey={iconKeyForFoodId(foods, e.foodId, customFoods)}
+                    size={FOOD_ICON_SIZE - i * 8}
+                    style={[s.comboStackIcon, { left: i * 9, top: i * 4, zIndex: 3 - i }]}
+                  />
+                ))}
+              </View>
+              <View style={s.entryBody}>
+                <Text style={s.entryName} numberOfLines={1}>
+                  {row.name}
+                </Text>
+                <Text style={s.entrySub}>
+                  {row.entries.length} items · {row.calories} kcal
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => onDeleteComboGroup(row.key)} style={s.removeBtn}>
+                <Text style={s.removeText}>Remove</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View key={row.key} style={s.entryRow}>
               <FoodIcon
-                iconKey={iconKeyForFoodId(foods, e.foodId, customFoods)}
+                iconKey={iconKeyForFoodId(foods, row.entry.foodId, customFoods)}
                 size={FOOD_ICON_SIZE}
                 style={s.entryIcon}
               />
               <View style={s.entryBody}>
                 <Text style={s.entryName} numberOfLines={1}>
-                  {e.name}
+                  {row.entry.name}
                 </Text>
                 <Text style={s.entrySub}>
-                  {e.servingLabel} · {e.calories} kcal
+                  {row.entry.servingLabel} · {row.entry.calories} kcal
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => onDeleteEntry(e.id)} style={s.removeBtn}>
+              <TouchableOpacity onPress={() => onDeleteEntry(row.entry.id)} style={s.removeBtn}>
                 <Text style={s.removeText}>Remove</Text>
               </TouchableOpacity>
             </View>
-          ))
+          )
+        )
       )}
 
       {/* A build marker so Damon can tell at a glance whether the code he
@@ -369,6 +439,10 @@ const s = StyleSheet.create({
   },
   // White, always. See this file's header -- the illustrations are opaque
   // JPEGs and a tint here draws a frame around every picture.
+  // Three pictures fanned out, so a combo row is recognisable as a combo
+  // before you read a word of it.
+  comboStack: { width: FOOD_ICON_SIZE + 18, height: FOOD_ICON_SIZE, marginRight: 12 },
+  comboStackIcon: { position: 'absolute', borderRadius: 12 },
   entryIcon: { marginRight: 14 },
   entryBody: { flex: 1 },
   entryName: { ...TYPE.entryName, color: COLORS.text },

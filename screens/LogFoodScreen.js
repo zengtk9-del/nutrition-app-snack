@@ -59,7 +59,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, LOG_CHIP, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
 import { ART_READY, MASCOT } from '../data/brandArt';
 import CustomFoodForm from '../components/CustomFoodForm';
+import ComboForm from '../components/ComboForm';
 import { customFoodToFood } from '../utils/customFoods';
+import { resolveCombo, comboSummary, MAX_COMBO_ITEMS } from '../utils/combos';
 
 // The four chips under a food's name. Order matters and is the same one
 // used on Today's bars and the Goals cards: calories first, then the three
@@ -3626,6 +3628,85 @@ function FoodCardFor({ rows, cardKey, pools, onAddFavorite, onAdd }) {
 
 
 
+// A saved combo, in whichever of the two tabs you are looking at (v0.2.0).
+//
+// Same shell as CustomFoodRow and FavoriteListItem -- these three are the
+// same kind of thing (something you saved, ready to log in one press) and
+// there is no reason for them to look like three different species. What
+// a combo has instead of one picture is a strip of them, because what it
+// contains IS its identity: "Breakfast" means nothing, four icons mean
+// eggs, toast, coffee and a banana.
+function ComboRow({ combo, parts, summary, onEdit, onAdd, onDelete }) {
+  // Five, then a count. A twenty-item combo would otherwise draw a wall of
+  // icons taller than the row it lives in.
+  const shown = parts.slice(0, 5);
+  const rest = parts.length - shown.length;
+
+  return (
+    <View style={styles.favoriteListItem}>
+      <TouchableOpacity
+        style={styles.favNameRow}
+        activeOpacity={0.6}
+        onPress={onEdit}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${combo.name}`}
+      >
+        <View style={styles.favChevron}>
+          <MaterialCommunityIcons name="pencil-outline" size={16} color={COLORS.accent} />
+        </View>
+        <Text style={styles.favName} numberOfLines={2}>
+          {combo.name}
+        </Text>
+      </TouchableOpacity>
+
+      <View style={styles.comboStrip}>
+        {shown.map((p, i) => (
+          <FoodIcon key={`${p.key}-${i}`} iconKey={comboIconOf(p)} size={44} style={styles.comboStripIcon} />
+        ))}
+        {rest > 0 ? (
+          <View style={styles.comboMore}>
+            <Text style={styles.comboMoreText}>+{rest}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <Text style={styles.favServing}>{summary}</Text>
+
+      <View style={styles.favActions}>
+        <TouchableOpacity
+          style={styles.favRemoveBtn}
+          activeOpacity={0.7}
+          onPress={onDelete}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete ${combo.name}`}
+        >
+          <MaterialCommunityIcons name="trash-can-outline" size={17} color={COLORS.destructive} />
+          <Text style={styles.favRemoveText} numberOfLines={1}>
+            Delete
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.favQuickAddBtn, parts.length === 0 && styles.favQuickAddBtnOff]}
+          activeOpacity={0.8}
+          disabled={parts.length === 0}
+          onPress={onAdd}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${combo.name} to today`}
+        >
+          <MaterialCommunityIcons name="plus" size={19} color="#fff" />
+          <Text style={styles.favQuickAddText} numberOfLines={1}>
+            Add to Today
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// A combo member's picture. A custom food carries its own reference; a
+// favourite has to be resolved through the food it was saved from.
+const comboIconOf = (p) => (p.source === 'custom' ? p.icon : iconKeyForFoodId(foods, p.foodId));
+
 // One food the user invented, in the My Own Food list (v0.1.0).
 //
 // This is the My Favorites row, deliberately: same 80pt tinted art tile,
@@ -4212,6 +4293,11 @@ export default function LogFoodScreen({
   onCreateCustomFood,
   onUpdateCustomFood,
   onDeleteCustomFood,
+  combos = [],
+  onCreateCombo,
+  onUpdateCombo,
+  onDeleteCombo,
+  onAddCombo,
   // Test-only, same reasoning as QuizScreen.js's initialAnswers/
   // initialStepIndex — lets the local render-test harness render straight
   // into the "My Favorites" filter without needing to simulate a real tap
@@ -4264,6 +4350,10 @@ export default function LogFoodScreen({
   // the render test harness open the create/edit form directly. `true`
   // means creating; a row id means editing that one.
   initialCustomFormFor = null,
+  // Test-only, same reasoning as the other initial* props above -- opens
+  // the combo builder directly. `true` means creating; a combo id means
+  // editing that one.
+  initialComboFormFor = null,
 }) {
   const [query, setQuery] = useState(initialQuery);
   // Log Food opens on Favorites (v0.0.75). The one exception is an account
@@ -4364,6 +4454,9 @@ export default function LogFoodScreen({
   // shows everything the card did and its two buttons do everything the
   // card's did -- so the tab is two states rather than three.
   const [customFormFor, setCustomFormFor] = useState(initialCustomFormFor);
+  // Combos (v0.2.0). One piece of state for both tabs, because the
+  // builder is the same screen wherever you opened it from.
+  const [comboFormFor, setComboFormFor] = useState(initialComboFormFor);
   const [fatOilType, setFatOilType] = useState(null);
   const [fatOilItem, setFatOilItem] = useState(null);
   // Everything that says "you are somewhere inside a category", cleared
@@ -4402,6 +4495,7 @@ export default function LogFoodScreen({
     setSimpleItem(null);
     setExpandedCardKey(null);
     setCustomFormFor(null);
+    setComboFormFor(null);
   };
   useEffect(resetDrillDown, [category]);
 
@@ -4837,7 +4931,11 @@ export default function LogFoodScreen({
   // card becomes the whole list, and the row it came from is gone until
   // you press Back.
   const listMode =
-    category === 'favorites'
+    // The combo builder takes the whole screen from either tab, so it is
+    // checked before the tab is.
+    comboFormFor
+      ? 'comboForm'
+      : category === 'favorites'
       ? expandedFavoriteId
         ? 'favoriteCard'
         : 'favorites'
@@ -5005,6 +5103,21 @@ export default function LogFoodScreen({
     setExpandedFavoriteId((prev) => (prev === id ? null : id));
   };
 
+  const confirmDeleteCombo = (combo) => {
+    if (!combo) return;
+    Alert.alert(`Delete ${combo.name}?`, 'The foods in it stay saved, and anything you already logged stays in your history.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          onDeleteCombo(combo.id);
+          setComboFormFor(null);
+        },
+      },
+    ]);
+  };
+
   // Deleting a food you made, asked the same way from both places that can
   // ask (v0.0.98). The card has a Delete button now, and the edit form has
   // had one since v0.0.95; having two copies of the wording and two copies
@@ -5080,19 +5193,72 @@ export default function LogFoodScreen({
     return () => cancelAnimationFrame(id);
   }, [listKey]);
 
+  // Combos, prepared once for whichever tab is asking (v0.2.0). Both
+  // tabs show the same set: the Create Combo button is in both, so a
+  // combo made from Favorites has to be findable in Favorites.
+  const comboRows = combos.map((c) => {
+    const parts = resolveCombo(c, favorites, customFoods);
+    return { id: `combo-${c.id}`, __combo: c, parts, summary: comboSummary(c, favorites, customFoods) };
+  });
+
+  const renderComboRow = (item) => (
+    <ComboRow
+      combo={item.__combo}
+      parts={item.parts}
+      summary={item.summary}
+      onEdit={() => setComboFormFor(item.__combo.id)}
+      onAdd={async () => {
+        const logged = await onAddCombo(item.__combo, item.parts);
+        if (logged) showToast(`${item.__combo.name} added`, null);
+      }}
+      onDelete={() => confirmDeleteCombo(item.__combo)}
+    />
+  );
+
   let listData;
   let listKeyExtractor;
   let listRenderItem;
   let listHeader = null;
   let emptyText = 'No foods match this search and filter.';
 
-  if (listMode === 'favorites' || listMode === 'favoriteCard') {
-    listData =
+  if (listMode === 'comboForm') {
+    const editingCombo = comboFormFor === true ? null : combos.find((c) => c.id === comboFormFor);
+    listData = [{ id: 'combo-form' }];
+    listKeyExtractor = (item) => item.id;
+    listRenderItem = () => (
+      <ComboForm
+        existing={editingCombo}
+        favorites={favorites}
+        customFoods={customFoods}
+        onCancel={() => setComboFormFor(null)}
+        onSave={async (combo) => {
+          const saved = editingCombo ? await onUpdateCombo(editingCombo.id, combo) : await onCreateCombo(combo);
+          if (saved) {
+            // A new combo goes to the top of the list (App.js prepends
+            // it), so land there rather than wherever you were scrolled.
+            if (!editingCombo) scrollMemory.current[`${category}|${category === 'custom' ? 'custom' : 'favorites'}`] = 0;
+            setComboFormFor(null);
+          }
+          return saved;
+        }}
+        onDelete={() => confirmDeleteCombo(editingCombo)}
+      />
+    );
+  } else if (listMode === 'favorites' || listMode === 'favoriteCard') {
+    // Combos ride above the favourites, and only in the plain list: the
+    // expanded-card mode is one favourite alone on screen, and a search
+    // is a question about foods.
+    const showCombos = listMode === 'favorites' && !query.trim();
+    listData = (showCombos ? comboRows : []).concat(
       listMode === 'favoriteCard'
         ? favoritesFiltered.filter((f) => f.id === expandedFavoriteId)
-        : favoritesFiltered;
+        : favoritesFiltered
+    );
     listKeyExtractor = (item) => item.id;
-    listRenderItem = ({ item }) => (
+    listRenderItem = ({ item }) =>
+      item.__combo ? (
+        renderComboRow(item)
+      ) : (
       <FavoriteListItem
         favorite={item}
         displayNumber={item.displayNumber}
@@ -5159,15 +5325,18 @@ export default function LogFoodScreen({
         />
       );
     } else {
-      listData = customFoods;
-      listRenderItem = ({ item }) => (
-        <CustomFoodRow
-          row={item}
-          onEdit={() => setCustomFormFor(item.id)}
-          onAdd={handleAdd}
-          onDelete={() => confirmDeleteCustomFood(item)}
-        />
-      );
+      listData = comboRows.concat(customFoods);
+      listRenderItem = ({ item }) =>
+        item.__combo ? (
+          renderComboRow(item)
+        ) : (
+          <CustomFoodRow
+            row={item}
+            onEdit={() => setCustomFormFor(item.id)}
+            onAdd={handleAdd}
+            onDelete={() => confirmDeleteCustomFood(item)}
+          />
+        );
       emptyText = 'Tap Create New Food to add your own.';
     }
   } else if (listMode === 'allCard') {
@@ -5762,7 +5931,7 @@ export default function LogFoodScreen({
       {/* Always at the top of My Own Food, whether the list is empty or
           not -- it is the only way to add one. Hidden while the form
           itself is open, where it would be a second Save button. */}
-      {category === 'custom' && listMode !== 'customForm' ? (
+      {category === 'custom' && listMode !== 'customForm' && listMode !== 'comboForm' ? (
         <TouchableOpacity
           style={styles.createFoodBtn}
           activeOpacity={0.8}
@@ -5772,6 +5941,31 @@ export default function LogFoodScreen({
         >
           <MaterialCommunityIcons name="plus" size={19} color="#fff" />
           <Text style={styles.createFoodText}>Create New Food</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Create Combo, in both tabs (v0.2.0): at the top of Favorites, and
+          under Create New Food in My Own Food. A combo is built from both
+          lists, so it can be started from either.
+
+          Outlined rather than filled, because in My Own Food it sits
+          directly under a filled blue button and two solid primaries
+          stacked would make you read both to find the one you want -- the
+          same reasoning that keeps the favourites card's secondary
+          action amber. */}
+      {(category === 'favorites' || category === 'custom') &&
+      listMode !== 'customForm' &&
+      listMode !== 'comboForm' &&
+      listMode !== 'favoriteCard' ? (
+        <TouchableOpacity
+          style={styles.createComboBtn}
+          activeOpacity={0.8}
+          onPress={() => setComboFormFor(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Create a combo"
+        >
+          <MaterialCommunityIcons name="playlist-plus" size={19} color={COLORS.accent} />
+          <Text style={styles.createComboText}>Create Combo</Text>
         </TouchableOpacity>
       ) : null}
 
@@ -6021,6 +6215,33 @@ const styles = StyleSheet.create({
   // The Poultry toggle card (PoultryCard, above) — a taller single card
   // rather than a list of rows, since there's only ever one food shown at
   // this step (whichever one the toggles currently resolve to).
+  // The combo strip on a saved combo's row -- what it contains, which is
+  // the only thing that tells two combos apart at a glance.
+  comboStrip: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
+  comboStripIcon: { borderRadius: 10 },
+  comboMore: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: COLORS.emptyBg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  comboMoreText: { fontSize: 13, fontWeight: '800', color: COLORS.textSoft },
+  favQuickAddBtnOff: { backgroundColor: '#b9c6d8' },
+  createComboBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 46,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.caloriesSoft,
+    marginBottom: SPACE.rowGap,
+  },
+  createComboText: { color: COLORS.accent, fontWeight: '800', fontSize: 15 },
   createFoodBtn: {
     flexDirection: 'row',
     alignItems: 'center',

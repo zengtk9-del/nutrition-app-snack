@@ -20,6 +20,12 @@ import {
   saveDiet,
   describeDietSaveError,
   fetchCustomFoods,
+  fetchCombos,
+  addCombo,
+  updateCombo,
+  removeCombo,
+  insertComboEntries,
+  deleteEntriesByComboGroup,
   addCustomFood,
   updateCustomFood,
   removeCustomFood,
@@ -108,6 +114,7 @@ export default function App() {
   // LogFoodScreen because Today and History need them too -- an entry
   // logged from a custom food looks up its picture through this list.
   const [customFoods, setCustomFoods] = useState([]);
+  const [combos, setCombos] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
@@ -117,6 +124,7 @@ export default function App() {
       setSavedGoals([]);
       setFavorites([]);
       setCustomFoods([]);
+      setCombos([]);
       setDiet(DEFAULT_DIET);
       setDataLoading(true);
       return;
@@ -126,7 +134,8 @@ export default function App() {
     setDataLoading(true);
     (async () => {
       try {
-        const [userGoals, userEntries, userSavedGoals, userFavorites, userDiet, userCustomFoods] = await Promise.all([
+        const [userGoals, userEntries, userSavedGoals, userFavorites, userDiet, userCustomFoods, userCombos] =
+          await Promise.all([
           fetchGoals(session.user.id),
           fetchEntries(session.user.id),
           fetchSavedGoals(session.user.id),
@@ -141,6 +150,13 @@ export default function App() {
             console.warn('Custom foods unavailable — has add-custom-foods-table.sql been run?', err);
             return [];
           }),
+          // Same isolation, same reason (v0.2.0): a database without the
+          // combos table should cost you the Combos rows, not the day's
+          // food log.
+          fetchCombos(session.user.id).catch((err) => {
+            console.warn('Combos unavailable — has add-combos-table.sql been run?', err);
+            return [];
+          }),
         ]);
         if (cancelled) return;
         setGoals(userGoals);
@@ -153,6 +169,7 @@ export default function App() {
         // notice nothing until they set one.
         setDiet(userDiet || DEFAULT_DIET);
         setCustomFoods(userCustomFoods);
+        setCombos(userCombos);
       } catch (err) {
         console.warn('Failed to load your data from Supabase', err);
       } finally {
@@ -247,6 +264,74 @@ export default function App() {
       console.warn('Failed to update custom food', err);
       Alert.alert("Couldn't save your changes", 'Something went wrong. Please try again.');
       return null;
+    }
+  };
+
+  // --- Combos (v0.2.0) ---------------------------------------------------
+  const handleCreateCombo = async (combo) => {
+    try {
+      const created = await addCombo(session.user.id, combo);
+      setCombos((prev) => [created, ...prev]);
+      return created;
+    } catch (err) {
+      console.warn('Failed to create combo', err);
+      Alert.alert("Couldn't save this combo", 'Something went wrong. Please try again.');
+      return null;
+    }
+  };
+
+  const handleUpdateCombo = async (id, combo) => {
+    try {
+      const updated = await updateCombo(id, combo);
+      setCombos((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      return updated;
+    } catch (err) {
+      console.warn('Failed to update combo', err);
+      Alert.alert("Couldn't save your changes", 'Something went wrong. Please try again.');
+      return null;
+    }
+  };
+
+  const handleDeleteCombo = async (id) => {
+    const previous = combos;
+    setCombos((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await removeCombo(id);
+    } catch (err) {
+      console.warn('Failed to delete combo, restoring it', err);
+      setCombos(previous);
+      Alert.alert("Couldn't delete this combo", 'Something went wrong. Please try again.');
+    }
+  };
+
+  // Logging a combo. Many entries in one insert, sharing a group id that
+  // Today collapses into the single row Damon asked for -- see
+  // insertComboEntries for why they stay separate rows underneath.
+  const handleAddCombo = async (combo, parts) => {
+    if (!parts.length) return null;
+    const comboGroup = `${combo.id}-${Date.now()}`;
+    const built = parts.map((p) => makeEntryFromFood(p.food, p.amount));
+    try {
+      const saved = await insertComboEntries(session.user.id, built, { comboGroup, comboName: combo.name });
+      setEntries((prev) => [...saved, ...prev]);
+      return { comboGroup, count: saved.length };
+    } catch (err) {
+      console.warn('Failed to log combo', err);
+      Alert.alert("Couldn't log this combo", 'Something went wrong. Please try again.');
+      return null;
+    }
+  };
+
+  // Removing a combo's row on Today takes every entry from that one tap,
+  // which is what showing them as one row implies.
+  const handleDeleteComboGroup = async (comboGroup) => {
+    const previousEntries = entries;
+    setEntries((prev) => prev.filter((e) => e.comboGroup !== comboGroup));
+    try {
+      await deleteEntriesByComboGroup(comboGroup);
+    } catch (err) {
+      console.warn('Failed to remove combo entries, restoring them', err);
+      setEntries(previousEntries);
     }
   };
 
@@ -704,6 +789,7 @@ export default function App() {
             entries={todayEntries}
             goals={goals}
             onDeleteEntry={handleDeleteEntry}
+            onDeleteComboGroup={handleDeleteComboGroup}
             customFoods={customFoods}
           />
         )}
@@ -721,6 +807,11 @@ export default function App() {
             onCreateCustomFood={handleCreateCustomFood}
             onUpdateCustomFood={handleUpdateCustomFood}
             onDeleteCustomFood={handleDeleteCustomFood}
+            combos={combos}
+            onCreateCombo={handleCreateCombo}
+            onUpdateCombo={handleUpdateCombo}
+            onDeleteCombo={handleDeleteCombo}
+            onAddCombo={handleAddCombo}
           />
         )}
         {activeTab === 'history' && (
