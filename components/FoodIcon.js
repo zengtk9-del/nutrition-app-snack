@@ -21,16 +21,28 @@ import React from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getFoodIconImage } from '../data/foodIconImages';
-import { isGlyphRef, refValue } from '../utils/customFoods';
+import { isGlyphRef, isArtRef, refValue } from '../utils/customFoods';
 
 // `iconKey` is usually a drawn-artwork key. Since v0.0.95 it can also be
-// "glyph:hamburger" -- a food the user invented, which may have picked one
-// of the twelve vector marks instead of a picture. Handled here rather
-// than at each call site so Today, History, Log Food and My Own Food all
-// draw one the same way without knowing the difference.
+// one of the two references a food you invented stores: "glyph:hamburger"
+// for one of the twelve vector marks, or "art:chicken_breast_raw" for one
+// of the 1,737 drawn pictures. Handled here rather than at each call site
+// so Today, History, Log Food and My Own Food all draw one the same way
+// without knowing the difference.
+//
+// v0.0.95 unwrapped only the first of those, which is the whole of the
+// v0.0.98 bug: pick a picture for your own food and the form's preview
+// tile, its row in My Own Food and its opened card header all drew the
+// dashed empty box, while a vector mark was fine. Today looked right for
+// the wrong reason -- iconKeyForFoodId strips the prefix on the way past,
+// so that one path never handed the raw value down.
+//
+// Unwrapping here is idempotent: a bare key stays a bare key, so the
+// callers that already strip it are unaffected.
 export default function FoodIcon({ iconKey, style, size }) {
   const glyph = isGlyphRef(iconKey) ? refValue(iconKey) : null;
-  const image = !glyph && iconKey ? getFoodIconImage(iconKey) : null;
+  const artKey = isArtRef(iconKey) ? refValue(iconKey) : iconKey;
+  const image = !glyph && artKey ? getFoodIconImage(artKey) : null;
   // The image sits 4pt inside its box at the default size; that inset is
   // kept proportional so a smaller icon doesn't lose its breathing room.
   const box = size ? { width: size, height: size } : null;
