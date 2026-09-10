@@ -81,6 +81,20 @@ export default function RulerSlider({
   onValueChange,
   onSlidingStart,
   onSlidingComplete,
+  // Both default to minimumValue/maximumValue: the range you can REACH,
+  // where that is narrower than the range the tape DRAWS. Same split
+  // DragSlider has carried since the target-weight ruler needed it.
+  //
+  // v0.1.2, and it exists because of a bug worth remembering. Locking a
+  // macro puts a floor under the calories, and the first version did that
+  // by moving minimumValue -- which moved the tape's origin and, because
+  // the step is derived from the span, its tick density too. Locking
+  // protein at 112g redrew a 0-900 tape labelled 750/800/850/900 as a
+  // 448-900 one labelled 788/808/828. Nothing had changed but the lock,
+  // and the whole ruler jumped. The scale has to be a property of the
+  // food, not of what happens to be pinned.
+  valueMin,
+  valueMax,
   color = COLORS.accent,
   unit = '',
   formatLabel = (v) => `${v}`,
@@ -99,10 +113,21 @@ export default function RulerSlider({
   // frozen copy would clamp to the wrong ceiling for the rest of the
   // session. Same fix DragSlider and MacroSlider both use.
   const propsRef = useRef();
-  propsRef.current = { value, minimumValue, maximumValue, step, onValueChange, onSlidingStart, onSlidingComplete };
+  propsRef.current = {
+    value,
+    minimumValue,
+    maximumValue,
+    valueMin: valueMin ?? minimumValue,
+    valueMax: valueMax ?? maximumValue,
+    step,
+    onValueChange,
+    onSlidingStart,
+    onSlidingComplete,
+  };
 
+  // Clamping is the REACHABLE range's job. Drawing is minimum/maximum's.
   const clamp = (raw) => {
-    const { minimumValue: min, maximumValue: max } = propsRef.current;
+    const { valueMin: min, valueMax: max } = propsRef.current;
     return Math.max(min, Math.min(max, raw));
   };
   const clampToStep = (raw) => {
@@ -164,7 +189,11 @@ export default function RulerSlider({
 
   const safeStep = step > 0 ? step : 1;
   const tickCount = Math.max(1, Math.round((maximumValue - minimumValue) / safeStep) + 1);
+  // Position is measured against the DRAWN range, so a narrower reachable
+  // range slides the tape less far rather than rescaling it.
   const clampedLive = Math.max(minimumValue, Math.min(maximumValue, liveValue));
+  const reachMin = valueMin ?? minimumValue;
+  const reachMax = valueMax ?? maximumValue;
   const currentTickX = ((clampedLive - minimumValue) / safeStep) * PX_PER_TICK;
   const translateX = trackWidth / 2 - currentTickX;
 
@@ -178,8 +207,12 @@ export default function RulerSlider({
     for (let i = firstVisible; i <= lastVisible; i++) {
       const tickValue = minimumValue + i * safeStep;
       const isMajor = i % majorEvery === 0;
+      // Out of reach (a lock is holding the total above or below this):
+      // still drawn, so the scale never moves, but faded so the wall is
+      // visible rather than the tape just refusing to go further.
+      const outOfReach = tickValue < reachMin || tickValue > reachMax;
       ticks.push(
-        <View key={i} style={[styles.tick, { left: i * PX_PER_TICK }]}>
+        <View key={i} style={[styles.tick, { left: i * PX_PER_TICK }, outOfReach && styles.tickOut]}>
           <View style={[styles.tickMark, isMajor && styles.tickMarkMajor]} />
           {isMajor ? <Text style={styles.tickLabel}>{formatLabel(tickValue)}</Text> : null}
         </View>
@@ -203,7 +236,7 @@ export default function RulerSlider({
         {...panResponder.panHandlers}
         accessibilityRole="adjustable"
         accessibilityLabel={label}
-        accessibilityValue={{ min: minimumValue, max: maximumValue, now: Math.round(value) }}
+        accessibilityValue={{ min: reachMin, max: reachMax, now: Math.round(value) }}
       >
         <View style={[styles.tape, { transform: [{ translateX }] }]}>{ticks}</View>
         {/* The pointer. Fixed dead centre -- it is the one thing on this
@@ -233,6 +266,7 @@ const styles = StyleSheet.create({
   // way a long label ("1,000") stays centred on its tick instead of
   // pushing the tape's geometry around.
   tick: { position: 'absolute', top: 0, alignItems: 'center', width: 0 },
+  tickOut: { opacity: 0.28 },
   tickMark: { width: 1.5, height: MINOR_H, marginTop: 10, backgroundColor: '#d3dae6', borderRadius: 1 },
   tickMarkMajor: { height: MAJOR_H, width: 2, backgroundColor: '#9fb0c9' },
   tickLabel: {

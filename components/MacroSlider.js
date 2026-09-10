@@ -67,6 +67,19 @@ export default function MacroSlider({
   unit = 'g',
   disabled = false,
   formatValue = (v) => `${Math.round(v).toLocaleString()}`,
+  // The range you can REACH, when it is narrower than the range the track
+  // DRAWS. Defaults to maximumValue, so MacroGoalsScreen -- which wants
+  // the two to be the same thing -- is untouched by this existing.
+  //
+  // v0.1.2, from the custom food form. Its macro maxima are computed with
+  // maxGramsForMacro, which shrinks the moment another macro is locked
+  // (there is less left to take calories from). Feeding that straight into
+  // maximumValue meant locking protein rescaled the other two tracks
+  // underneath thumbs that had not moved: carbs at 47g slid from 23% to
+  // 50% of its bar while still reading 47g. A track whose meaning changes
+  // when you touch a different control is not a track. So the scale is
+  // fixed by the food and only the WALL moves.
+  valueMax,
   lockable = false,
   locked = false,
   onToggleLock,
@@ -90,6 +103,7 @@ export default function MacroSlider({
     value,
     minimumValue,
     maximumValue,
+    valueMax: valueMax ?? maximumValue,
     step,
     onValueChange,
     onSlidingStart,
@@ -98,8 +112,10 @@ export default function MacroSlider({
     disabled,
   };
 
+  // Clamping answers "how far can this go"; positioning answers "where on
+  // the bar does this sit". Two different questions since v0.1.2.
   const clamp = (raw) => {
-    const { minimumValue: min, maximumValue: max } = propsRef.current;
+    const { minimumValue: min, valueMax: max } = propsRef.current;
     return Math.max(min, Math.min(max, raw));
   };
   const clampToStep = (raw) => {
@@ -208,7 +224,7 @@ export default function MacroSlider({
       onSlidingComplete: onComplete,
     } = propsRef.current;
     if (isDisabled) return;
-    const next = Math.max(min, Math.min(max, v + direction * s));
+    const next = Math.max(min, Math.min(propsRef.current.valueMax, v + direction * s));
     if (next === v) return;
     if (onStart) onStart();
     setLiveValue(next);
@@ -218,11 +234,18 @@ export default function MacroSlider({
 
   const min = minimumValue;
   const max = Math.max(minimumValue, maximumValue);
+  const reach = Math.max(min, Math.min(max, valueMax ?? maximumValue));
   const clampedLive = Math.max(min, Math.min(max, liveValue));
   const pct = max > min ? (clampedLive - min) / (max - min) : 0;
   const usableWidth = Math.max(0, trackWidth - THUMB_SIZE);
   const thumbLeft = usableWidth * pct;
   const fillWidth = thumbLeft + THUMB_SIZE / 2;
+  // Where the wall is, when there is one. Drawn as a darker stretch of
+  // track from there to the end, so a slider that stops early says why
+  // instead of just feeling broken.
+  const reachPct = max > min ? (reach - min) / (max - min) : 1;
+  const blockedLeft = usableWidth * reachPct + THUMB_SIZE / 2;
+  const hasWall = reach < max - 0.5;
 
   // The bar's fill color used to go grey any time `disabled` was true —
   // which included every non-drag guide moment (e.g. Carbs/Fat while their
@@ -237,7 +260,7 @@ export default function MacroSlider({
   // the old grey treatment exactly as before.
   const trackColor = disabled && !highlighted ? '#d5d9e0' : color;
   const canDecrease = !disabled && value > min;
-  const canIncrease = !disabled && value < max;
+  const canIncrease = !disabled && value < reach;
 
   return (
     <View style={[styles.wrap, highlighted && styles.wrapHighlighted]}>
@@ -282,6 +305,7 @@ export default function MacroSlider({
           {...(disabled ? {} : panResponder.panHandlers)}
         >
           <View style={styles.trackBg} />
+          {hasWall ? <View style={[styles.trackBlocked, { left: blockedLeft }]} /> : null}
           <View style={[styles.trackFill, { width: fillWidth, backgroundColor: trackColor }]} />
           <View style={[styles.thumb, { left: thumbLeft, borderColor: trackColor }]} />
         </View>
@@ -361,6 +385,16 @@ const styles = StyleSheet.create({
     left: 0,
     height: TRACK_HEIGHT,
     borderRadius: TRACK_HEIGHT / 2,
+  },
+  // The stretch this macro cannot be dragged into, given what the others
+  // have left to give.
+  trackBlocked: {
+    position: 'absolute',
+    right: 0,
+    height: TRACK_HEIGHT,
+    borderTopRightRadius: TRACK_HEIGHT / 2,
+    borderBottomRightRadius: TRACK_HEIGHT / 2,
+    backgroundColor: '#c6ccd8',
   },
   thumb: {
     position: 'absolute',

@@ -34,6 +34,9 @@ import {
   validateCustomFood,
   glyphRef,
   calorieCeiling,
+  macroMassLimit,
+  fitToMass,
+  amountInGrams,
   MAX_AMOUNT,
 } from '../utils/customFoods';
 import {
@@ -106,12 +109,20 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
   const [fatG, setFatG] = useState(existing ? Math.max(0, Math.round(Number(existing.fat) || 0)) : null);
   const [lockedMacro, setLockedMacro] = useState(null);
 
+  // How much food there is to fit the macros into. Zero for a serving,
+  // which has no declared weight and therefore no mass limit.
+  const grams = isWeightUnit(unit) ? amountInGrams(amount, unit) : 0;
+
   // A new food has no split yet, so seed one from the opening calories the
   // first time round. Done here rather than in useState so both branches
   // go through the same engine and can never disagree.
   const seeded = proteinG == null;
   const macros = seeded
-    ? redistributeCaloriesForTarget({ proteinG: 0, carbsG: 0, fatG: 0, lockedMacro: null, newCalories: startCalories })
+    ? fitToMass(
+        redistributeCaloriesForTarget({ proteinG: 0, carbsG: 0, fatG: 0, lockedMacro: null, newCalories: startCalories }),
+        grams,
+        startCalories
+      )
     : { proteinG, carbsG, fatG };
 
   // One finger drag fires onValueChange many times. Freezing the split for
@@ -133,8 +144,11 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
     setFatG(next.fatG);
   };
 
+  // Re-proportioning is done by calories alone, so the result can weigh
+  // more than the food does; fitToMass puts the overflow into fat, which
+  // is the only place it can physically go.
   const handleCaloriesChange = (newCalories) => {
-    applyMacros(redistributeCaloriesForTarget({ ...baseline(), lockedMacro, newCalories }));
+    applyMacros(fitToMass(redistributeCaloriesForTarget({ ...baseline(), lockedMacro, newCalories }), grams, newCalories));
     setCalories(newCalories);
   };
 
@@ -158,28 +172,71 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ceiling]);
 
-  // A locked macro is also a FLOOR under the total, and the tape has to
-  // know it. Lock fat at 50g and the food costs at least 450 kcal; asking
-  // for 200 is asking for something that cannot be built, and the engine
-  // answers it the only way it can -- by keeping the lock and quietly
-  // missing the target, which a probe caught as 120 kcal of drift on a
-  // number the whole screen claims is exact. Ending the tape at the
-  // locked macro's own cost makes the request unaskable instead.
+  // --- What is reachable, versus what is drawn (v0.1.2) ------------------
   //
-  // This can never bite the moment you lock, only afterwards: locking
-  // pins the grams that are already part of the current total, so the
-  // floor always starts at or below where the tape already is.
+  // These two used to be the same number and that was the bug Damon hit:
+  // locking protein redrew the calories tape at a different scale and slid
+  // the carbs and fat thumbs from 23% to 50% of their tracks without
+  // either value changing. A control's scale has to belong to the FOOD.
+  // Only the wall belongs to the lock.
+  //
+  // So everything below comes in pairs: a scale that ignores lockedMacro
+  // entirely, and a limit that does not.
+
+  // A locked macro is a floor under the total: lock fat at 50g and the
+  // food costs at least 450 kcal. Asking for less is asking for something
+  // that cannot be built, and the engine answers it by keeping the lock
+  // and quietly missing the target -- 120 kcal of drift on a number the
+  // screen calls exact, which a probe caught. Locking can never breach
+  // this the moment you do it, only afterwards.
   const lockedFloor = lockedMacro
     ? Math.round(macros[`${lockedMacro}G`] * MACRO_KCAL_PER_G[lockedMacro])
     : 0;
 
-  // The amount is still typed -- it is the one number with no natural
-  // ceiling to draw a ruler against -- so it gets the guard the macro
-  // boxes no longer need. keyboardType is a suggestion (a hardware
-  // keyboard, a paste, or Android's own numeric pad can all still deliver
-  // letters and a second decimal point), so the text is sanitised rather
-  // than trusted, and capped at MAX_AMOUNT because the calories ceiling is
-  // computed FROM it.
+  // And locking FAT is a ceiling as well as a floor, because fat is what
+  // absorbs density. With F pinned, P + C_g = (C - 9F)/4 and all of it has
+  // to fit in the food: C <= 4G + 5F.
+  const lockedCeiling =
+    grams > 0 && lockedMacro === 'fat' ? Math.min(ceiling, Math.round(4 * grams + 5 * macros.fatG)) : ceiling;
+
+  // The scale of each macro's track: the most of it this food could hold,
+  // whichever of energy and weight runs out first. No lockedMacro term --
+  // that is the whole point.
+  const scaleFor = (key) =>
+    Math.max(1, Math.floor(Math.min(calories / MACRO_KCAL_PER_G[key], macroMassLimit(key, grams, calories))));
+
+  // How far it can actually be dragged. Energy is a closed form
+  // (maxGramsForMacro); mass is not, because raising one macro lowers the
+  // others by a split that depends on where they already are, so the
+  // weight at any given gram value is easier to ASK than to solve. Fourteen
+  // bisections of a pure function, three times a render, is nothing.
+  const reachFor = (key) => {
+    const energyMax = maxGramsForMacro({ ...macros, lockedMacro, key });
+    if (!(grams > 0)) return energyMax;
+    const fits = (g) => {
+      const m = redistributeMacroForChange({
+        ...macros,
+        lockedMacro,
+        changedKey: key,
+        newGrams: g,
+        totalCalories: calories,
+      });
+      return m.proteinG + m.carbsG + m.fatG <= grams;
+    };
+    if (fits(energyMax)) return energyMax;
+    let lo = Math.min(macros[`${key}G`], energyMax);
+    // Already over its weight (an older food, or an amount edited down):
+    // the only way left is back.
+    if (!fits(lo)) return lo;
+    let hi = energyMax;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (fits(mid)) lo = mid;
+      else hi = mid;
+    }
+    return lo;
+  };
+
   const handleAmountChange = (text) => {
     const cleaned = text.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
     if (cleaned === '' || cleaned === '.') return setAmount(cleaned);
@@ -318,9 +375,11 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
           label="Calories"
           unit="kcal"
           value={calories}
-          minimumValue={lockedFloor}
+          minimumValue={0}
           maximumValue={ceiling}
-          {...rulerStepFor(ceiling - lockedFloor)}
+          valueMin={lockedFloor}
+          valueMax={lockedCeiling}
+          {...rulerStepFor(ceiling)}
           onValueChange={handleCaloriesChange}
           onSlidingStart={handleSlidingStart}
           onSlidingComplete={handleSlidingComplete}
@@ -338,7 +397,8 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
             label={m.label}
             value={macros[m.gramsKey]}
             minimumValue={0}
-            maximumValue={maxGramsForMacro({ ...macros, lockedMacro, key: m.key })}
+            maximumValue={scaleFor(m.key)}
+            valueMax={reachFor(m.key)}
             step={1}
             unit="g"
             color={MACRO_COLORS[m.key]}

@@ -87,6 +87,57 @@ export const MAX_SERVING_CALORIES = 3000;
 // calorie tape. 5 kg is a stockpot of chilli.
 export const MAX_AMOUNT = 5000;
 
+// --- Mass, the constraint calories alone cannot express ------------------
+//
+// Energy and weight are two different limits and a food has to satisfy
+// both. utils/goals.js only knows the first, correctly -- a daily calorie
+// target has no mass to run out of. A FOOD does: 100g of anything holds
+// 100g of macros, however the calories are arranged.
+//
+// The two together pin things down more tightly than either alone. At C
+// calories in G grams, with protein and carbs at 4 kcal/g and fat at 9:
+//
+//     P + C_g + F = G        (it all has to fit)
+//     4P + 4C_g + 9F = C     (Atwater)
+//
+// which solves to F = (C - 4G)/5 -- above 4 kcal/g there is exactly one
+// split that fills the food's own weight, and it gets fattier the denser
+// the food is. 825 kcal in 100g is 85g of fat and 15g of everything else,
+// and no other answer.
+//
+// This is not a corner case: it is why a 100g food at 825 kcal cannot have
+// 112g of protein, which is what v0.1.1 let the sliders wander into and
+// then refused at Save. A rule you only meet when you press the button is
+// a worse rule than one you can see.
+
+// The most of one macro that can exist in this food at these calories --
+// the rest of the energy carried by fat, which uses the least weight.
+export function macroMassLimit(key, grams, calories) {
+  if (!(grams > 0)) return Infinity; // a serving has no weight to exceed
+  if (key === 'fat') return Math.min(grams, calories / KCAL_PER_G_FAT);
+  // From P + (C - 4P)/9 <= G, i.e. everything not protein being fat.
+  return Math.max(0, Math.min(grams, (9 * grams - calories) / 5));
+}
+
+// Force a split back inside the food's own weight, by moving energy into
+// fat -- the only macro that carries calories without carrying the weight.
+// Used where a split is DERIVED rather than dragged (the opening seed, and
+// re-proportioning after a calories change), because proportional scaling
+// knows nothing about mass and will happily produce 171g of macros in 100g
+// of food on the way past 700 kcal.
+export function fitToMass({ proteinG, carbsG, fatG }, grams, calories) {
+  if (!(grams > 0)) return { proteinG, carbsG, fatG };
+  if (proteinG + carbsG + fatG <= grams) return { proteinG, carbsG, fatG };
+  const fat = Math.max(0, Math.min(grams, Math.round((calories - 4 * grams) / 5)));
+  const rest = Math.max(0, grams - fat);
+  const oldRest = proteinG + carbsG;
+  // Keep whatever protein/carbs balance the split already had; an even
+  // split only when there is no balance to keep.
+  const share = oldRest > 0 ? proteinG / oldRest : 0.5;
+  const protein = Math.round(rest * share);
+  return { proteinG: protein, carbsG: Math.max(0, rest - protein), fatG: fat };
+}
+
 // The end of the calories tape for the food currently being described.
 export function calorieCeiling({ unit, amount }) {
   if (!isWeightUnit(unit)) return MAX_SERVING_CALORIES;
