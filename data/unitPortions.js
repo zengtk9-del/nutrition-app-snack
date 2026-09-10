@@ -46,7 +46,8 @@ export const UNIT_PORTIONS = {
 //   Cucumber, with peel, raw  [168409]
   cucumber: { noun: 'cucumber', sizes: [['Cucumber', 301]] },
 //   Dates, medjool  [168191]
-  dates: { noun: 'date', sizes: [['Date', 24]] },
+  // Sourced from a medjool date, which IS the dried fruit -- so this one counts only in that form, not fresh.
+  dates: { noun: 'date', sizes: [['Date', 24]] , forms: ['dried'] },
 //   Eggplant, raw  [169228]
   eggplant: { noun: 'eggplant', sizes: [['Eggplant', 503.0]] },
 //   Figs, raw  [173021]
@@ -70,7 +71,8 @@ export const UNIT_PORTIONS = {
 //   Nectarines, raw  [169914]
   nectarine: { noun: 'nectarine', sizes: [['Small', 129], ['Medium', 142], ['Large', 156]] },
 //   Olives, ripe, canned (small-extra large)  [169094]
-  olive: { noun: 'olive', sizes: [['Small', 3.2], ['Large', 4.4]] },
+  // Sourced from canned ripe olives, which is how olives are sold and eaten.
+  olive: { noun: 'olive', sizes: [['Small', 3.2], ['Large', 4.4]] , forms: ['canned'] },
 //   Oranges, raw, all commercial varieties  [169097]
   orange: { noun: 'orange', sizes: [['Small', 96], ['Large', 184]] },
 //   Papayas, raw  [169926]
@@ -92,7 +94,8 @@ export const UNIT_PORTIONS = {
 //   Pomegranates, raw  [169134]
   pomegranate: { noun: 'pomegranate', sizes: [['Pomegranate', 282]] },
 //   Plums, dried (prunes), uncooked  [168162]
-  prunes: { noun: 'prune', sizes: [['Prune', 9.5]] },
+  // Sourced from dried plums. Same as dates: the dried form is the countable one.
+  prunes: { noun: 'prune', sizes: [['Prune', 9.5]] , forms: ['dried'] },
 //   Carambola, (starfruit), raw  [171715]
   starfruit: { noun: 'starfruit', sizes: [['Small', 70], ['Medium', 91], ['Large', 124]] },
 //   Strawberries, raw  [167762]
@@ -227,8 +230,67 @@ export const UNIT_PORTIONS = {
 
 // The unit table for one food row, or null if this food is not counted.
 // Keyed on the same item field each card already uses to pick its icon.
+// The forms in which something stops being one of itself (v0.0.90).
+//
+// Damon found this on Tomato: pick Sauce or Paste and the card still
+// offered "By tomato", because the lookup below keyed on the row's `cut`
+// alone and every tomato row -- raw, canned, diced, sauce, paste -- shares
+// the cut `tomato`. Counting tomato paste in whole tomatoes is not a thing
+// anyone does, and the 182g weight is a fresh tomato's anyway.
+//
+// It is one rule, not a per-food fix, because it was never a tomato
+// problem: 223 rows offered counting and 55 of them were some form of this
+// -- dried apples at a fresh apple's 182g, canned peaches, frozen
+// strawberries, mashed potato, sweet potato fries, hash browns.
+//
+// TWO KINDS OF ENTRY IN THIS FILE, and the split is what makes the rule
+// safe. Nearly every weight above was measured from the fresh or raw food
+// (each entry's comment names the USDA row), so those are valid only while
+// the food is still whole and unprocessed -- this list. Three were measured
+// from a processed form instead, because that is how the food is sold: a
+// medjool date, a dried prune, a canned olive. Those carry an explicit
+// `forms` list and are checked against it rather than against this.
+//
+// Cooking is deliberately NOT here. A baked potato, a boiled egg, a
+// grilled portobello and a fried green tomato are all still one of the
+// thing; only the water content moved. Cutting, pulping, drying, freezing
+// and canning are what end it.
+export const UNCOUNTABLE_FORMS = new Set([
+  'canned',
+  'canned_diced',
+  'canned_puree',
+  'paste',
+  'sauce',
+  'mashed',
+  'hash_browns',
+  'french_fries',
+  'fries',
+  'candied',
+  'dried',
+  'frozen',
+  'frozen_cooked',
+  'packed_in_oil',
+]);
+
+// Which axis carries "what form is this in" depends on the category:
+// vegetables and most others use `prep`, fruit uses `subcategory` (fresh /
+// dried / canned / frozen), grains use `grainForm`. A row with none of
+// them has only one form and is countable if its cut is in the table.
+function formOf(food) {
+  if (food.prep) return food.prep;
+  if (food.category === 'fruit' && food.subcategory) return food.subcategory;
+  return food.grainForm || null;
+}
+
 export function unitPortionFor(food) {
   if (!food) return null;
   const key = food.cut || food.grainItem || null;
-  return key ? UNIT_PORTIONS[key] || null : null;
+  const entry = key ? UNIT_PORTIONS[key] || null : null;
+  if (!entry) return null;
+
+  const form = formOf(food);
+  // An entry measured from a processed form lists the forms it is good
+  // for, and nothing else counts -- a fresh plum is not a prune.
+  if (entry.forms) return form && entry.forms.includes(form) ? entry : null;
+  return form && UNCOUNTABLE_FORMS.has(form) ? null : entry;
 }
