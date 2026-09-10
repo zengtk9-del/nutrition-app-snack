@@ -502,19 +502,32 @@ function PortionTotal({ kcal }) {
 // a white pill with a hairline blue border, the selected segment filled
 // solid blue with white text, the rest blue text on white.
 //
-// TWO WIDTHS, and the split is still at 3 options, unchanged from the old
-// design:
+// TWO WIDTHS, and the split moved from 4 to 3 in v0.0.92:
 //
-//   2-3 options -- one row, segments share a single pill.
-//   4+ options  -- each option gets its own bordered pill and the group
-//                  wraps. Five options of "Dry Roasted, Unsalted" cannot
-//                  share a row on a 390pt screen at any readable size.
+//   2 options  -- one row, segments share a single pill.
+//   3+ options -- each option gets its own bordered pill and the group
+//                 wraps.
+//
+// It used to let three share a row, and three routinely did not fit.
+// Damon found it on Grapes, where "Red Seedless | Green Seedless |
+// Concord / American Type" needs about 468pt of a 326pt card and the last
+// one ran off the edge. Measuring every option set in the app found
+// fifteen too wide to share a row -- Egg Forms, Beef's Fat Trim, the
+// mushroom and potato preps, the apple and pear varieties -- and every
+// single one of them had three options or more. Not one two-option set
+// was too wide, and the widest (Enter Weight / Small · Medium · Large,
+// 322pt) clears a 390pt screen's card by 4pt.
+//
+// Four points is not much, so the single-row pill also refuses to exceed
+// its parent and lets its segments shrink: on a 375pt phone that same
+// pair wants 322pt of a 311pt card, and shrinking the label a little
+// beats running off the card.
 //
 // `disabled` is what a saved favourite looks like before you tap Edit:
 // dimmed, and the selected segment keeps its fill so you can still see
 // what was saved.
 function ToggleRow({ label, options, value, onChange, disabled }) {
-  const isWide = options.length > 3;
+  const isWide = options.length > 2;
   return (
     <View style={styles.toggleGroup}>
       {label ? <Text style={styles.toggleLabel}>{label}</Text> : null}
@@ -558,6 +571,11 @@ function ToggleRow({ label, options, value, onChange, disabled }) {
           >
             <Text
               numberOfLines={isWide ? 2 : 1}
+              // Single-row only, and only ever bites on a small screen --
+              // see the width note in ToggleRow's header. iOS shrinks;
+              // Android ignores it and falls back to the ellipsis.
+              adjustsFontSizeToFit={!isWide}
+              minimumFontScale={0.8}
               style={[
                 styles.toggleOptionText,
                 isWide && styles.toggleOptionTextWide,
@@ -5877,7 +5895,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent,
     padding: TOGGLE_BORDER,
     gap: TOGGLE_BORDER,
+    // As wide as its content, but never wider than the card.
     alignSelf: 'flex-start',
+    maxWidth: '100%',
   },
   toggleOption: {
     paddingVertical: 11,
@@ -5885,6 +5905,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     alignItems: 'center',
     justifyContent: 'center',
+    // So the pill's maxWidth above has something to give. RN defaults
+    // flexShrink to 0, which is what would make a too-wide pill clip
+    // instead of compress.
+    flexShrink: 1,
   },
   // Wide mode (4+ options, e.g. Eggs' Prep/Size, Milk's Fat %, Beef's Fat %,
   // Vegetables' Prep) -- see ToggleRow's header comment for why this
@@ -5918,6 +5942,7 @@ const styles = StyleSheet.create({
   toggleOptionWide: {
     flexGrow: 1,
     flexBasis: '30%',
+    maxWidth: '100%',
     paddingHorizontal: 8,
     paddingVertical: 11,
     marginRight: 7,
