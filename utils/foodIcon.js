@@ -157,34 +157,68 @@ function nearestDrawnKey(key) {
 // The key is then passed through nearestDrawnKey, above, so a default
 // that was never drawn still lands on the right picture.
 export function rowIconKeyOf(food) {
-  return nearestDrawnKey(rawRowIconKeyOf(food));
+  return nearestDrawnKey(rawRowIconKeyOf(food, false));
 }
 
-function rawRowIconKeyOf(food) {
+// The picture for one SPECIFIC saved row, variant and all -- what the
+// Today tab and My Favorites want. See rawRowIconKeyOf's comment for the
+// difference and for the two axes this cannot recover.
+export function exactIconKeyOf(food) {
+  return nearestDrawnKey(rawRowIconKeyOf(food, true));
+}
+
+// `exact` is the difference between "what does this KIND of food look
+// like" and "what does THIS ONE look like" (v0.0.89).
+//
+// Every list on the browse side wants the first: a Cuts list showing
+// Ribeye / Sirloin / Brisket should draw them all the same way, not one
+// cooked and one raw because of whichever row happened to sort first. So
+// the default pins every variant axis to its opening position -- skin on,
+// raw, untrimmed -- and that is what `exact: false` still does.
+//
+// The Today tab and My Favorites want the second, and were getting the
+// first: log cooked skinless chicken, come back to a raw skin-on picture.
+// Both store the RESOLVED row's id (`entry.foodId`, `favorite.foodId`),
+// and in this app every variant is its own row carrying its own fields --
+// poultry_chicken_breast_off_cooked has skin: 'off', prep: 'cooked'. The
+// information was already there; this branch just stops throwing it away.
+//
+// TWO AXES IT CANNOT RECOVER, and the reason is the same for both: bone-in
+// on Poultry and shell-on on Seafood are not different rows. They are
+// weight conversions applied to one row (213g bone-in = 170g of meat), so
+// nothing in the stored entry says which was picked, and both stay at
+// their default. Recovering those would mean storing the icon key itself
+// at log time, which needs a new column on the entries table.
+function rawRowIconKeyOf(food, exact) {
   if (!food) return null;
   switch (food.category) {
     case 'poultry': {
       const meta = (POULTRY_CUTS[food.subcategory] || []).find((c) => c.key === food.cut);
       const parts = [food.subcategory, food.cut];
-      if (meta?.hasSkinToggle) parts.push('skinOn');
+      if (meta?.hasSkinToggle) parts.push(exact && food.skin === 'off' ? 'skinless' : 'skinOn');
       if (meta?.hasBoneToggle) parts.push('boneIn');
-      parts.push('raw');
+      parts.push(exact ? food.prep || 'raw' : 'raw');
       return parts.join('_');
     }
     case 'seafood': {
       const meta = (SEAFOOD_CUTS[food.subcategory] || []).find((c) => c.key === food.cut);
       const parts = [food.subcategory, food.cut];
       if (meta?.hasShellToggle) parts.push('shellOn');
-      parts.push('raw');
+      parts.push(exact ? food.prep || 'raw' : 'raw');
       return parts.join('_');
     }
     case 'egg':
-      return [food.subcategory, food.form, 'raw'].join('_');
+      return [food.subcategory, food.form, exact ? food.prep || 'raw' : 'raw'].join('_');
     case 'red_meat': {
       const meta = (RED_MEAT_CUTS[food.subcategory] || []).find((c) => c.key === food.cut);
-      if (meta?.hasFatTierToggle) return [food.subcategory, 'ground', 'regular', 'raw'].join('_');
-      if (meta?.hasTrimTierToggle) return [food.subcategory, food.cut, 'untrimmed', 'raw'].join('_');
-      return [food.subcategory, food.cut, 'raw'].join('_');
+      const prep = exact ? food.prep || 'raw' : 'raw';
+      if (meta?.hasFatTierToggle) {
+        return [food.subcategory, 'ground', (exact && food.fatTier) || 'regular', prep].join('_');
+      }
+      if (meta?.hasTrimTierToggle) {
+        return [food.subcategory, food.cut, (exact && food.trimTier) || 'untrimmed', prep].join('_');
+      }
+      return [food.subcategory, food.cut, prep].join('_');
     }
     // 30 sprouted-legume rows sit in Vegetables with no `cut` at all --
     // USDA SR Legacy entries like "Beans, kidney, mature seeds, sprouted,
@@ -192,14 +226,16 @@ function rawRowIconKeyOf(food) {
     // is no honest picture for them, so they get none rather than a
     // manufactured `vegetable_undefined_raw` that resolves to nothing
     // anyway. Fixing the underlying rows would be the real fix.
+    // Fruit's form (fresh / dried / canned / frozen) is its `subcategory`,
+    // which is also exactly what FruitCard puts in the key.
     case 'fruit':
-      return food.cut ? `fruit_${food.cut}_fresh` : null;
+      return food.cut ? `fruit_${food.cut}_${(exact && food.subcategory) || 'fresh'}` : null;
     case 'vegetable':
-      return food.cut ? `vegetable_${food.cut}_raw` : null;
+      return food.cut ? `vegetable_${food.cut}_${(exact && food.prep) || 'raw'}` : null;
     case 'dairy':
-      if (food.subcategory === 'milk') return 'milk_whole';
-      if (food.subcategory === 'yogurt') return 'dairy_yogurt_plain';
-      if (food.subcategory === 'butter') return 'dairy_butter_stick';
+      if (food.subcategory === 'milk') return `milk_${(exact && food.milkFatLevel) || 'whole'}`;
+      if (food.subcategory === 'yogurt') return `dairy_yogurt_${(exact && food.yogurtFlavor) || 'plain'}`;
+      if (food.subcategory === 'butter') return `dairy_butter_${(exact && food.butterForm) || 'stick'}`;
       if (food.cheeseType) return `dairy_cheese_${food.cheeseType}`;
       if (food.creamGroup) return `dairy_cream_${food.creamGroup}`;
       return `dairy_${food.id}`;
@@ -233,5 +269,8 @@ let idIndex = null;
 export function iconKeyForFoodId(foods, foodId) {
   if (!foodId) return null;
   if (!idIndex) idIndex = new Map(foods.map((f) => [f.id, f]));
-  return rowIconKeyOf(idIndex.get(foodId));
+  // Exact, not default: this is the Today tab and My Favorites asking
+  // what one already-logged thing looked like, and the row behind that id
+  // knows.
+  return exactIconKeyOf(idIndex.get(foodId));
 }
