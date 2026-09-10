@@ -58,6 +58,8 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, LOG_CHIP, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
 import { ART_READY, MASCOT } from '../data/brandArt';
+import CustomFoodForm from '../components/CustomFoodForm';
+import { customFoodToFood, customFoodSummary } from '../utils/customFoods';
 
 // The four chips under a food's name. Order matters and is the same one
 // used on Today's bars and the Goals cards: calories first, then the three
@@ -3624,6 +3626,114 @@ function FoodCardFor({ rows, cardKey, pools, onAddFavorite, onAdd }) {
 
 
 
+// One food the user invented, in the My Own Food list. A plain drill-down
+// row: picture, name, and what it was defined as.
+function CustomFoodRow({ row, onOpen }) {
+  return (
+    <TouchableOpacity style={styles.allCardRow} onPress={onOpen} activeOpacity={0.7}
+      accessibilityRole="button" accessibilityLabel={`Open ${row.name}`}>
+      <FoodIcon iconKey={row.icon} />
+      <View style={{ flex: 1, marginLeft: 14 }}>
+        <Text style={styles.name}>{row.name}</Text>
+        <Text style={styles.sub}>{customFoodSummary(row)}</Text>
+      </View>
+      <Text style={styles.allCardChevron}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
+// The opened card. Deliberately the SAME shell every other food card uses
+// -- FoodCardHead, the tinted Portion panel, PortionTotal, the action row
+// -- so a food you invented does not look like a different species from a
+// food that came with the app. What it does not have is toggles: there
+// are no variants of a food you defined yourself.
+function CustomFoodCard({ row, food, onAdd, onEdit }) {
+  const counting = food.servingType === 'count';
+  const [weightValue, setWeightValue] = useState(String(food.typicalGrams ?? 100));
+  const [weightUnit, setWeightUnit] = useState('g');
+  const [count, setCount] = useState(1);
+
+  const typedGrams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
+  const grams = counting ? 0 : typedGrams;
+  const previewCalories = counting
+    ? Math.round((food.calories || 0) * count)
+    : Math.round(((food.caloriesPer100g || 0) * grams) / 100);
+
+  const handleUnit = (nextUnit) => {
+    const n = parseFloat(weightValue);
+    if (Number.isFinite(n)) {
+      const converted = nextUnit === 'oz' ? gramsToOz(n) : ozToGrams(n);
+      setWeightValue(String(Math.round(converted * 10) / 10));
+    }
+    setWeightUnit(nextUnit);
+  };
+
+  return (
+    <View style={styles.poultryCard}>
+      <FoodCardHead
+        title={row.name}
+        iconKey={row.icon}
+        food={food}
+        grams={counting ? 0 : grams}
+        servings={counting ? count : 0}
+      />
+
+      <View style={styles.divider} />
+
+      <View style={styles.portionPanel}>
+        <Text style={styles.poultrySectionTitle}>{counting ? 'How Many?' : 'Portion'}</Text>
+        {counting ? (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={styles.gramsInput}
+              value={String(count)}
+              onChangeText={(t) => setCount(Math.max(0, parseFloat(t) || 0))}
+              keyboardType="numeric"
+              placeholder="1"
+            />
+            <Text style={styles.poultryPer100g}>{food.servingLabel.replace(/^1 /, '')}{count === 1 ? '' : 's'}</Text>
+          </View>
+        ) : (
+          <View style={styles.gramsRow}>
+            <TextInput
+              style={styles.gramsInput}
+              value={weightValue}
+              onChangeText={setWeightValue}
+              keyboardType="numeric"
+              placeholder={weightUnit}
+            />
+            <ToggleRow
+              value={weightUnit}
+              onChange={handleUnit}
+              options={[{ value: 'g', label: 'g' }, { value: 'oz', label: 'oz' }]}
+            />
+          </View>
+        )}
+        <PortionTotal kcal={previewCalories} />
+      </View>
+
+      <View style={styles.cardActionsRow}>
+        <TouchableOpacity style={styles.favAddBtn} activeOpacity={0.7} onPress={onEdit}
+          accessibilityRole="button" accessibilityLabel={`Edit ${row.name}`}>
+          <Text style={styles.favAddBtnText}>✎ Edit this food</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.addBtn}
+          activeOpacity={0.8}
+          onPress={() => {
+            if (previewCalories <= 0) return;
+            onAdd(food, counting ? count : grams);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${row.name} to today`}
+        >
+          <Text style={styles.addBtnText}>+ Add to Today</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // A row in the All tab. It used to open the card inline underneath
 // itself; as of v0.0.94 it drills in like every other list row does, and
 // the card gets the screen to itself (listMode 'allCard').
@@ -4095,6 +4205,12 @@ export default function LogFoodScreen({
   // a card's TOTAL CALORIES. Optional: with no goal the bar is simply not
   // drawn (see PortionTotal).
   dailyCalories = 0,
+  // My Own Food (v0.0.95). Raw custom_foods rows plus their three
+  // handlers; App.js owns the list because Today and History need it too.
+  customFoods = [],
+  onCreateCustomFood,
+  onUpdateCustomFood,
+  onDeleteCustomFood,
   // Test-only, same reasoning as QuizScreen.js's initialAnswers/
   // initialStepIndex — lets the local render-test harness render straight
   // into the "My Favorites" filter without needing to simulate a real tap
@@ -4235,6 +4351,10 @@ export default function LogFoodScreen({
   const [simpleItem, setSimpleItem] = useState(null);
   // Which All-tab card is open. One at a time, same as My Favorites.
   const [expandedCardKey, setExpandedCardKey] = useState(null);
+  // My Own Food: which row is open as a card, and whether the create/edit
+  // form is up. `true` means creating; a row id means editing that one.
+  const [openCustomFoodId, setOpenCustomFoodId] = useState(null);
+  const [customFormFor, setCustomFormFor] = useState(null);
   const [fatOilType, setFatOilType] = useState(null);
   const [fatOilItem, setFatOilItem] = useState(null);
   // Everything that says "you are somewhere inside a category", cleared
@@ -4272,6 +4392,8 @@ export default function LogFoodScreen({
     setSimpleType(null);
     setSimpleItem(null);
     setExpandedCardKey(null);
+    setOpenCustomFoodId(null);
+    setCustomFormFor(null);
   };
   useEffect(resetDrillDown, [category]);
 
@@ -4711,6 +4833,12 @@ export default function LogFoodScreen({
       ? expandedFavoriteId
         ? 'favoriteCard'
         : 'favorites'
+      : category === 'custom'
+        ? customFormFor
+          ? 'customForm'
+          : openCustomFoodId
+            ? 'customCard'
+            : 'custom'
       : category === 'all' && !query.trim() && expandedCardKey
         ? 'allCard'
       : isBrowsingMeat
@@ -4964,6 +5092,60 @@ export default function LogFoodScreen({
     }
     emptyText =
       "You haven't added any favorites yet — tap the star on a food (or \"Add to My Favorites & Today\" on a Beef/Poultry/Seafood card) to save it here.";
+  } else if (listMode === 'custom' || listMode === 'customCard' || listMode === 'customForm') {
+    // My Own Food. Three states share one branch because they share one
+    // list: the roster, one food opened as a card, and the create/edit
+    // form. Each is the whole screen, the way every other category works
+    // since v0.0.94.
+    listKeyExtractor = (item) => item.id;
+
+    if (listMode === 'customForm') {
+      const editing = customFormFor === true ? null : customFoods.find((c) => c.id === customFormFor);
+      listData = [{ id: 'custom-form' }];
+      listRenderItem = () => (
+        <CustomFoodForm
+          existing={editing}
+          onCancel={() => setCustomFormFor(null)}
+          onSave={async (food) => {
+            const saved = editing
+              ? await onUpdateCustomFood(editing.id, food)
+              : await onCreateCustomFood(food);
+            if (saved) {
+              setCustomFormFor(null);
+              // Land on the thing you just made, not back in the list.
+              setOpenCustomFoodId(saved.id);
+            }
+            return saved;
+          }}
+          onDelete={(id) => {
+            Alert.alert(`Delete ${editing?.name || 'this food'}?`, 'Anything you already logged with it stays in your history.', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () => {
+                  onDeleteCustomFood(id);
+                  setCustomFormFor(null);
+                  setOpenCustomFoodId(null);
+                },
+              },
+            ]);
+          }}
+        />
+      );
+    } else if (listMode === 'customCard') {
+      const row = customFoods.find((c) => c.id === openCustomFoodId);
+      const food = row ? customFoodToFood(row) : null;
+      listData = food ? [{ id: row.id }] : [];
+      listRenderItem = () => <CustomFoodCard row={row} food={food} onAdd={handleAdd} onEdit={() => setCustomFormFor(row.id)} />;
+      listHeader = <BackRow label="Back to My Own Food" onPress={() => setOpenCustomFoodId(null)} />;
+    } else {
+      listData = customFoods;
+      listRenderItem = ({ item }) => (
+        <CustomFoodRow row={item} onOpen={() => setOpenCustomFoodId(item.id)} />
+      );
+      emptyText = 'Tap Create New Food to add your own.';
+    }
   } else if (listMode === 'allCard') {
     // The All tab's open card, alone on screen -- the same FoodCardFor the
     // row used to expand into, just no longer sitting under a copy of
@@ -5521,6 +5703,14 @@ export default function LogFoodScreen({
           active={category === 'favorites'}
           onPress={() => handleCategoryPress('favorites')}
         />
+        {/* Between Favorites and All, where Damon asked for it. No
+            artwork yet -- a blank tile draws the vector fallback. */}
+        <CategoryTile
+          label="My Own Food"
+          glyph="plus-box-outline"
+          active={category === 'custom'}
+          onPress={() => handleCategoryPress('custom')}
+        />
         <CategoryTile
           label="All"
           iconKey="all"
@@ -5544,6 +5734,22 @@ export default function LogFoodScreen({
 
 
       {listHeader}
+
+      {/* Always at the top of My Own Food, whether the list is empty or
+          not -- it is the only way to add one. Hidden while the form
+          itself is open, where it would be a second Save button. */}
+      {category === 'custom' && listMode !== 'customForm' ? (
+        <TouchableOpacity
+          style={styles.createFoodBtn}
+          activeOpacity={0.8}
+          onPress={() => setCustomFormFor(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new food"
+        >
+          <MaterialCommunityIcons name="plus" size={19} color="#fff" />
+          <Text style={styles.createFoodText}>Create New Food</Text>
+        </TouchableOpacity>
+      ) : null}
 
       <FlatList
         ref={listRef}
@@ -5791,6 +5997,17 @@ const styles = StyleSheet.create({
   // The Poultry toggle card (PoultryCard, above) — a taller single card
   // rather than a list of rows, since there's only ever one food shown at
   // this step (whichever one the toggles currently resolve to).
+  createFoodBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 48,
+    borderRadius: 13,
+    backgroundColor: COLORS.accent,
+    marginBottom: 12,
+  },
+  createFoodText: { color: '#fff', fontWeight: '800', fontSize: 16 },
   poultryCard: {
     backgroundColor: COLORS.card,
     borderRadius: RADIUS.card,

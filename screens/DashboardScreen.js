@@ -17,7 +17,7 @@
 //     visible square frame around the picture. This is the single most
 //     likely thing to get "improved" into a bug later.
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import foods from '../data/foods';
@@ -27,6 +27,7 @@ import FoodIcon from '../components/FoodIcon';
 import { APP_VERSION } from '../utils/appVersion';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
 import { scoreDay, targetState } from '../utils/score';
+import { customFoodToFood } from '../utils/customFoods';
 import { TARGETS } from '../data/scoreConfig';
 import { scoreTone } from '../utils/scoreTone';
 import { ART_READY, MASCOT, MACRO_ART, MACRO_FALLBACK_ICONS } from '../data/brandArt';
@@ -138,11 +139,20 @@ function MacroRow({ label, unit, color, tint, macroKey, value, goal, target }) {
   );
 }
 
-export default function DashboardScreen({ entries, goals, onDeleteEntry }) {
+export default function DashboardScreen({ entries, goals, onDeleteEntry, customFoods = [] }) {
   const totals = sumEntries(entries);
   // null on a day with nothing logged -- see utils/score.js. The chip simply
   // doesn't render then, rather than showing a zero nobody earned.
-  const score = scoreDay({ entries, totals, goals, foods });
+  // The scorer decides what is junk by resolving each entry back to a
+  // food's category, so a custom food has to be in the list it searches or
+  // a logged takeaway would score as clean eating. customFoodToFood gives
+  // a fast-food one mixed_dish/restaurant, which the existing FLAGGED rule
+  // already counts -- no change to the scorer itself.
+  const scorableFoods = useMemo(
+    () => [...foods, ...(customFoods || []).map(customFoodToFood)],
+    [customFoods]
+  );
+  const score = scoreDay({ entries, totals, goals, foods: scorableFoods });
 
   return (
     <ScrollView
@@ -221,7 +231,7 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry }) {
           .map((e) => (
             <View key={e.id} style={s.entryRow}>
               <FoodIcon
-                iconKey={iconKeyForFoodId(foods, e.foodId)}
+                iconKey={iconKeyForFoodId(foods, e.foodId, customFoods)}
                 size={FOOD_ICON_SIZE}
                 style={s.entryIcon}
               />

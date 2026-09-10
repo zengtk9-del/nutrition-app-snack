@@ -426,3 +426,78 @@ export async function deleteEntry(entryId) {
   const { error } = await supabase.from('entries').delete().eq('id', entryId);
   if (error) throw error;
 }
+
+// --- My Own Food (v0.0.95) ------------------------------------------------
+//
+// Foods the user defined themselves, in their own table (see
+// add-custom-foods-table.sql). A row keeps what they typed -- one amount
+// and the four macros FOR that amount -- and utils/customFoods.js turns it
+// into the weight-or-count shape the rest of the app runs on.
+//
+// Column names are snake_case here and camelCase everywhere else, same
+// split as every other table in this file.
+
+const CUSTOM_FOOD_COLUMNS =
+  'id, name, icon, serving_type, unit, amount, calories, protein, carbs, fat, fast_food, created_at';
+
+// Undeleted only. Deleting is soft (see removeCustomFood) so that entries
+// logged from a food the user later threw away can still find its picture.
+export async function fetchCustomFoods(userId) {
+  const { data, error } = await supabase
+    .from('custom_foods')
+    .select(CUSTOM_FOOD_COLUMNS)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
+const customFoodPayload = (food) => ({
+  name: String(food.name).trim(),
+  icon: food.icon,
+  serving_type: food.servingType,
+  unit: food.unit,
+  amount: Number(food.amount),
+  calories: Number(food.calories),
+  protein: Number(food.protein),
+  carbs: Number(food.carbs),
+  fat: Number(food.fat),
+  fast_food: !!food.fastFood,
+});
+
+export async function addCustomFood(userId, food) {
+  const { data, error } = await supabase
+    .from('custom_foods')
+    .insert({ user_id: userId, ...customFoodPayload(food) })
+    .select(CUSTOM_FOOD_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Edits the definition in place. Deliberately does NOT touch anything
+// already logged: insertEntry copies the name and macros onto each entry,
+// so history stays a record of what was eaten rather than a view over
+// whatever the food happens to say today.
+export async function updateCustomFood(id, food) {
+  const { data, error } = await supabase
+    .from('custom_foods')
+    .update({ ...customFoodPayload(food), updated_at: new Date().toISOString() })
+    .eq('id', id)
+    .select(CUSTOM_FOOD_COLUMNS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Soft. A hard delete would orphan every entry ever logged from this food
+// -- their name and macros live on the entry, but the picture is looked up
+// through here.
+export async function removeCustomFood(id) {
+  const { error } = await supabase
+    .from('custom_foods')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+}

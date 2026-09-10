@@ -19,6 +19,10 @@ import {
   fetchDiet,
   saveDiet,
   describeDietSaveError,
+  fetchCustomFoods,
+  addCustomFood,
+  updateCustomFood,
+  removeCustomFood,
 } from './utils/db';
 import { DEFAULT_DIET } from './data/dietOrder';
 import { COLORS, TYPE, RADIUS } from './utils/theme';
@@ -98,6 +102,12 @@ export default function App() {
   // see utils/db.js's own comment on this, and screens/LogFoodScreen.js's
   // FavoriteListItem for how each one gets displayed/numbered.
   const [favorites, setFavorites] = useState([]);
+  // Foods the user defined themselves (v0.0.95). Raw rows from
+  // custom_foods; utils/customFoods.js turns one into the shape the cards
+  // and the scorer already understand. Held here rather than inside
+  // LogFoodScreen because Today and History need them too -- an entry
+  // logged from a custom food looks up its picture through this list.
+  const [customFoods, setCustomFoods] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
@@ -106,6 +116,7 @@ export default function App() {
       setGoals(DEFAULT_GOALS);
       setSavedGoals([]);
       setFavorites([]);
+      setCustomFoods([]);
       setDiet(DEFAULT_DIET);
       setDataLoading(true);
       return;
@@ -115,12 +126,21 @@ export default function App() {
     setDataLoading(true);
     (async () => {
       try {
-        const [userGoals, userEntries, userSavedGoals, userFavorites, userDiet] = await Promise.all([
+        const [userGoals, userEntries, userSavedGoals, userFavorites, userDiet, userCustomFoods] = await Promise.all([
           fetchGoals(session.user.id),
           fetchEntries(session.user.id),
           fetchSavedGoals(session.user.id),
           fetchFavoriteFoods(session.user.id),
           fetchDiet(session.user.id),
+          // Separate, resilient read for the same reason fetchDiet is one:
+          // if this app ever runs against a database without the
+          // custom_foods table, naming it inside the others would fail the
+          // whole load and leave the user with no data at all. Isolated,
+          // the worst case is an empty My Own Food tab.
+          fetchCustomFoods(session.user.id).catch((err) => {
+            console.warn('Custom foods unavailable — has add-custom-foods-table.sql been run?', err);
+            return [];
+          }),
         ]);
         if (cancelled) return;
         setGoals(userGoals);
@@ -132,6 +152,7 @@ export default function App() {
         // Balanced is the ordering the app has always had, so those users
         // notice nothing until they set one.
         setDiet(userDiet || DEFAULT_DIET);
+        setCustomFoods(userCustomFoods);
       } catch (err) {
         console.warn('Failed to load your data from Supabase', err);
       } finally {
@@ -193,6 +214,48 @@ export default function App() {
     } catch (err) {
       console.warn('Failed to remove favorite, restoring it', err);
       setFavorites(previousFavorites);
+    }
+  };
+
+  // --- My Own Food ---
+  //
+  // Create and edit return the saved row so the screen can close its form
+  // on the real thing rather than an optimistic guess; delete is soft, so
+  // the row is only dropped from local state and entries logged from it
+  // keep their picture.
+  const handleCreateCustomFood = async (food) => {
+    try {
+      const created = await addCustomFood(session.user.id, food);
+      setCustomFoods((prev) => [...prev, created]);
+      return created;
+    } catch (err) {
+      console.warn('Failed to create custom food', err);
+      Alert.alert("Couldn't save this food", 'Something went wrong. Please try again.');
+      return null;
+    }
+  };
+
+  const handleUpdateCustomFood = async (id, food) => {
+    try {
+      const updated = await updateCustomFood(id, food);
+      setCustomFoods((prev) => prev.map((c) => (c.id === id ? updated : c)));
+      return updated;
+    } catch (err) {
+      console.warn('Failed to update custom food', err);
+      Alert.alert("Couldn't save your changes", 'Something went wrong. Please try again.');
+      return null;
+    }
+  };
+
+  const handleDeleteCustomFood = async (id) => {
+    const previous = customFoods;
+    setCustomFoods((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await removeCustomFood(id);
+    } catch (err) {
+      console.warn('Failed to delete custom food, restoring it', err);
+      setCustomFoods(previous);
+      Alert.alert("Couldn't delete this food", 'Something went wrong. Please try again.');
     }
   };
 
@@ -634,7 +697,12 @@ export default function App() {
       <StatusBar barStyle="dark-content" />
       <View style={styles.content}>
         {activeTab === 'dashboard' && (
-          <DashboardScreen entries={todayEntries} goals={goals} onDeleteEntry={handleDeleteEntry} />
+          <DashboardScreen
+            entries={todayEntries}
+            goals={goals}
+            onDeleteEntry={handleDeleteEntry}
+            customFoods={customFoods}
+          />
         )}
         {activeTab === 'log' && (
           <LogFoodScreen
@@ -646,9 +714,15 @@ export default function App() {
             onRemoveFavorite={handleRemoveFavorite}
             diet={diet}
             dailyCalories={goals.calories}
+            customFoods={customFoods}
+            onCreateCustomFood={handleCreateCustomFood}
+            onUpdateCustomFood={handleUpdateCustomFood}
+            onDeleteCustomFood={handleDeleteCustomFood}
           />
         )}
-        {activeTab === 'history' && <HistoryScreen entries={entries} goals={goals} />}
+        {activeTab === 'history' && (
+          <HistoryScreen entries={entries} goals={goals} customFoods={customFoods} />
+        )}
         {activeTab === 'goals' && (
           <GoalsScreen
             goals={goals}

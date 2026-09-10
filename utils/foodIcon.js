@@ -10,6 +10,7 @@
 // straight back; nothing about how they are used changed.
 
 import { FOOD_ICON_IMAGES } from '../data/foodIconImages';
+import { CUSTOM_ID_PREFIX, isCustomFoodId, isArtRef, refValue } from './customFoods';
 import { RED_MEAT_CUTS } from '../data/meatHierarchy';
 import { POULTRY_CUTS } from '../data/poultryHierarchy';
 import { SEAFOOD_CUTS } from '../data/seafoodHierarchy';
@@ -266,8 +267,21 @@ function rawRowIconKeyOf(food, exact) {
 // logged and miserable with forty.
 let idIndex = null;
 
-export function iconKeyForFoodId(foods, foodId) {
+// `customFoods` is optional and is the raw rows from the custom_foods
+// table (v0.0.95). A food the user invented is not in the bundled list, so
+// without this every entry logged from one shows the dashed empty box on
+// Today and in History. Its stored `icon` is already a reference of the
+// right shape -- "glyph:hamburger" or "art:fruit_apple_dried" -- and
+// FoodIcon understands both.
+export function iconKeyForFoodId(foods, foodId, customFoods) {
   if (!foodId) return null;
+  if (isCustomFoodId(foodId)) {
+    const row = (customFoods || []).find((c) => CUSTOM_ID_PREFIX + c.id === foodId);
+    if (!row) return null;
+    // An artwork reference has to lose its prefix to become a key the
+    // image map knows; a glyph reference is passed through as-is.
+    return isArtRef(row.icon) ? refValue(row.icon) : row.icon;
+  }
   if (!idIndex) idIndex = new Map(foods.map((f) => [f.id, f]));
   // Exact, not default: this is the Today tab and My Favorites asking
   // what one already-logged thing looked like, and the row behind that id

@@ -20,11 +20,12 @@
 //    logged rather than days that haven't happened -- same picture, and it
 //    agrees with both the title and the number above it.
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
 import foods from '../data/foods';
 import { groupEntriesByDate, formatDateKey } from '../utils/nutrition';
 import { scoreDay, scoreWeek } from '../utils/score';
+import { customFoodToFood } from '../utils/customFoods';
 import { scoreTone } from '../utils/scoreTone';
 import ScoreArc from '../components/ScoreArc';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
@@ -44,10 +45,18 @@ function lastSevenDays() {
   return out;
 }
 
-export default function HistoryScreen({ entries, goals }) {
+export default function HistoryScreen({ entries, goals, customFoods = [] }) {
+  // Same reason as the Today tab: the scorer works out what is junk by
+  // resolving an entry back to a food's category, so a food the user
+  // invented has to be in the list it searches or a logged takeaway
+  // scores as clean eating.
+  const scorableFoods = useMemo(
+    () => [...foods, ...(customFoods || []).map(customFoodToFood)],
+    [customFoods]
+  );
   const days = groupEntriesByDate(entries, 7).map((day) => ({
     ...day,
-    score: scoreDay({ entries: day.entries, totals: day.totals, goals, foods }),
+    score: scoreDay({ entries: day.entries, totals: day.totals, goals, foods: scorableFoods }),
   }));
 
   const scoreByKey = {};
