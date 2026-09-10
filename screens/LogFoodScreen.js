@@ -3624,12 +3624,15 @@ function FoodCardFor({ rows, cardKey, pools, onAddFavorite, onAdd }) {
 
 
 
-function AllFoodRow({ card, expanded, onToggle, pools, onAddFavorite, onAdd }) {
+// A row in the All tab. It used to open the card inline underneath
+// itself; as of v0.0.94 it drills in like every other list row does, and
+// the card gets the screen to itself (listMode 'allCard').
+function AllFoodRow({ card, onOpen }) {
   const f = card.rep;
   const extra = card.rows.length > 1 ? ` · ${card.rows.length} options` : '';
   return (
     <View style={styles.allCardWrap}>
-      <TouchableOpacity style={styles.allCardRow} onPress={onToggle} activeOpacity={0.7}>
+      <TouchableOpacity style={styles.allCardRow} onPress={onOpen} activeOpacity={0.7}>
         <FoodIcon iconKey={rowIconKeyOf(f)} />
         <View style={{ flex: 1, marginLeft: 14 }}>
           <Text style={styles.name}>{card.title}</Text>
@@ -3640,11 +3643,8 @@ function AllFoodRow({ card, expanded, onToggle, pools, onAddFavorite, onAdd }) {
             {extra}
           </Text>
         </View>
-        <Text style={styles.allCardChevron}>{expanded ? '⌄' : '›'}</Text>
+        <Text style={styles.allCardChevron}>›</Text>
       </TouchableOpacity>
-      {expanded ? (
-        <FoodCardFor rows={card.rows} cardKey={card.id} pools={pools} onAddFavorite={onAddFavorite} onAdd={onAdd} />
-      ) : null}
     </View>
   );
 }
@@ -4694,9 +4694,25 @@ export default function LogFoodScreen({
   // isn't a real category on any food (data/foods.js) — it's this user's
   // own saved list, shown regardless of what category chip would
   // otherwise apply.
+  // Opening a food fills the screen, everywhere (v0.0.94).
+  //
+  // Every drill-down category already worked this way: tap Chicken Breast
+  // and the card replaces the list, with Back at the top. The All tab and
+  // My Favorites did something else -- they expanded the card UNDERNEATH
+  // the row you tapped, so the same food appeared twice on screen, once as
+  // a collapsed row and once as an open card. Two different treatments of
+  // the same thing, stacked.
+  //
+  // These two modes are what makes them behave like the rest: the open
+  // card becomes the whole list, and the row it came from is gone until
+  // you press Back.
   const listMode =
     category === 'favorites'
-      ? 'favorites'
+      ? expandedFavoriteId
+        ? 'favoriteCard'
+        : 'favorites'
+      : category === 'all' && !query.trim() && expandedCardKey
+        ? 'allCard'
       : isBrowsingMeat
         ? !meatSubcategory
           ? 'meatTypes'
@@ -4913,8 +4929,11 @@ export default function LogFoodScreen({
   let listHeader = null;
   let emptyText = 'No foods match this search and filter.';
 
-  if (listMode === 'favorites') {
-    listData = favoritesFiltered;
+  if (listMode === 'favorites' || listMode === 'favoriteCard') {
+    listData =
+      listMode === 'favoriteCard'
+        ? favoritesFiltered.filter((f) => f.id === expandedFavoriteId)
+        : favoritesFiltered;
     listKeyExtractor = (item) => item.id;
     listRenderItem = ({ item }) => (
       <FavoriteListItem
@@ -4940,8 +4959,28 @@ export default function LogFoodScreen({
         simpleFoodsAllPool={simpleFoodsAllPool}
       />
     );
+    if (listMode === 'favoriteCard') {
+      listHeader = <BackRow label="Back to My Favorites" onPress={() => handleToggleFavoriteExpand(expandedFavoriteId)} />;
+    }
     emptyText =
       "You haven't added any favorites yet — tap the star on a food (or \"Add to My Favorites & Today\" on a Beef/Poultry/Seafood card) to save it here.";
+  } else if (listMode === 'allCard') {
+    // The All tab's open card, alone on screen -- the same FoodCardFor the
+    // row used to expand into, just no longer sitting under a copy of
+    // itself.
+    const openCard = allCards.find((c) => c.id === expandedCardKey);
+    listData = openCard ? [openCard] : [];
+    listKeyExtractor = (item) => item.id;
+    listRenderItem = ({ item }) => (
+      <FoodCardFor
+        rows={item.rows}
+        cardKey={item.id}
+        pools={cardPools}
+        onAddFavorite={handleAddFavorite}
+        onAdd={handleAdd}
+      />
+    );
+    listHeader = <BackRow label="Back to All Foods" onPress={() => setExpandedCardKey(null)} />;
   } else if (listMode === 'meatTypes') {
     listData = availableSubcats;
     listKeyExtractor = (item) => item.key;
@@ -5401,14 +5440,7 @@ export default function LogFoodScreen({
     listData = allCards;
     listKeyExtractor = (item) => item.id;
     listRenderItem = ({ item }) => (
-      <AllFoodRow
-        card={item}
-        expanded={expandedCardKey === item.id}
-        onToggle={() => setExpandedCardKey(expandedCardKey === item.id ? null : item.id)}
-        pools={cardPools}
-        onAddFavorite={handleAddFavorite}
-        onAdd={handleAdd}
-      />
+      <AllFoodRow card={item} onOpen={() => setExpandedCardKey(item.id)} />
     );
   } else {
     // Search results stay row-per-food: when you type "cooked" you want to
@@ -5451,7 +5483,14 @@ export default function LogFoodScreen({
           placeholder="Search foods (e.g. chicken, rice, apple)"
           placeholderTextColor={COLORS.textMuted}
           value={query}
-          onChangeText={setQuery}
+          // Typing closes whatever card the All tab had open. Without
+          // this, searching hides the card (the list becomes results) and
+          // clearing the search brings it back instead of the All list,
+          // which is not where you were.
+          onChangeText={(t) => {
+            setQuery(t);
+            if (t.trim()) setExpandedCardKey(null);
+          }}
           autoCorrect={false}
           returnKeyType="search"
         />
