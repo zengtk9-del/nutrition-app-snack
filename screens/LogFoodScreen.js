@@ -3647,7 +3647,7 @@ function CustomFoodRow({ row, onOpen }) {
 // -- so a food you invented does not look like a different species from a
 // food that came with the app. What it does not have is toggles: there
 // are no variants of a food you defined yourself.
-function CustomFoodCard({ row, food, onAdd, onEdit }) {
+function CustomFoodCard({ row, food, onAdd, onEdit, onDelete }) {
   const counting = food.servingType === 'count';
   const [weightValue, setWeightValue] = useState(String(food.typicalGrams ?? 100));
   const [weightUnit, setWeightUnit] = useState('g');
@@ -3712,10 +3712,41 @@ function CustomFoodCard({ row, food, onAdd, onEdit }) {
         <PortionTotal kcal={previewCalories} />
       </View>
 
+      {/* Delete, Edit, Add to Today (v0.0.98). Three actions in one row,
+          in the order they were asked for.
+
+          The two on the left size to their own labels and only the primary
+          flexes, because that is the one with room to give: React Native
+          defaults flexShrink to 0, so a narrow screen takes width off
+          "Add to Today" and leaves the other two legible rather than
+          squeezing all three evenly into illegibility.
+
+          Both left labels are a bare word, no vector icon, and that is a
+          width decision as much as a style one. A 16pt icon plus its gap
+          is 21pt, twice, and a measured budget (rt/row98.jsx) put the
+          iconned version 14pt SHORT on a 360pt screen -- "+ Add to Today"
+          would have wrapped to two lines on a phone where today's
+          two-button row still fits. Without them the row clears 360pt by
+          15pt and 375pt by 30. It also matches the rest of this file,
+          where every action button is a character mark and a word. */}
       <View style={styles.cardActionsRow}>
-        <TouchableOpacity style={styles.favAddBtn} activeOpacity={0.7} onPress={onEdit}
-          accessibilityRole="button" accessibilityLabel={`Edit ${row.name}`}>
-          <Text style={styles.favAddBtnText}>✎ Edit this food</Text>
+        <TouchableOpacity
+          style={styles.customDeleteBtn}
+          activeOpacity={0.7}
+          onPress={onDelete}
+          accessibilityRole="button"
+          accessibilityLabel={`Delete ${row.name}`}
+        >
+          <Text style={styles.customDeleteText}>Delete</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.customEditBtn}
+          activeOpacity={0.7}
+          onPress={onEdit}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${row.name}`}
+        >
+          <Text style={styles.customEditText}>✎ Edit</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.addBtn}
@@ -4259,6 +4290,10 @@ export default function LogFoodScreen({
   // render test harness seed My Favorites' expanded-card state directly,
   // since renderToStaticMarkup can't simulate tapping a favorite row open.
   initialExpandedFavoriteId = null,
+  // Test-only, same reasoning as the other initial* props above -- lets
+  // the render test harness open one of your own foods as a card without
+  // simulating the tap on its row.
+  initialOpenCustomFoodId = null,
 }) {
   const [query, setQuery] = useState(initialQuery);
   // Log Food opens on Favorites (v0.0.75). The one exception is an account
@@ -4353,7 +4388,7 @@ export default function LogFoodScreen({
   const [expandedCardKey, setExpandedCardKey] = useState(null);
   // My Own Food: which row is open as a card, and whether the create/edit
   // form is up. `true` means creating; a row id means editing that one.
-  const [openCustomFoodId, setOpenCustomFoodId] = useState(null);
+  const [openCustomFoodId, setOpenCustomFoodId] = useState(initialOpenCustomFoodId);
   const [customFormFor, setCustomFormFor] = useState(null);
   const [fatOilType, setFatOilType] = useState(null);
   const [fatOilItem, setFatOilItem] = useState(null);
@@ -4999,6 +5034,30 @@ export default function LogFoodScreen({
     setExpandedFavoriteId((prev) => (prev === id ? null : id));
   };
 
+  // Deleting a food you made, asked the same way from both places that can
+  // ask (v0.0.98). The card has a Delete button now, and the edit form has
+  // had one since v0.0.95; having two copies of the wording and two copies
+  // of the cleanup is how they drift apart.
+  //
+  // Both exits are cleared, not just the one you came from: after the row
+  // is gone, `customCard` would look for a row that no longer exists and
+  // `customForm` would be editing a ghost.
+  const confirmDeleteCustomFood = (row) => {
+    if (!row) return;
+    Alert.alert(`Delete ${row.name || 'this food'}?`, 'Anything you already logged with it stays in your history.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          onDeleteCustomFood(row.id);
+          setCustomFormFor(null);
+          setOpenCustomFoodId(null);
+        },
+      },
+    ]);
+  };
+
   const renderFoodCard = (item) => {
     if (item.servingType === 'weight') {
       return <WeightFoodRow item={item} onAdd={handleAdd} onAddFavorite={handleAddFavorite} />;
@@ -5117,27 +5176,22 @@ export default function LogFoodScreen({
             }
             return saved;
           }}
-          onDelete={(id) => {
-            Alert.alert(`Delete ${editing?.name || 'this food'}?`, 'Anything you already logged with it stays in your history.', [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: () => {
-                  onDeleteCustomFood(id);
-                  setCustomFormFor(null);
-                  setOpenCustomFoodId(null);
-                },
-              },
-            ]);
-          }}
+          onDelete={() => confirmDeleteCustomFood(editing)}
         />
       );
     } else if (listMode === 'customCard') {
       const row = customFoods.find((c) => c.id === openCustomFoodId);
       const food = row ? customFoodToFood(row) : null;
       listData = food ? [{ id: row.id }] : [];
-      listRenderItem = () => <CustomFoodCard row={row} food={food} onAdd={handleAdd} onEdit={() => setCustomFormFor(row.id)} />;
+      listRenderItem = () => (
+        <CustomFoodCard
+          row={row}
+          food={food}
+          onAdd={handleAdd}
+          onEdit={() => setCustomFormFor(row.id)}
+          onDelete={() => confirmDeleteCustomFood(row)}
+        />
+      );
       listHeader = <BackRow label="Back to My Own Food" onPress={() => setOpenCustomFoodId(null)} />;
     } else {
       listData = customFoods;
@@ -6282,6 +6336,45 @@ const styles = StyleSheet.create({
     borderRadius: 13,
   },
   favAddBtnText: { color: COLORS.warnInk, fontWeight: '800', fontSize: 13.5, textAlign: 'center' },
+
+  // The custom food card's three-up action row (v0.0.98). Same geometry as
+  // favAddBtn above -- 48pt tall, radius 13, 1.5pt outline -- so the row
+  // still reads as the one every other food card has, minus the flex: 1.
+  // Content width is the whole point here: see the note at the call site.
+  //
+  // Delete is quiet on purpose. It sits leftmost because that is the
+  // order asked for, which puts a destructive action under the thumb, so
+  // it gets the palest fill of the three and a confirm dialog behind it
+  // rather than the loud red a filled button would give it. Colour, not
+  // weight, is what marks it out.
+  //
+  // The word is overInk (#cc3229), not destructive (#f2542d): on this
+  // fill that is 4.5:1 against 3.2:1, and 13.5pt bold sits a hair under
+  // the size where 3:1 would be allowed instead.
+  customDeleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderWidth: 1.5,
+    borderColor: '#f3b7b2',
+    backgroundColor: COLORS.overSoft,
+    borderRadius: 13,
+  },
+  customDeleteText: { color: COLORS.overInk, fontWeight: '800', fontSize: 13.5 },
+  customEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderWidth: 1.5,
+    borderColor: '#f0c14b',
+    backgroundColor: '#fffaf0',
+    borderRadius: 13,
+  },
+  customEditText: { color: COLORS.warnInk, fontWeight: '800', fontSize: 13.5 },
   toast: {
     position: 'absolute',
     bottom: 24,
