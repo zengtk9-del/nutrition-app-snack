@@ -226,7 +226,10 @@ export default function App() {
   const handleCreateCustomFood = async (food) => {
     try {
       const created = await addCustomFood(session.user.id, food);
-      setCustomFoods((prev) => [...prev, created]);
+      // Prepended, not appended: My Own Food is newest-first (see
+      // fetchCustomFoods), and this has to land where a refetch would put
+      // it or the list would reorder itself the next time the app opens.
+      setCustomFoods((prev) => [created, ...prev]);
       return created;
     } catch (err) {
       console.warn('Failed to create custom food', err);

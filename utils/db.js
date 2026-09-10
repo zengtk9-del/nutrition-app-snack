@@ -442,13 +442,22 @@ const CUSTOM_FOOD_COLUMNS =
 
 // Undeleted only. Deleting is soft (see removeCustomFood) so that entries
 // logged from a food the user later threw away can still find its picture.
+// NEWEST FIRST (v0.1.0), unlike favorites and saved goals just above,
+// which are deliberately oldest-first because their display numbers
+// ("Beef Ribeye Steak 1", "2") have to stay put as more are added.
+//
+// Nothing numbers these, and the one you just made is the one you want:
+// Damon's rule is that saving a new food puts it at the top of My Own
+// Food. That order is set here rather than sorted at the point of
+// display, so there is one answer to "what order are these in" -- and
+// App.js's optimistic insert prepends to match.
 export async function fetchCustomFoods(userId) {
   const { data, error } = await supabase
     .from('custom_foods')
     .select(CUSTOM_FOOD_COLUMNS)
     .eq('user_id', userId)
     .is('deleted_at', null)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
 }

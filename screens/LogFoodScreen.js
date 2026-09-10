@@ -59,7 +59,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, LOG_CHIP, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
 import { ART_READY, MASCOT } from '../data/brandArt';
 import CustomFoodForm from '../components/CustomFoodForm';
-import { customFoodToFood, customFoodSummary } from '../utils/customFoods';
+import { customFoodToFood } from '../utils/customFoods';
 
 // The four chips under a food's name. Order matters and is the same one
 // used on Today's bars and the Goals cards: calories first, then the three
@@ -3626,139 +3626,109 @@ function FoodCardFor({ rows, cardKey, pools, onAddFavorite, onAdd }) {
 
 
 
-// One food the user invented, in the My Own Food list. A plain drill-down
-// row: picture, name, and what it was defined as.
-function CustomFoodRow({ row, onOpen }) {
+// One food the user invented, in the My Own Food list (v0.1.0).
+//
+// This is the My Favorites row, deliberately: same 80pt tinted art tile,
+// same name-and-circle target, same caption, same four macro chips, same
+// two buttons. Damon's call, and the right one -- these two tabs hold the
+// same kind of thing (a food you put there yourself, ready to log in one
+// press) and had no business looking like different species.
+//
+// What differs is only what the two buttons and the circle mean:
+//
+//   Delete       replaces "Remove from Favorites". Same slot, same red,
+//                same confirm-first behaviour.
+//   Add to Today logs the food exactly as you defined it -- 250g of it,
+//                or one serving of it. No portion box, because there is
+//                no longer a card to put one in (see below).
+//   the circle   opens the edit form. In Favorites it expands a card
+//                underneath; here that card is gone, so the one thing
+//                left to open is the definition itself. It carries a
+//                pencil rather than a chevron for that reason: the shape
+//                and position say "same row", the mark says where it goes.
+//
+// THE CARD THIS REPLACED. Through v0.0.99 a row opened a full food card
+// -- header, portion box, running total, Delete/Edit/Add. Damon cut that
+// step in v0.1.0: everything it showed is on this row already, and the
+// only thing it could do that this cannot is log a weight other than the
+// one you defined. That is a real loss and worth knowing about; it is not
+// worth a whole screen between you and the button you came for.
+function CustomFoodRow({ row, onEdit, onAdd, onDelete }) {
+  const food = customFoodToFood(row);
+  const isWeight = food.servingType === 'weight';
+
+  // Weight foods carry per-100g figures and count foods carry the absolute
+  // macros of one serving -- the same split FavoriteListItem handles, and
+  // the same reason the caption above the chips has to say which it is.
+  const chipValues = isWeight
+    ? {
+        calories: food.caloriesPer100g,
+        protein: food.proteinPer100g,
+        carbs: food.carbsPer100g,
+        fat: food.fatPer100g,
+      }
+    : { calories: food.calories, protein: food.protein, carbs: food.carbs, fat: food.fat };
+
   return (
-    <TouchableOpacity style={styles.allCardRow} onPress={onOpen} activeOpacity={0.7}
-      accessibilityRole="button" accessibilityLabel={`Open ${row.name}`}>
-      <FoodIcon iconKey={row.icon} />
-      <View style={{ flex: 1, marginLeft: 14 }}>
-        <Text style={styles.name}>{row.name}</Text>
-        <Text style={styles.sub}>{customFoodSummary(row)}</Text>
-      </View>
-      <Text style={styles.allCardChevron}>›</Text>
-    </TouchableOpacity>
-  );
-}
+    <View style={styles.favoriteListItem}>
+      <View style={styles.favTop}>
+        <View style={styles.favArtTile}>
+          <FoodIcon iconKey={row.icon} size={72} style={styles.favArt} />
+        </View>
 
-// The opened card. Deliberately the SAME shell every other food card uses
-// -- FoodCardHead, the tinted Portion panel, PortionTotal, the action row
-// -- so a food you invented does not look like a different species from a
-// food that came with the app. What it does not have is toggles: there
-// are no variants of a food you defined yourself.
-function CustomFoodCard({ row, food, onAdd, onEdit, onDelete }) {
-  const counting = food.servingType === 'count';
-  const [weightValue, setWeightValue] = useState(String(food.typicalGrams ?? 100));
-  const [weightUnit, setWeightUnit] = useState('g');
-  const [count, setCount] = useState(1);
+        <View style={styles.favBody}>
+          <TouchableOpacity
+            style={styles.favNameRow}
+            activeOpacity={0.6}
+            onPress={onEdit}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${row.name}`}
+          >
+            <View style={styles.favChevron}>
+              <MaterialCommunityIcons name="pencil-outline" size={16} color={COLORS.accent} />
+            </View>
+            <Text style={styles.favName} numberOfLines={2}>
+              {row.name}
+            </Text>
+          </TouchableOpacity>
 
-  const typedGrams = weightUnit === 'g' ? parseFloat(weightValue) || 0 : ozToGrams(parseFloat(weightValue) || 0);
-  const grams = counting ? 0 : typedGrams;
-  const previewCalories = counting
-    ? Math.round((food.calories || 0) * count)
-    : Math.round(((food.caloriesPer100g || 0) * grams) / 100);
+          <Text style={styles.favCaption}>{isWeight ? 'per 100g' : 'per serving'}</Text>
 
-  const handleUnit = (nextUnit) => {
-    const n = parseFloat(weightValue);
-    if (Number.isFinite(n)) {
-      const converted = nextUnit === 'oz' ? gramsToOz(n) : ozToGrams(n);
-      setWeightValue(String(Math.round(converted * 10) / 10));
-    }
-    setWeightUnit(nextUnit);
-  };
+          <MacroChipRow values={chipValues} />
 
-  return (
-    <View style={styles.poultryCard}>
-      <FoodCardHead
-        title={row.name}
-        iconKey={row.icon}
-        food={food}
-        grams={counting ? 0 : grams}
-        servings={counting ? count : 0}
-      />
-
-      <View style={styles.divider} />
-
-      <View style={styles.portionPanel}>
-        <Text style={styles.poultrySectionTitle}>{counting ? 'How Many?' : 'Portion'}</Text>
-        {counting ? (
-          <View style={styles.gramsRow}>
-            <TextInput
-              style={styles.gramsInput}
-              value={String(count)}
-              onChangeText={(t) => setCount(Math.max(0, parseFloat(t) || 0))}
-              keyboardType="numeric"
-              placeholder="1"
-            />
-            <Text style={styles.poultryPer100g}>{food.servingLabel.replace(/^1 /, '')}{count === 1 ? '' : 's'}</Text>
-          </View>
-        ) : (
-          <View style={styles.gramsRow}>
-            <TextInput
-              style={styles.gramsInput}
-              value={weightValue}
-              onChangeText={setWeightValue}
-              keyboardType="numeric"
-              placeholder={weightUnit}
-            />
-            <ToggleRow
-              value={weightUnit}
-              onChange={handleUnit}
-              options={[{ value: 'g', label: 'g' }, { value: 'oz', label: 'oz' }]}
-            />
-          </View>
-        )}
-        <PortionTotal kcal={previewCalories} />
+          <Text style={styles.favServing}>
+            Serving{' '}
+            <Text style={styles.favServingValue}>
+              {isWeight ? `${food.typicalGrams}g` : '1 serving'}
+            </Text>
+          </Text>
+        </View>
       </View>
 
-      {/* Delete, Edit, Add to Today (v0.0.98). Three actions in one row,
-          in the order they were asked for.
-
-          The two on the left size to their own labels and only the primary
-          flexes, because that is the one with room to give: React Native
-          defaults flexShrink to 0, so a narrow screen takes width off
-          "Add to Today" and leaves the other two legible rather than
-          squeezing all three evenly into illegibility.
-
-          Both left labels are a bare word, no vector icon, and that is a
-          width decision as much as a style one. A 16pt icon plus its gap
-          is 21pt, twice, and a measured budget (rt/row98.jsx) put the
-          iconned version 14pt SHORT on a 360pt screen -- "+ Add to Today"
-          would have wrapped to two lines on a phone where today's
-          two-button row still fits. Without them the row clears 360pt by
-          15pt and 375pt by 30. It also matches the rest of this file,
-          where every action button is a character mark and a word. */}
-      <View style={styles.cardActionsRow}>
+      <View style={styles.favActions}>
         <TouchableOpacity
-          style={styles.customDeleteBtn}
+          style={styles.favRemoveBtn}
           activeOpacity={0.7}
           onPress={onDelete}
           accessibilityRole="button"
           accessibilityLabel={`Delete ${row.name}`}
         >
-          <Text style={styles.customDeleteText}>Delete</Text>
+          <MaterialCommunityIcons name="trash-can-outline" size={17} color={COLORS.destructive} />
+          <Text style={styles.favRemoveText} numberOfLines={1}>
+            Delete
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.customEditBtn}
-          activeOpacity={0.7}
-          onPress={onEdit}
-          accessibilityRole="button"
-          accessibilityLabel={`Edit ${row.name}`}
-        >
-          <Text style={styles.customEditText}>✎ Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.addBtn}
+          style={styles.favQuickAddBtn}
           activeOpacity={0.8}
-          onPress={() => {
-            if (previewCalories <= 0) return;
-            onAdd(food, counting ? count : grams);
-          }}
+          onPress={() => onAdd(food, isWeight ? food.typicalGrams : 1)}
           accessibilityRole="button"
           accessibilityLabel={`Add ${row.name} to today`}
         >
-          <Text style={styles.addBtnText}>+ Add to Today</Text>
+          <MaterialCommunityIcons name="plus" size={19} color="#fff" />
+          <Text style={styles.favQuickAddText} numberOfLines={1}>
+            Add to Today
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -4291,9 +4261,9 @@ export default function LogFoodScreen({
   // since renderToStaticMarkup can't simulate tapping a favorite row open.
   initialExpandedFavoriteId = null,
   // Test-only, same reasoning as the other initial* props above -- lets
-  // the render test harness open one of your own foods as a card without
-  // simulating the tap on its row.
-  initialOpenCustomFoodId = null,
+  // the render test harness open the create/edit form directly. `true`
+  // means creating; a row id means editing that one.
+  initialCustomFormFor = null,
 }) {
   const [query, setQuery] = useState(initialQuery);
   // Log Food opens on Favorites (v0.0.75). The one exception is an account
@@ -4386,10 +4356,14 @@ export default function LogFoodScreen({
   const [simpleItem, setSimpleItem] = useState(null);
   // Which All-tab card is open. One at a time, same as My Favorites.
   const [expandedCardKey, setExpandedCardKey] = useState(null);
-  // My Own Food: which row is open as a card, and whether the create/edit
-  // form is up. `true` means creating; a row id means editing that one.
-  const [openCustomFoodId, setOpenCustomFoodId] = useState(initialOpenCustomFoodId);
-  const [customFormFor, setCustomFormFor] = useState(null);
+  // My Own Food: whether the create/edit form is up. `true` means
+  // creating; a row id means editing that one.
+  //
+  // There used to be a second piece of state here, `openCustomFoodId`, for
+  // a row opened as its own card. v0.1.0 removed that step -- the row now
+  // shows everything the card did and its two buttons do everything the
+  // card's did -- so the tab is two states rather than three.
+  const [customFormFor, setCustomFormFor] = useState(initialCustomFormFor);
   const [fatOilType, setFatOilType] = useState(null);
   const [fatOilItem, setFatOilItem] = useState(null);
   // Everything that says "you are somewhere inside a category", cleared
@@ -4427,7 +4401,6 @@ export default function LogFoodScreen({
     setSimpleType(null);
     setSimpleItem(null);
     setExpandedCardKey(null);
-    setOpenCustomFoodId(null);
     setCustomFormFor(null);
   };
   useEffect(resetDrillDown, [category]);
@@ -4871,9 +4844,7 @@ export default function LogFoodScreen({
       : category === 'custom'
         ? customFormFor
           ? 'customForm'
-          : openCustomFoodId
-            ? 'customCard'
-            : 'custom'
+          : 'custom'
       : category === 'all' && !query.trim() && expandedCardKey
         ? 'allCard'
       : isBrowsingMeat
@@ -5052,7 +5023,6 @@ export default function LogFoodScreen({
         onPress: () => {
           onDeleteCustomFood(row.id);
           setCustomFormFor(null);
-          setOpenCustomFoodId(null);
         },
       },
     ]);
@@ -5151,11 +5121,13 @@ export default function LogFoodScreen({
     }
     emptyText =
       "You haven't added any favorites yet — tap the star on a food (or \"Add to My Favorites & Today\" on a Beef/Poultry/Seafood card) to save it here.";
-  } else if (listMode === 'custom' || listMode === 'customCard' || listMode === 'customForm') {
-    // My Own Food. Three states share one branch because they share one
-    // list: the roster, one food opened as a card, and the create/edit
-    // form. Each is the whole screen, the way every other category works
-    // since v0.0.94.
+  } else if (listMode === 'custom' || listMode === 'customForm') {
+    // My Own Food. Two states share one branch because they share one
+    // list: the roster, and the create/edit form. Each is the whole
+    // screen, the way every other category works since v0.0.94.
+    //
+    // It was three until v0.1.0, the middle one being a row opened as its
+    // own food card. See CustomFoodRow for why that step went.
     listKeyExtractor = (item) => item.id;
 
     if (listMode === 'customForm') {
@@ -5170,33 +5142,31 @@ export default function LogFoodScreen({
               ? await onUpdateCustomFood(editing.id, food)
               : await onCreateCustomFood(food);
             if (saved) {
+              // A NEW food lands at the top of the roster (App.js prepends
+              // it), so go back to the top to meet it -- otherwise the
+              // scroll memory below returns you to wherever you were and
+              // the thing you just made is off screen above you.
+              //
+              // An EDIT keeps its place in the list, so keep your place in
+              // the scroll too: being thrown to the top after changing the
+              // ninth food is the same disorientation in reverse.
+              if (!editing) scrollMemory.current[`${category}|custom`] = 0;
               setCustomFormFor(null);
-              // Land on the thing you just made, not back in the list.
-              setOpenCustomFoodId(saved.id);
             }
             return saved;
           }}
           onDelete={() => confirmDeleteCustomFood(editing)}
         />
       );
-    } else if (listMode === 'customCard') {
-      const row = customFoods.find((c) => c.id === openCustomFoodId);
-      const food = row ? customFoodToFood(row) : null;
-      listData = food ? [{ id: row.id }] : [];
-      listRenderItem = () => (
-        <CustomFoodCard
-          row={row}
-          food={food}
-          onAdd={handleAdd}
-          onEdit={() => setCustomFormFor(row.id)}
-          onDelete={() => confirmDeleteCustomFood(row)}
-        />
-      );
-      listHeader = <BackRow label="Back to My Own Food" onPress={() => setOpenCustomFoodId(null)} />;
     } else {
       listData = customFoods;
       listRenderItem = ({ item }) => (
-        <CustomFoodRow row={item} onOpen={() => setOpenCustomFoodId(item.id)} />
+        <CustomFoodRow
+          row={item}
+          onEdit={() => setCustomFormFor(item.id)}
+          onAdd={handleAdd}
+          onDelete={() => confirmDeleteCustomFood(item)}
+        />
       );
       emptyText = 'Tap Create New Food to add your own.';
     }
@@ -6342,39 +6312,6 @@ const styles = StyleSheet.create({
   // still reads as the one every other food card has, minus the flex: 1.
   // Content width is the whole point here: see the note at the call site.
   //
-  // Delete is quiet on purpose. It sits leftmost because that is the
-  // order asked for, which puts a destructive action under the thumb, so
-  // it gets the palest fill of the three and a confirm dialog behind it
-  // rather than the loud red a filled button would give it. Colour, not
-  // weight, is what marks it out.
-  //
-  // The word is overInk (#cc3229), not destructive (#f2542d): on this
-  // fill that is 4.5:1 against 3.2:1, and 13.5pt bold sits a hair under
-  // the size where 3:1 would be allowed instead.
-  customDeleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: 12,
-    borderWidth: 1.5,
-    borderColor: '#f3b7b2',
-    backgroundColor: COLORS.overSoft,
-    borderRadius: 13,
-  },
-  customDeleteText: { color: COLORS.overInk, fontWeight: '800', fontSize: 13.5 },
-  customEditBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-    paddingHorizontal: 12,
-    borderWidth: 1.5,
-    borderColor: '#f0c14b',
-    backgroundColor: '#fffaf0',
-    borderRadius: 13,
-  },
-  customEditText: { color: COLORS.warnInk, fontWeight: '800', fontSize: 13.5 },
   toast: {
     position: 'absolute',
     bottom: 24,
