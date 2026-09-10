@@ -1,0 +1,258 @@
+import React, { useRef, useState, useEffect } from 'react';
+import { View, Text, PanResponder, StyleSheet } from 'react-native';
+import { COLORS } from '../utils/theme';
+
+// A HORIZONTAL ruler control (v0.1.1): a tape of tick marks slides left and
+// right under a pointer that never moves, and whatever number is under the
+// pointer is the value. Damon's description exactly -- "the type we use for
+// age, but horizontal. User drag value across the mark instead of drag of
+// mark on a axis of value."
+//
+// WHY NOT JUST ROTATE DragSlider. Two reasons, one of them load-bearing:
+//
+//   1. DragSlider renders EVERY tick as a View. That is fine at the sizes
+//      the quiz asks of it -- ages 13-100 is 88 of them -- and impossible
+//      here. Calories for a 100g food run 0-900, and a serving runs to
+//      3,000; at one View per tick that is hundreds to thousands of them
+//      mounted at once for a control you can only ever see twenty of. This
+//      one renders only the ticks inside the viewport (plus a margin), so
+//      the range can grow without the cost following it.
+//   2. DragSlider's own header comment asks, in as many words, not to flip
+//      its axis without checking first. It is wired into three quiz
+//      questions. A new file cannot regress those.
+//
+// What IS shared is the interaction, deliberately, so both rulers feel the
+// same under the thumb: a PanResponder (no native slider -- this project
+// got burned once by @react-native-community/slider under Expo Go's
+// bridgeless mode), positions computed from the distance the finger has
+// travelled SINCE the drag began rather than from where it is on screen,
+// and a separate un-rounded `liveValue` driving the tape every frame while
+// the rounded value is what gets reported outward.
+//
+// DIRECTION. The tape moves with your finger, exactly. Drag left and the
+// tape goes left, which brings the numbers that were off the right edge in
+// under the pointer -- so dragging left counts up. That is what a tape
+// measure does when you pull it, and it is the same lockstep rule
+// DragSlider follows vertically.
+//
+// TICKS VS LABELS. At the ranges this is used for, a label on every tick
+// would be unreadable and a tick for every labelled value would make the
+// tape kilometres long. So minor ticks are drawn but bare, and every
+// `majorEvery`-th one gets a number under it -- an actual ruler.
+
+const PX_PER_TICK = 9;
+const TAPE_HEIGHT = 62;
+const MINOR_H = 12;
+const MAJOR_H = 22;
+// How many ticks past each edge of the viewport to keep mounted, so a fast
+// drag never shows a bare gap before the next render catches up.
+const OVERSCAN = 8;
+
+// A step small enough to feel precise and large enough that crossing the
+// whole range stays a few swipes. Exported because the caller needs the
+// same numbers the ruler is using, and two places guessing separately is
+// how they drift apart.
+//
+// Derived rather than tabulated, because the range here is not a fixed
+// menu -- it is nine times whatever weight the user typed, so it runs from
+// 100 to 45,000. A hand-written ladder of thresholds looked fine at the
+// sizes I had in mind and gave a 5 kg food a tape 16,000pt long, about
+// fifty swipes end to end. Picking the smallest tidy step that keeps the
+// tick count under MAX_TICKS holds the drag distance roughly constant
+// whatever the range, which is the property that actually matters.
+const NICE_STEPS = [1, 2, 5, 10, 25, 50, 100, 250, 500, 1000];
+const MAX_TICKS = 300;
+
+export function rulerStepFor(range) {
+  const step = NICE_STEPS.find((s) => range / s <= MAX_TICKS) || NICE_STEPS[NICE_STEPS.length - 1];
+  // Every tenth tick carries a number. At PX_PER_TICK that puts a label
+  // every 90pt -- about three visible at once on a phone, whatever the
+  // step underneath them happens to be.
+  return { step, majorEvery: 10 };
+}
+
+export default function RulerSlider({
+  label,
+  value,
+  minimumValue = 0,
+  maximumValue = 100,
+  step = 1,
+  majorEvery = 10,
+  onValueChange,
+  onSlidingStart,
+  onSlidingComplete,
+  color = COLORS.accent,
+  unit = '',
+  formatLabel = (v) => `${v}`,
+  style,
+}) {
+  const [trackWidth, setTrackWidth] = useState(0);
+  const [liveValue, setLiveValue] = useState(value);
+  const isDraggingRef = useRef(false);
+  const dragStartValueRef = useRef(value);
+  const lastRawValueRef = useRef(value);
+
+  // PanResponder.create runs once (useRef only evaluates its argument on
+  // mount), so anything its callbacks close over directly would be frozen
+  // at first-render values forever. The maximum here MOVES -- it is 9 kcal
+  // per gram of whatever amount the user typed above this control -- so a
+  // frozen copy would clamp to the wrong ceiling for the rest of the
+  // session. Same fix DragSlider and MacroSlider both use.
+  const propsRef = useRef();
+  propsRef.current = { value, minimumValue, maximumValue, step, onValueChange, onSlidingStart, onSlidingComplete };
+
+  const clamp = (raw) => {
+    const { minimumValue: min, maximumValue: max } = propsRef.current;
+    return Math.max(min, Math.min(max, raw));
+  };
+  const clampToStep = (raw) => {
+    const { step: s } = propsRef.current;
+    return clamp(Math.round(raw / s) * s);
+  };
+
+  // Follow `value` when something other than this drag changed it -- the
+  // amount above was edited and the ceiling moved, or the form loaded an
+  // existing food.
+  useEffect(() => {
+    if (!isDraggingRef.current) setLiveValue(value);
+  }, [value]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      // Only claim gestures that are actually sideways. This control sits
+      // inside the form's vertical ScrollView, and a finger that starts on
+      // the tape but travels UP is someone scrolling the page, not setting
+      // calories -- claiming that would make the form feel stuck.
+      onMoveShouldSetPanResponder: (evt, g) => Math.abs(g.dx) > Math.abs(g.dy),
+      // Once a sideways drag IS ours, keep it for the whole gesture rather
+      // than letting the ScrollView take it back part-way through.
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
+      onPanResponderGrant: () => {
+        const { value: v, onSlidingStart: onStart } = propsRef.current;
+        isDraggingRef.current = true;
+        dragStartValueRef.current = v;
+        lastRawValueRef.current = v;
+        setLiveValue(v);
+        if (onStart) onStart();
+      },
+      onPanResponderMove: (evt, g) => {
+        // A tap wobbles a couple of pixels; ignoring that stops a plain
+        // touch from nudging the number.
+        if (Math.abs(g.dx) < 3) return;
+        const { step: s, onValueChange: onChange } = propsRef.current;
+        // Minus, not plus: see DIRECTION above. Dragging left (negative dx)
+        // pulls higher numbers in from the right.
+        const rawValue = dragStartValueRef.current - (g.dx / PX_PER_TICK) * s;
+        lastRawValueRef.current = rawValue;
+        setLiveValue(clamp(rawValue));
+        if (onChange) onChange(clampToStep(rawValue));
+      },
+      onPanResponderRelease: () => {
+        isDraggingRef.current = false;
+        setLiveValue(clampToStep(lastRawValueRef.current));
+        if (propsRef.current.onSlidingComplete) propsRef.current.onSlidingComplete();
+      },
+      onPanResponderTerminate: () => {
+        isDraggingRef.current = false;
+        setLiveValue(clampToStep(lastRawValueRef.current));
+        if (propsRef.current.onSlidingComplete) propsRef.current.onSlidingComplete();
+      },
+    })
+  ).current;
+
+  const safeStep = step > 0 ? step : 1;
+  const tickCount = Math.max(1, Math.round((maximumValue - minimumValue) / safeStep) + 1);
+  const clampedLive = Math.max(minimumValue, Math.min(maximumValue, liveValue));
+  const currentTickX = ((clampedLive - minimumValue) / safeStep) * PX_PER_TICK;
+  const translateX = trackWidth / 2 - currentTickX;
+
+  // Only what can be seen. The window is derived from where the tape
+  // currently sits, so it follows the drag.
+  const firstVisible = Math.max(0, Math.floor(-translateX / PX_PER_TICK) - OVERSCAN);
+  const lastVisible = Math.min(tickCount - 1, Math.ceil((-translateX + trackWidth) / PX_PER_TICK) + OVERSCAN);
+
+  const ticks = [];
+  if (trackWidth > 0) {
+    for (let i = firstVisible; i <= lastVisible; i++) {
+      const tickValue = minimumValue + i * safeStep;
+      const isMajor = i % majorEvery === 0;
+      ticks.push(
+        <View key={i} style={[styles.tick, { left: i * PX_PER_TICK }]}>
+          <View style={[styles.tickMark, isMajor && styles.tickMarkMajor]} />
+          {isMajor ? <Text style={styles.tickLabel}>{formatLabel(tickValue)}</Text> : null}
+        </View>
+      );
+    }
+  }
+
+  return (
+    <View style={style}>
+      <View style={styles.headerRow}>
+        <Text style={styles.label}>{label}</Text>
+        <Text style={[styles.readout, { color }]}>
+          {Math.round(value).toLocaleString()}
+          <Text style={styles.readoutUnit}> {unit}</Text>
+        </Text>
+      </View>
+
+      <View
+        style={styles.viewport}
+        onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
+        {...panResponder.panHandlers}
+        accessibilityRole="adjustable"
+        accessibilityLabel={label}
+        accessibilityValue={{ min: minimumValue, max: maximumValue, now: Math.round(value) }}
+      >
+        <View style={[styles.tape, { transform: [{ translateX }] }]}>{ticks}</View>
+        {/* The pointer. Fixed dead centre -- it is the one thing on this
+            control that never moves. */}
+        <View style={[styles.pointer, { backgroundColor: color }]} pointerEvents="none" />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  headerRow: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 6 },
+  label: { fontSize: 16, fontWeight: '700', color: COLORS.text },
+  readout: { fontSize: 26, fontWeight: '800' },
+  readoutUnit: { fontSize: 14, fontWeight: '700', color: COLORS.textMuted },
+  viewport: {
+    height: TAPE_HEIGHT,
+    overflow: 'hidden',
+    backgroundColor: COLORS.card,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+  },
+  tape: { position: 'absolute', top: 0, bottom: 0, left: 0 },
+  // Each tick is a zero-width column positioned at its own x, with the mark
+  // and its label centred on that x by a half-width negative offset. That
+  // way a long label ("1,000") stays centred on its tick instead of
+  // pushing the tape's geometry around.
+  tick: { position: 'absolute', top: 0, alignItems: 'center', width: 0 },
+  tickMark: { width: 1.5, height: MINOR_H, marginTop: 10, backgroundColor: '#d3dae6', borderRadius: 1 },
+  tickMarkMajor: { height: MAJOR_H, width: 2, backgroundColor: '#9fb0c9' },
+  tickLabel: {
+    position: 'absolute',
+    top: MAJOR_H + 14,
+    width: 70,
+    textAlign: 'center',
+    marginLeft: -35,
+    left: 0,
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+  },
+  pointer: {
+    position: 'absolute',
+    left: '50%',
+    marginLeft: -1.5,
+    top: 6,
+    width: 3,
+    height: MAJOR_H + 12,
+    borderRadius: 2,
+  },
+});

@@ -55,6 +55,47 @@ export function amountInGrams(amount, unit) {
   return unit === 'oz' ? ozToGrams(n) : n;
 }
 
+// --- How much of anything is possible ------------------------------------
+//
+// v0.1.1. Until now the four macro boxes were free text with no ceiling, so
+// a slipped thumb could define a food at 46,454,848 kcal per 100g and there
+// was nothing to stop it. That number then went into the day's total, the
+// score and history, and nothing downstream ever questioned it.
+//
+// The input is a ruler now, so the ceiling is not a rejection message --
+// it is the end of the tape. These are the numbers that decide where it
+// ends, and they are not arbitrary:
+//
+//   9 kcal per gram is fat, the most energy-dense thing anyone eats. It is
+//   the Atwater factor food labels are legally computed with, and it means
+//   NOTHING edible exceeds 900 kcal per 100g. Pure cooking oil, the actual
+//   record holder, comes in around 884. So the ceiling for a food defined
+//   by weight is its own weight times nine: 900 for 100g, 2,250 for 250g.
+//
+// The ceiling also guarantees the macro sliders always have a reachable
+// answer: at exactly 9 kcal/g the only split that fits in the food's own
+// mass is pure fat, and below it there is always room.
+export const KCAL_PER_G_FAT = 9;
+
+// A serving carries no weight, so there is no physics to appeal to -- this
+// one is judgement. 3,000 kcal is a very large restaurant plate or most of
+// a family pizza in one go; past that it is a typo, not a meal.
+export const MAX_SERVING_CALORIES = 3000;
+
+// And a bound on the amount itself, because the weight ceiling is derived
+// from it: without this, "999999 g" would quietly buy back a nine-million
+// calorie tape. 5 kg is a stockpot of chilli.
+export const MAX_AMOUNT = 5000;
+
+// The end of the calories tape for the food currently being described.
+export function calorieCeiling({ unit, amount }) {
+  if (!isWeightUnit(unit)) return MAX_SERVING_CALORIES;
+  const grams = Math.min(MAX_AMOUNT, amountInGrams(amount, unit));
+  // A floor so the control still renders while the amount box is empty or
+  // mid-edit. Saving with no amount is caught by validateCustomFood.
+  return Math.max(100, Math.round(grams * KCAL_PER_G_FAT));
+}
+
 // --- How an icon is referenced -------------------------------------------
 // One string with a prefix, so a vector glyph name and a drawn-artwork key
 // can never be mistaken for each other.
@@ -146,14 +187,48 @@ export function customFoodSummary(row) {
 
 // Everything the create form has to get right before Save can do anything.
 // Returns a message, or null when it is fine.
+// Since v0.1.1 the macros come off a ruler and three linked sliders, which
+// means most of what this used to guard against is now unreachable through
+// the UI -- you cannot type a negative, a blank, or a nine-million into a
+// control that has no keyboard and ends where it ends.
+//
+// It stays, and got stricter, because the UI is not the only way in. The
+// Supabase publishable key ships in a public repo, so anything that can
+// read this app can POST to custom_foods directly; row-level security
+// decides WHOSE row it is, not whether the row makes sense. This function
+// is the last thing between a payload and the table, and the honest place
+// for the same rules the sliders enforce by shape.
 export function validateCustomFood({ name, unit, amount, calories, protein, carbs, fat }) {
   if (!String(name || '').trim()) return 'Give this food a name.';
   // A serving has no amount to get wrong; only the weight modes do.
-  if (isWeightUnit(unit) && !(Number(amount) > 0)) return 'Enter how much this is.';
+  if (isWeightUnit(unit)) {
+    if (!(Number(amount) > 0)) return 'Enter how much this is.';
+    if (Number(amount) > MAX_AMOUNT) return `Keep the amount under ${MAX_AMOUNT.toLocaleString()}${unitMeta(unit).label}.`;
+  }
   const macros = { calories, protein, carbs, fat };
   for (const [k, v] of Object.entries(macros)) {
     if (String(v ?? '').trim() === '') return `Enter the ${k === 'calories' ? 'calories' : k}.`;
     if (!(Number(v) >= 0)) return `${k === 'calories' ? 'Calories' : k} cannot be negative.`;
+  }
+
+  const ceiling = calorieCeiling({ unit, amount });
+  if (Number(calories) > ceiling) {
+    return isWeightUnit(unit)
+      ? `That is more than ${ceiling.toLocaleString()} kcal, which is what this much pure oil would be — nothing is denser than that.`
+      : `Keep a serving under ${ceiling.toLocaleString()} kcal.`;
+  }
+
+  // No macro can outweigh the food it is in. This is the one rule the
+  // sliders do not fully enforce on their own -- they hold calories
+  // constant, and above 400 kcal/100g there are splits that balance the
+  // energy while exceeding the mass -- so it is checked here rather than
+  // assumed.
+  if (isWeightUnit(unit)) {
+    const grams = amountInGrams(amount, unit);
+    const total = Number(protein) + Number(carbs) + Number(fat);
+    if (total > grams * 1.05) {
+      return `That is ${Math.round(total)}g of protein, carbs and fat in ${Math.round(grams)}g of food. Move some of it into fat, which carries more calories per gram.`;
+    }
   }
   return null;
 }

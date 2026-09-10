@@ -19,23 +19,45 @@
 // 100g. The heading over the macro block restates it, because a packet
 // label can mean either and getting it backwards is a silent 3x error.
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import FoodIcon from './FoodIcon';
 import IconPicker from './IconPicker';
-import { WEIGHT_UNITS, unitMeta, isWeightUnit, validateCustomFood, glyphRef } from '../utils/customFoods';
+import MacroSlider from './MacroSlider';
+import RulerSlider, { rulerStepFor } from './RulerSlider';
+import { MACRO_COLORS } from './MacroDonutChart';
+import {
+  WEIGHT_UNITS,
+  unitMeta,
+  isWeightUnit,
+  validateCustomFood,
+  glyphRef,
+  calorieCeiling,
+  MAX_AMOUNT,
+} from '../utils/customFoods';
+import {
+  redistributeCaloriesForTarget,
+  redistributeMacroForChange,
+  maxGramsForMacro,
+  MACRO_KCAL_PER_G,
+} from '../utils/goals';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
 
 const DEFAULT_ICON = glyphRef('silverware-fork-knife');
 
-// The four macro fields, in the order they appear on every label.
-const MACRO_FIELDS = [
-  { key: 'calories', label: 'Calories', suffix: 'kcal' },
-  { key: 'protein', label: 'Protein', suffix: 'g' },
-  { key: 'carbs', label: 'Carbs', suffix: 'g' },
-  { key: 'fat', label: 'Fat', suffix: 'g' },
+// The three that get a slider. Calories is not one of them: it is the
+// number everything else is derived from, so it gets the ruler above.
+const MACRO_ROWS = [
+  { key: 'protein', gramsKey: 'proteinG', label: 'Protein' },
+  { key: 'carbs', gramsKey: 'carbsG', label: 'Carbs' },
+  { key: 'fat', gramsKey: 'fatG', label: 'Fat' },
 ];
+
+// Where a brand new food's tape starts. Not zero: a ruler parked at the
+// very end of its own travel looks broken, and 200 kcal is a plausible
+// enough opening bid for a 100g food that most edits are a short drag.
+const START_CALORIES = 200;
 
 export default function CustomFoodForm({ existing, onCancel, onSave, onDelete }) {
   const editing = !!existing;
@@ -43,20 +65,138 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
   const [icon, setIcon] = useState(existing?.icon || DEFAULT_ICON);
   const [unit, setUnit] = useState(existing?.unit || 'g');
   const [amount, setAmount] = useState(existing ? String(existing.amount) : '100');
-  const [macros, setMacros] = useState({
-    calories: existing ? String(existing.calories) : '',
-    protein: existing ? String(existing.protein) : '',
-    carbs: existing ? String(existing.carbs) : '',
-    fat: existing ? String(existing.fat) : '',
-  });
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const setMacro = (key, value) => setMacros((prev) => ({ ...prev, [key]: value }));
+  // --- The macros (v0.1.1) -----------------------------------------------
+  //
+  // Four free-text boxes became one ruler and three linked sliders, and
+  // the change is not only about typos. Typed separately, the four numbers
+  // could contradict each other -- 200 kcal alongside 50/50/50 of protein,
+  // carbs and fat, which is 850 kcal of food -- and nothing noticed. Here
+  // the grams are DERIVED from the calories, so
+  //
+  //     calories === 4*protein + 4*carbs + 9*fat
+  //
+  // holds by construction, always. That equation is not a house rule; it is
+  // the Atwater system, the arithmetic every nutrition label in the world
+  // is computed with. A form that cannot express a violation of it cannot
+  // record one.
+  //
+  // The engine underneath is the one "Set My Own Goals" has used since
+  // v0.0.63 (utils/goals.js), unchanged and reused rather than copied:
+  // dragging the total reproportions the macros, dragging one macro takes
+  // its calories from the others, and locking one pins it while the rest
+  // absorb the difference.
+  //
+  // WHAT THE LOCK IS FOR HERE, specifically. Reading a label, you usually
+  // know one number exactly and care less about the rest. Lock protein at
+  // what the packet says, set carbs, and fat takes the remainder -- so two
+  // of the three land on the label and the third absorbs whatever the
+  // label's own rounding (or its fibre, or its alcohol) failed to account
+  // for. Without the lock the third macro would be forced anyway; with it,
+  // you choose which one gives.
+  const startCalories = existing ? Math.max(0, Math.round(Number(existing.calories) || 0)) : START_CALORIES;
+  const [calories, setCalories] = useState(startCalories);
+  const [proteinG, setProteinG] = useState(
+    existing ? Math.max(0, Math.round(Number(existing.protein) || 0)) : null
+  );
+  const [carbsG, setCarbsG] = useState(existing ? Math.max(0, Math.round(Number(existing.carbs) || 0)) : null);
+  const [fatG, setFatG] = useState(existing ? Math.max(0, Math.round(Number(existing.fat) || 0)) : null);
+  const [lockedMacro, setLockedMacro] = useState(null);
+
+  // A new food has no split yet, so seed one from the opening calories the
+  // first time round. Done here rather than in useState so both branches
+  // go through the same engine and can never disagree.
+  const seeded = proteinG == null;
+  const macros = seeded
+    ? redistributeCaloriesForTarget({ proteinG: 0, carbsG: 0, fatG: 0, lockedMacro: null, newCalories: startCalories })
+    : { proteinG, carbsG, fatG };
+
+  // One finger drag fires onValueChange many times. Freezing the split for
+  // the duration of the gesture means every one of those calls
+  // redistributes from the SAME starting point rather than compounding its
+  // own rounding -- the reason MacroGoalsScreen keeps this ref too.
+  const dragBaselineRef = useRef(null);
+  const baseline = () => dragBaselineRef.current || macros;
+  const handleSlidingStart = () => {
+    dragBaselineRef.current = macros;
+  };
+  const handleSlidingComplete = () => {
+    dragBaselineRef.current = null;
+  };
+
+  const applyMacros = (next) => {
+    setProteinG(next.proteinG);
+    setCarbsG(next.carbsG);
+    setFatG(next.fatG);
+  };
+
+  const handleCaloriesChange = (newCalories) => {
+    applyMacros(redistributeCaloriesForTarget({ ...baseline(), lockedMacro, newCalories }));
+    setCalories(newCalories);
+  };
+
+  const handleMacroChange = (key, newGrams) => {
+    applyMacros(
+      redistributeMacroForChange({ ...baseline(), lockedMacro, changedKey: key, newGrams, totalCalories: calories })
+    );
+  };
+
+  // At most one macro locked at a time: with two pinned there is nothing
+  // left to absorb a change, and the third's slider would refuse to move
+  // for reasons no one could see. Tapping a second lock moves it.
+  const handleToggleLock = (key) => setLockedMacro((prev) => (prev === key ? null : key));
+
+  // The end of the calories tape, recomputed as the amount above changes.
+  // Dropping the amount can put the current value past the new ceiling, so
+  // it is pulled back down rather than left stranded off the end.
+  const ceiling = calorieCeiling({ unit, amount });
+  useEffect(() => {
+    if (calories > ceiling) handleCaloriesChange(ceiling);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ceiling]);
+
+  // A locked macro is also a FLOOR under the total, and the tape has to
+  // know it. Lock fat at 50g and the food costs at least 450 kcal; asking
+  // for 200 is asking for something that cannot be built, and the engine
+  // answers it the only way it can -- by keeping the lock and quietly
+  // missing the target, which a probe caught as 120 kcal of drift on a
+  // number the whole screen claims is exact. Ending the tape at the
+  // locked macro's own cost makes the request unaskable instead.
+  //
+  // This can never bite the moment you lock, only afterwards: locking
+  // pins the grams that are already part of the current total, so the
+  // floor always starts at or below where the tape already is.
+  const lockedFloor = lockedMacro
+    ? Math.round(macros[`${lockedMacro}G`] * MACRO_KCAL_PER_G[lockedMacro])
+    : 0;
+
+  // The amount is still typed -- it is the one number with no natural
+  // ceiling to draw a ruler against -- so it gets the guard the macro
+  // boxes no longer need. keyboardType is a suggestion (a hardware
+  // keyboard, a paste, or Android's own numeric pad can all still deliver
+  // letters and a second decimal point), so the text is sanitised rather
+  // than trusted, and capped at MAX_AMOUNT because the calories ceiling is
+  // computed FROM it.
+  const handleAmountChange = (text) => {
+    const cleaned = text.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+    if (cleaned === '' || cleaned === '.') return setAmount(cleaned);
+    if (Number(cleaned) > MAX_AMOUNT) return setAmount(String(MAX_AMOUNT));
+    setAmount(cleaned);
+  };
 
   const handleSave = async () => {
-    const problem = validateCustomFood({ name, unit, amount, ...macros });
+    const problem = validateCustomFood({
+      name,
+      unit,
+      amount,
+      calories,
+      protein: macros.proteinG,
+      carbs: macros.carbsG,
+      fat: macros.fatG,
+    });
     if (problem) {
       setError(problem);
       return;
@@ -72,10 +212,10 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
       unit,
       // A serving is always one of itself; only a weight carries a number.
       amount: isWeightUnit(unit) ? Number(amount) : 1,
-      calories: Number(macros.calories),
-      protein: Number(macros.protein),
-      carbs: Number(macros.carbs),
-      fat: Number(macros.fat),
+      calories: Number(calories),
+      protein: Number(macros.proteinG),
+      carbs: Number(macros.carbsG),
+      fat: Number(macros.fatG),
     });
     setBusy(false);
     if (!saved) setError('Could not save. Please try again.');
@@ -142,7 +282,8 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
             <TextInput
               style={[s.input, s.amountInput]}
               value={amount}
-              onChangeText={setAmount}
+              onChangeText={handleAmountChange}
+              maxLength={6}
               keyboardType="numeric"
               placeholder="100"
               placeholderTextColor={COLORS.textMuted}
@@ -168,24 +309,52 @@ export default function CustomFoodForm({ existing, onCancel, onSave, onDelete })
         </Text>
 
         <Text style={s.label}>{weightMode ? `What is in ${amount || '…'} ${u.label}?` : 'What is in one serving?'}</Text>
-        <View style={s.macroGrid}>
-          {MACRO_FIELDS.map((f) => (
-            <View key={f.key} style={s.macroCell}>
-              <Text style={s.macroLabel}>{f.label}</Text>
-              <View style={s.macroInputRow}>
-                <TextInput
-                  style={[s.input, s.macroInput]}
-                  value={macros[f.key]}
-                  onChangeText={(v) => setMacro(f.key, v)}
-                  keyboardType="numeric"
-                  placeholder="0"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-                <Text style={s.macroSuffix}>{f.suffix}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
+
+        {/* Calories first, and alone, because the three below are shares
+            of it. Drag the tape rather than type: the number cannot leave
+            the range, and the range ends where food does. */}
+        <RulerSlider
+          style={s.ruler}
+          label="Calories"
+          unit="kcal"
+          value={calories}
+          minimumValue={lockedFloor}
+          maximumValue={ceiling}
+          {...rulerStepFor(ceiling - lockedFloor)}
+          onValueChange={handleCaloriesChange}
+          onSlidingStart={handleSlidingStart}
+          onSlidingComplete={handleSlidingComplete}
+          formatLabel={(v) => v.toLocaleString()}
+        />
+        <Text style={s.hint}>
+          {weightMode
+            ? `Up to ${ceiling.toLocaleString()} kcal — what ${amount || '…'}${u.label} of pure oil would be.`
+            : 'Drag to set the calories, then split them below.'}
+        </Text>
+
+        {MACRO_ROWS.map((m) => (
+          <MacroSlider
+            key={m.key}
+            label={m.label}
+            value={macros[m.gramsKey]}
+            minimumValue={0}
+            maximumValue={maxGramsForMacro({ ...macros, lockedMacro, key: m.key })}
+            step={1}
+            unit="g"
+            color={MACRO_COLORS[m.key]}
+            lockable
+            locked={lockedMacro === m.key}
+            disabled={lockedMacro === m.key}
+            onToggleLock={() => handleToggleLock(m.key)}
+            onValueChange={(g) => handleMacroChange(m.key, g)}
+            onSlidingStart={handleSlidingStart}
+            onSlidingComplete={handleSlidingComplete}
+          />
+        ))}
+        <Text style={s.hint}>
+          Moving one macro takes its calories from the others, so the total
+          above never changes. Tap a lock to pin one where it is.
+        </Text>
 
         {error ? <Text style={s.error}>{error}</Text> : null}
 
@@ -266,14 +435,9 @@ const s = StyleSheet.create({
   unitChipOn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
   unitChipText: { fontSize: 14, fontWeight: '700', color: COLORS.textSoft },
   unitChipTextOn: { color: '#fff' },
+  ruler: { marginBottom: 4 },
   hint: { fontSize: 12.5, color: COLORS.textMuted, marginTop: 7, lineHeight: 17 },
 
-  macroGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  macroCell: { flexBasis: '47%', flexGrow: 1 },
-  macroLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSoft, marginBottom: 5 },
-  macroInputRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  macroInput: { flex: 1 },
-  macroSuffix: { fontSize: 13.5, fontWeight: '700', color: COLORS.textMuted, width: 30 },
 
   error: { color: COLORS.overInk, fontSize: 14, fontWeight: '600', marginTop: 14 },
 
