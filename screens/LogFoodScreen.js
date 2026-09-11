@@ -5825,6 +5825,68 @@ export default function LogFoodScreen({
     listRenderItem = ({ item }) => renderFoodCard(item);
   }
 
+  // The two Create buttons ride INSIDE the list (v0.2.2), not above it.
+  //
+  // They used to be siblings of the FlatList, which pinned them to the top
+  // of the screen and cost two button-heights of it on every scroll. As
+  // the list header they scroll away with the first rows and come back
+  // when you return to the top -- which is where anyone reaching for
+  // "create" already is.
+  //
+  // The Back row above stays pinned, and that is the deliberate exception
+  // rather than an inconsistency: it is the only way out of a drill-down,
+  // and v0.0.93 asked for it to stay put precisely so it could never
+  // scroll out of reach. A button that ADDS something can wait at the top
+  // of the list; a button that gets you OUT cannot.
+  //
+  // A FlatList renders its header even with no data, so an empty My Own
+  // Food still offers the button that fills it.
+  const listTopButtons = (
+    <>
+      {/* Always at the top of My Own Food, whether the list is empty or
+          not -- it is the only way to add one. Hidden while the form
+          itself is open, where it would be a second Save button. */}
+      {category === 'custom' && listMode !== 'customForm' && listMode !== 'comboForm' ? (
+        <TouchableOpacity
+          style={styles.createFoodBtn}
+          activeOpacity={0.8}
+          onPress={() => setCustomFormFor(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Create a new food"
+        >
+          <MaterialCommunityIcons name="plus" size={19} color="#fff" />
+          <Text style={styles.createFoodText}>Create New Food</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Create Combo, in both tabs (v0.2.0): at the top of Favorites, and
+          under Create New Food in My Own Food. A combo is built from both
+          lists, so it can be started from either.
+
+          Damon's call in v0.2.1: the same button as Create New Food, not a
+          quieter outlined one. My reasoning for the outline was that two
+          solid primaries stacked make you read both to find the one you
+          want -- but they are not competing for the same job. They are two
+          ways to add something, wanted about equally often, and demoting
+          one implied a hierarchy that is not there. */}
+      {(category === 'favorites' || category === 'custom') &&
+      listMode !== 'customForm' &&
+      listMode !== 'comboForm' &&
+      listMode !== 'favoriteCard' ? (
+        <TouchableOpacity
+          style={[styles.createFoodBtn, styles.createComboBtn]}
+          activeOpacity={0.8}
+          onPress={() => setComboFormFor(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Create a combo"
+        >
+          <MaterialCommunityIcons name="playlist-plus" size={19} color="#fff" />
+          <Text style={styles.createFoodText}>Create Combo</Text>
+        </TouchableOpacity>
+      ) : null}
+    </>
+  );
+
   return (
     <DailyCaloriesContext.Provider value={dailyCalories}>
     <View style={styles.container}>
@@ -5928,53 +5990,13 @@ export default function LogFoodScreen({
 
       {listHeader}
 
-      {/* Always at the top of My Own Food, whether the list is empty or
-          not -- it is the only way to add one. Hidden while the form
-          itself is open, where it would be a second Save button. */}
-      {category === 'custom' && listMode !== 'customForm' && listMode !== 'comboForm' ? (
-        <TouchableOpacity
-          style={styles.createFoodBtn}
-          activeOpacity={0.8}
-          onPress={() => setCustomFormFor(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Create a new food"
-        >
-          <MaterialCommunityIcons name="plus" size={19} color="#fff" />
-          <Text style={styles.createFoodText}>Create New Food</Text>
-        </TouchableOpacity>
-      ) : null}
-
-      {/* Create Combo, in both tabs (v0.2.0): at the top of Favorites, and
-          under Create New Food in My Own Food. A combo is built from both
-          lists, so it can be started from either.
-
-          Damon's call in v0.2.1: the same button as Create New Food,
-          not a quieter outlined one. My reasoning for the outline was
-          that two solid primaries stacked make you read both to find the
-          one you want -- but they are not competing for the same job.
-          They are two ways to add something, both wanted equally often,
-          and demoting one implied a hierarchy that is not there. */}
-      {(category === 'favorites' || category === 'custom') &&
-      listMode !== 'customForm' &&
-      listMode !== 'comboForm' &&
-      listMode !== 'favoriteCard' ? (
-        <TouchableOpacity
-          style={[styles.createFoodBtn, styles.createComboBtn]}
-          activeOpacity={0.8}
-          onPress={() => setComboFormFor(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Create a combo"
-        >
-          <MaterialCommunityIcons name="playlist-plus" size={19} color="#fff" />
-          <Text style={styles.createFoodText}>Create Combo</Text>
-        </TouchableOpacity>
-      ) : null}
 
       <FlatList
         ref={listRef}
         data={listData}
         keyExtractor={listKeyExtractor}
         contentContainerStyle={{ paddingBottom: 40 }}
+        ListHeaderComponent={listTopButtons}
         ListEmptyComponent={<Text style={styles.emptyText}>{emptyText}</Text>}
         renderItem={listRenderItem}
         onScroll={handleListScroll}
