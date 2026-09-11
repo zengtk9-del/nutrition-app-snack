@@ -57,7 +57,7 @@ import {
 } from '../utils/units';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, LOG_CHIP, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-import { ART_READY, MASCOT } from '../data/brandArt';
+import Mascot from '../components/Mascot';
 import CustomFoodForm from '../components/CustomFoodForm';
 import ComboForm from '../components/ComboForm';
 import { customFoodToFood } from '../utils/customFoods';
@@ -5901,12 +5901,13 @@ export default function LogFoodScreen({
 
       <View style={styles.header}>
         <Text style={styles.title}>Log Food</Text>
-        {/* The mockup draws a broccoli holding a magnifying glass -- a pose
-            that doesn't exist yet. Until that file lands this reuses the
-            Today mascot, which is the same character and reads correctly;
-            when the search pose is pushed, point MASCOT_SEARCH at it in
-            data/brandArt.js and only this line changes. */}
-        {ART_READY ? <Image source={MASCOT} style={styles.mascot} resizeMode="contain" /> : null}
+        {/* The mockup draws a broccoli holding a magnifying glass -- a
+            pose that doesn't exist yet, so this is the same mascot every
+            other tab draws. Since v0.2.3 that is not a compromise but the
+            rule: one mascot, one size, one position, so changing tab
+            never moves it. A per-screen pose would have to be argued for
+            against that. */}
+        <Mascot />
       </View>
 
       {/* The magnifier is a sibling of the input rather than something the
@@ -6039,7 +6040,6 @@ const styles = StyleSheet.create({
 
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, minHeight: 78 },
   title: { ...TYPE.screenTitle, color: COLORS.text, flex: 1 },
-  mascot: { width: 96, height: 96, marginTop: -10, marginRight: -6 },
 
   // 48pt tall, measured off the mockup -- noticeably taller than the 40 it
   // replaced. It is the one control on this screen that is always

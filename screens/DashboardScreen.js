@@ -30,7 +30,8 @@ import { scoreDay, targetState } from '../utils/score';
 import { customFoodToFood } from '../utils/customFoods';
 import { TARGETS } from '../data/scoreConfig';
 import { scoreTone } from '../utils/scoreTone';
-import { ART_READY, MASCOT, MACRO_ART, MACRO_FALLBACK_ICONS } from '../data/brandArt';
+import { ART_READY, MACRO_ART, MACRO_FALLBACK_ICONS } from '../data/brandArt';
+import Mascot from '../components/Mascot';
 
 const FOOD_ICON_SIZE = 72;
 
@@ -214,9 +215,7 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry, onDelet
 
       <View style={s.header}>
         <Text style={s.title}>Today</Text>
-        {ART_READY ? (
-          <Image source={MASCOT} style={s.mascot} resizeMode="contain" />
-        ) : null}
+        <Mascot />
       </View>
 
       <View style={s.card}>
@@ -339,7 +338,6 @@ const s = StyleSheet.create({
 
   header: { flexDirection: 'row', alignItems: 'center', minHeight: 96 },
   title: { ...TYPE.screenTitle, color: COLORS.text, flex: 1 },
-  mascot: { width: 116, height: 116, marginTop: -12, marginRight: -6 },
 
   card: {
     backgroundColor: COLORS.card,

@@ -29,7 +29,7 @@ import { customFoodToFood } from '../utils/customFoods';
 import { scoreTone } from '../utils/scoreTone';
 import ScoreArc from '../components/ScoreArc';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-import { ART_READY, MASCOT } from '../data/brandArt';
+import Mascot from '../components/Mascot';
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -103,9 +103,7 @@ export default function HistoryScreen({ entries, goals, customFoods = [] }) {
           </View>
         </View>
 
-        {ART_READY ? (
-          <Image source={MASCOT} style={s.mascot} resizeMode="contain" />
-        ) : null}
+        <Mascot />
       </View>
 
       {days.length === 0 ? (
@@ -180,7 +178,6 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'flex-start' },
   headerText: { flex: 1 },
   title: { ...TYPE.screenTitle, color: COLORS.text, marginTop: 8 },
-  mascot: { width: 108, height: 108, marginTop: -8, marginRight: -6 },
 
   // The connecting line sits behind the dots, inset by half a column so it
   // starts and ends at the first and last dot rather than the card edge.

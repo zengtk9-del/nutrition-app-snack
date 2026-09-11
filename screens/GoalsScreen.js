@@ -21,7 +21,7 @@ import { DIET_IMAGES } from '../data/quizQuestions';
 import { DEFAULT_DIET } from '../data/dietOrder';
 import { dietLabel } from './DietPickerScreen';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-import { ART_READY, MASCOT } from '../data/brandArt';
+import Mascot from '../components/Mascot';
 
 const MAX_SAVED_GOALS = 5;
 
@@ -218,7 +218,7 @@ export default function GoalsScreen({
             These are used to fill the progress bars on the Today screen.
           </Text>
         </View>
-        {ART_READY ? <Image source={MASCOT} style={s.mascot} resizeMode="contain" /> : null}
+        <Mascot />
       </View>
 
       {/* A read-only readout of whatever goal is active. The same component
@@ -320,7 +320,6 @@ const s = StyleSheet.create({
   headerText: { flex: 1, paddingTop: 6 },
   title: { ...TYPE.screenTitle, color: COLORS.text },
   subtitle: { fontSize: 14.5, color: COLORS.textSoft, marginTop: 4, lineHeight: 20 },
-  mascot: { width: 104, height: 104, marginTop: -14, marginRight: -6 },
 
   chartCard: {
     backgroundColor: COLORS.card,
