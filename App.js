@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from './utils/supabaseClient';
 import {
@@ -31,6 +31,7 @@ import {
   removeCustomFood,
 } from './utils/db';
 import { DEFAULT_DIET } from './data/dietOrder';
+import { celebrate as mascotCelebrate, open as mascotOpen } from './utils/mascotState';
 import { COLORS, TYPE, RADIUS } from './utils/theme';
 
 import AuthScreen from './screens/AuthScreen';
@@ -63,6 +64,33 @@ export default function App() {
   // --- Account login state ---
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // "Waving only appears when the user open the app."
+  //
+  // A cold start counts, and so does coming back from the home screen --
+  // to the person holding the phone those are the same act. The machine
+  // treats the first read of the session as an open, so this only has to
+  // handle the second case.
+  //
+  // Wrapped because AppState's API changed shape (addEventListener used
+  // to return nothing and be paired with removeEventListener; now it
+  // returns a subscription). A greeting is not worth a crash on either.
+  useEffect(() => {
+    let sub = null;
+    try {
+      sub = AppState.addEventListener('change', (next) => {
+        if (next === 'active') mascotOpen();
+      });
+    } catch (err) {
+      console.warn('[Mascot] no AppState listener; the wave will only play on a cold start', err);
+    }
+    return () => {
+      try {
+        if (sub && typeof sub.remove === 'function') sub.remove();
+        else if (AppState.removeEventListener) AppState.removeEventListener('change', sub);
+      } catch (err) { /* nothing to undo */ }
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -314,6 +342,8 @@ export default function App() {
     try {
       const saved = await insertComboEntries(session.user.id, built, { comboGroup, comboName: combo.name });
       setEntries((prev) => [...saved, ...prev]);
+      // One jump for the combo, not one per food in it.
+      mascotCelebrate();
       return { comboGroup, count: saved.length };
     } catch (err) {
       console.warn('Failed to log combo', err);
@@ -461,6 +491,12 @@ export default function App() {
     try {
       const saved = await insertEntry(session.user.id, localEntry);
       setEntries((prev) => [saved, ...prev]);
+      // "Jump happens everytime a food is logged or a macro goal is met."
+      // Only on a save that actually succeeded -- a jump for a log that
+      // silently failed would be a lie. Meeting a goal is not a separate
+      // trigger because it can only happen on a log, and this is that
+      // log; see utils/mascotState.js.
+      mascotCelebrate();
       return saved;
     } catch (err) {
       console.warn('Failed to save entry', err);

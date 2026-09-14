@@ -73,6 +73,39 @@ export const MASCOT = assetUri('mascot_broccoli.png');
 export const USE_ANIMATED_MASCOT = true;
 export const MASCOT_ANIMATED = assetUri('mascot_broccoli_anim.webp');
 
+// --- The seven poses (v0.3.0) -------------------------------------------
+//
+// One animation per thing the mascot can be doing. utils/mascotState.js
+// decides which; this only says where each file lives.
+//
+// ALL SEVEN SHARE ONE CANVAS, 236x262, which is the union of all seven
+// alpha bounding boxes. That is not tidiness -- it is the only way the
+// broccoli stays the same size and sits in the same spot when the pose
+// changes. Cropping each file to its own art would make him jump and
+// resize on every switch, which is the v0.2.3 bug all over again. The
+// canvas is as tight as it can be while still holding the jump (which
+// reaches the top edge) and the sleep (which lies down and is wide).
+//
+// THE FILENAMES ARE A CONTRACT, same as the static art: lowercase, in
+// the icon repo's assets/ folder, because jsDelivr is case-sensitive and
+// a 404 draws nothing with no error. components/Mascot.js falls back to
+// the static PNG for any pose whose file fails to load, so a typo here
+// costs one pose rather than the mascot.
+export const MASCOT_POSE_FILES = {
+  wave: 'mascot_wave.webp',
+  run: 'mascot_run.webp',
+  idle: 'mascot_idle.webp',
+  jump: 'mascot_jump.webp',
+  curl: 'mascot_curl.webp',
+  meditate: 'mascot_meditate.webp',
+  sleep: 'mascot_sleep.webp',
+};
+
+export const MASCOT_POSES = Object.keys(MASCOT_POSE_FILES).reduce((acc, pose) => {
+  acc[pose] = assetUri(MASCOT_POSE_FILES[pose]);
+  return acc;
+}, {});
+
 export const MACRO_ART = {
   calories: assetUri('macro_calories.png'),
   protein: assetUri('macro_protein.png'),

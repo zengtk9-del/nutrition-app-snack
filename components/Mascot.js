@@ -1,5 +1,12 @@
 // The broccoli in the corner of every tab (v0.2.3; renderer hardened in
-// v0.2.6 after it took the whole app down).
+// v0.2.6 after it took the whole app down; seven poses in v0.3.0).
+//
+// WHAT THIS FILE DOES AND DOES NOT DECIDE (v0.3.0). It does not decide
+// what the mascot is doing -- utils/mascotState.js owns that, holds the
+// timers, and is shared by all four tabs so changing tab cannot change
+// the pose. This file turns a pose into a file, draws it with whichever
+// renderer works, warms the ones coming next, and falls back to the
+// static PNG for anything that will not load.
 //
 // ONE COMPONENT, FOUR SCREENS, and that is the whole point. Today, Log
 // Food, History and Goals each drew their own copy with their own numbers
@@ -60,7 +67,8 @@
 
 import React from 'react';
 import { Image as RNImage, Platform, StyleSheet } from 'react-native';
-import { ART_READY, MASCOT, MASCOT_ANIMATED, USE_ANIMATED_MASCOT } from '../data/brandArt';
+import { ART_READY, MASCOT, MASCOT_POSES, USE_ANIMATED_MASCOT } from '../data/brandArt';
+import { getPoseState, now, posesToWarm, subscribe } from '../utils/mascotState';
 
 // The one number. 108 is close to the middle of the four it replaces
 // (116/108/104/96) and is what History was already using, so it is the
@@ -108,29 +116,80 @@ if (!ExpoImage && rendererNote) {
   console.warn('[Mascot] drawing with React Native Image — ' + rendererNote);
 }
 
+// Can anything here actually play an animated WebP? expo-image decodes
+// them on both platforms and a browser decodes them by itself. React
+// Native's own Image on a device cannot -- Android needs Fresco's
+// animated-webp module and iOS has no animated-WebP path at all -- so on
+// that one combination every pose collapses to the static PNG. A still
+// broccoli beats an empty square.
+const CAN_ANIMATE = !!ExpoImage || Platform.OS === 'web';
+
+// Poses whose file failed to load, so we stop asking for them.
+//
+// jsDelivr 404s are silent in React Native: a missing remote image draws
+// nothing, with no error and no placeholder. Before v0.3.0 that meant a
+// mistyped filename produced an empty corner and no clue why. Now the
+// pose falls back to the static PNG the moment its file errors, and the
+// console says which one. One typo costs one pose, not the mascot.
+//
+// Module-level so all four tabs share what has been learned; a tab that
+// is already mounted picks it up on its next pose change, which is never
+// more than a slot away.
+const brokenPoses = new Set();
+
 // WHICH FILE THE FOUR TABS DRAW.
 //
-// One decision, made here, so "is the mascot animated" is a property of
-// the app rather than of whichever screen you happen to be looking at.
-// Switching tabs cannot change it, because every tab asks this same
-// function.
+// One decision, made in one place, so "what is the mascot doing" is a
+// property of the app rather than of whichever tab you are looking at.
+// utils/mascotState.js owns the pose; this only turns a pose into a URL.
+function poseSource(pose) {
+  if (!USE_ANIMATED_MASCOT || !CAN_ANIMATE) return MASCOT;
+  const src = MASCOT_POSES[pose];
+  if (!src || brokenPoses.has(pose)) return MASCOT;
+  return src;
+}
+
+// Fetch the poses that are coming before they are needed.
 //
-// The animated file only goes out to something that can actually animate
-// it. expo-image decodes animated WebP on both platforms; a browser does
-// it natively in an <img>. React Native's own Image on a device does
-// not -- Android needs Fresco's animated-webp module and iOS has no
-// animated-WebP path at all -- so on that combination this deliberately
-// hands back the static PNG. A still mascot beats an empty square.
-function mascotSource() {
-  if (!USE_ANIMATED_MASCOT) return MASCOT;
-  if (ExpoImage || Platform.OS === 'web') return MASCOT_ANIMATED;
-  return MASCOT;
+// Each pose is a separate file on the CDN, so the first time one is used
+// there is a download between "the timer fired" and "there is a broccoli
+// again". Warming them turns every switch after the first into an
+// instant swap. Staggered, because seven parallel downloads on a phone
+// would fight with whatever the app is actually doing, and jump goes
+// first: it is the only pose the user triggers, so it is the only one
+// whose delay would read as the app being slow.
+let warmed = false;
+function warmPoses() {
+  if (warmed || !CAN_ANIMATE || !USE_ANIMATED_MASCOT) return;
+  warmed = true;
+  const Renderer = ExpoImage || RNImage;
+  // now(), not Date.now(): the same clock the machine uses, so the set
+  // warmed always matches the set about to be needed.
+  posesToWarm(now()).forEach((pose, i) => {
+    const src = MASCOT_POSES[pose];
+    if (!src) return;
+    setTimeout(() => {
+      try {
+        if (typeof Renderer.prefetch === 'function') Renderer.prefetch(src.uri);
+      } catch (err) {
+        // A warm-up that fails costs a moment of blank on first use.
+        // Never worth an error.
+      }
+    }, 1200 + i * 900);
+  });
 }
 
 // The mascot as drawn. Split out from the default export because an
 // error boundary cannot catch errors thrown by its own render -- only by
 // a child's.
 function MascotImage({ source, size, style }) {
+  const [pose, setPose] = React.useState(() => getPoseState().pose);
+  const [, bumpAfterError] = React.useReducer((n) => n + 1, 0);
+
+  // One subscription per mounted mascot, one shared machine behind them.
+  React.useEffect(() => subscribe((s) => setPose(s.pose)), []);
+  React.useEffect(() => { warmPoses(); }, []);
+
   const Renderer = ExpoImage || RNImage;
   // API DIFFERENCES, small but not optional:
   //   contentFit  is expo-image's name for resizeMode ('contain' means
@@ -145,12 +204,19 @@ function MascotImage({ source, size, style }) {
     : { resizeMode: 'contain' };
   return (
     <Renderer
-      // An explicit `source` still wins, so one screen can be given a
-      // different pose later without disturbing the other three. With
-      // none, every tab draws whatever mascotSource() says.
-      source={source || mascotSource()}
+      // An explicit `source` still wins, so one screen can be pinned to
+      // a particular pose later without disturbing the other three. With
+      // none, every tab draws whatever the machine currently says.
+      source={source || poseSource(pose)}
       style={[styles.mascot, size !== MASCOT_SIZE && { width: size, height: size }, style]}
       {...fit}
+      onError={() => {
+        if (source || brokenPoses.has(pose)) return;
+        brokenPoses.add(pose);
+        console.warn(`[Mascot] pose "${pose}" failed to load — falling back to the static PNG. `
+          + 'Check that ' + (MASCOT_POSES[pose] ? MASCOT_POSES[pose].uri : '?') + ' exists, lowercase.');
+        bumpAfterError();
+      }}
       accessibilityRole="image"
       accessibilityLabel="Broccoli mascot"
     />
