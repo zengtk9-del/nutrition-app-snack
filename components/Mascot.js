@@ -31,8 +31,12 @@
 // component with the same props.
 
 import React from 'react';
-import { Image, StyleSheet } from 'react-native';
-import { ART_READY, MASCOT } from '../data/brandArt';
+import { StyleSheet } from 'react-native';
+// expo-image, not React Native's own <Image> (v0.2.5). See the note on
+// the renderer below -- the short version is that RN's Image does not
+// animate on Android, and this one does.
+import { Image } from 'expo-image';
+import { ART_READY, MASCOT, MASCOT_ANIMATED, USE_ANIMATED_MASCOT } from '../data/brandArt';
 
 // The one number. 108 is close to the middle of the four it replaces
 // (116/108/104/96) and is what History was already using, so it is the
@@ -43,6 +47,39 @@ import { ART_READY, MASCOT } from '../data/brandArt';
 // of "the mascot part does not change at all".
 export const MASCOT_SIZE = 108;
 
+// WHICH FILE THE FOUR TABS DRAW (v0.2.4).
+//
+// One decision, made here, so "is the mascot animated" is a property of
+// the app rather than of whichever screen you happen to be looking at.
+// Switching tabs cannot change it, because every tab asks this same
+// function.
+//
+// ON THE RENDERER (v0.2.5). This draws through expo-image rather than
+// React Native's own <Image>. v0.2.4 used RN's, deliberately, because
+// expo-image's resolution in Expo Snack was unverified and the failure
+// mode for an unresolvable package is the whole app refusing to bundle --
+// which is how lottie-react-native behaves. Damon asked to switch, so
+// the risk is now taken knowingly rather than avoided.
+//
+// What it buys: animation on Android (RN's Image cannot, because Fresco
+// needs native configuration Snack has no way to provide) and a real
+// 8-bit alpha channel instead of GIF's one bit.
+//
+// IF SNACK REFUSES THE PACKAGE, the symptom is the app not loading at all
+// rather than a still mascot, and the fix is to go back to the v0.2.4
+// build. Nothing else in the app imports expo-image, so this file and
+// package.json are the whole of the change.
+//
+// API DIFFERENCES from RN's Image, small but not optional:
+//   contentFit  replaces resizeMode ('contain' means the same thing)
+//   autoplay    defaults true on both platforms, which is what an idle
+//               mascot wants -- named here anyway so the intent survives
+//               a future default change
+//   transition  a cross-fade on load. 0 because a mascot popping in at
+//               full opacity is what the static PNG always did, and a
+//               fade would read as a bug on a tab switch.
+const mascotSource = () => (USE_ANIMATED_MASCOT ? MASCOT_ANIMATED : MASCOT);
+
 export default function Mascot({ source, size = MASCOT_SIZE, style }) {
   // ART_READY is the switch in data/brandArt.js that covers the whole
   // illustrated set. False means the art is not on the CDN yet, and the
@@ -52,12 +89,14 @@ export default function Mascot({ source, size = MASCOT_SIZE, style }) {
 
   return (
     <Image
-      // `source` is the seam the animation arrives through: pass an
-      // animated file and nothing else about the app has to change. It
-      // defaults to the static PNG the four screens use today.
-      source={source || MASCOT}
+      // An explicit `source` still wins, so one screen can be given a
+      // different pose later without disturbing the other three. With
+      // none, every tab draws whatever mascotSource() says.
+      source={source || mascotSource()}
       style={[styles.mascot, size !== MASCOT_SIZE && { width: size, height: size }, style]}
-      resizeMode="contain"
+      contentFit="contain"
+      autoplay
+      transition={0}
       accessibilityRole="image"
       accessibilityLabel="Broccoli mascot"
     />

@@ -32,6 +32,43 @@ export const ART_READY = true;
 // already caught us out once by arriving capitalised.
 export const MASCOT = assetUri('mascot_broccoli.png');
 
+// --- The animated mascot (v0.2.4) ---------------------------------------
+//
+// THE SECOND SWITCH. Flip USE_ANIMATED_MASCOT once the GIF is live on the
+// icon repo and all four tabs start moving at the same instant, because
+// they all mount the same components/Mascot.js.
+//
+// It is a separate switch from ART_READY on purpose: ART_READY says "the
+// illustrated set exists at all", this says "the moving version of one of
+// them exists too". Turning this off is the one-line way back to the
+// static PNG if the GIF misbehaves on a device, without touching four
+// screens or losing the artwork entirely.
+//
+// THE FILENAME IS A CONTRACT. jsDelivr 404s are silent in React Native --
+// a failed remote image draws nothing, with no error and no placeholder.
+// So this exact name, lowercase, has to be what lands in the assets/
+// folder of the icon repo:
+//
+//     mascot_broccoli_anim.webp
+//
+// WEBP, NOT GIF (v0.2.5). The GIF worked and was wired up in v0.2.4; this
+// is strictly better on all three axes that matter here:
+//
+//   size   265 KB -> 190 KB for the identical 21 frames.
+//   edges  GIF alpha is one bit -- a pixel is fully there or fully gone,
+//          so the mascot's outline stair-steps against the pale blue
+//          header. WebP carries a real 8-bit alpha channel, so the edge
+//          is anti-aliased the way the static PNG's always was.
+//   Android  React Native's own <Image> does not animate GIFs there
+//          (Fresco needs native config Expo Snack cannot provide). The
+//          expo-image renderer this now uses decodes animation on both
+//          platforms.
+//
+// The GIF is still on the icon repo and still works; switching back is
+// this one line plus the renderer in components/Mascot.js.
+export const USE_ANIMATED_MASCOT = true;
+export const MASCOT_ANIMATED = assetUri('mascot_broccoli_anim.webp');
+
 export const MACRO_ART = {
   calories: assetUri('macro_calories.png'),
   protein: assetUri('macro_protein.png'),
