@@ -52,20 +52,24 @@ export const MASCOT = assetUri('mascot_broccoli.png');
 //     mascot_broccoli_anim.webp
 //
 // WEBP, NOT GIF (v0.2.5). The GIF worked and was wired up in v0.2.4; this
-// is strictly better on all three axes that matter here:
+// is better on the two axes that matter here:
 //
 //   size   265 KB -> 190 KB for the identical 21 frames.
 //   edges  GIF alpha is one bit -- a pixel is fully there or fully gone,
 //          so the mascot's outline stair-steps against the pale blue
 //          header. WebP carries a real 8-bit alpha channel, so the edge
 //          is anti-aliased the way the static PNG's always was.
-//   Android  React Native's own <Image> does not animate GIFs there
-//          (Fresco needs native config Expo Snack cannot provide). The
-//          expo-image renderer this now uses decodes animation on both
-//          platforms.
+//
+// IT NEEDS A RENDERER THAT CAN DECODE IT, which is the catch and the
+// reason components/Mascot.js is as careful as it is. Animated WebP
+// plays through expo-image (both platforms) and through a browser's own
+// <img> on web. It does NOT play through React Native's Image on a
+// device. Mascot.js knows this and hands out the static PNG rather than
+// an animated file nothing present can animate -- so if expo-image is
+// ever unavailable, the mascot goes still, not blank.
 //
 // The GIF is still on the icon repo and still works; switching back is
-// this one line plus the renderer in components/Mascot.js.
+// this one line.
 export const USE_ANIMATED_MASCOT = true;
 export const MASCOT_ANIMATED = assetUri('mascot_broccoli_anim.webp');
 
