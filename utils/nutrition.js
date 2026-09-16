@@ -48,6 +48,23 @@ export function makeEntryFromFood(food, amount = 1) {
   };
 }
 
+// What logging `amount` of `food` would add to today — the four numbers,
+// without the entry scaffolding around them (v0.3.1).
+//
+// For cards that SHOW what a button is about to log. It does not do the
+// same arithmetic as makeEntryFromFood; it calls makeEntryFromFood and
+// takes the result, so a card physically cannot disagree with the entry
+// it produces, rounding included. That guarantee is the whole point:
+// "129 kcal" on a card and "128.6" in the log is the kind of gap nobody
+// notices until a user adds it up by hand.
+//
+// The wasted id/loggedAt is deliberate. Reimplementing the maths here to
+// avoid two string concatenations is exactly how the two drift apart.
+export function servingMacros(food, amount) {
+  const e = makeEntryFromFood(food, amount);
+  return { calories: e.calories, protein: e.protein, carbs: e.carbs, fat: e.fat };
+}
+
 // Adds up calories/protein/carbs/fat across a list of entries.
 export function sumEntries(entries) {
   const round1 = (n) => Math.round(n * 10) / 10;

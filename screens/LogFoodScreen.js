@@ -30,7 +30,7 @@ import { LEGUME_TYPES, LEGUME_FORMS, LEGUME_ITEMS } from '../data/legumeHierarch
 import { NUT_SEED_TYPES, NUT_PREPS, NUT_SEED_ITEMS } from '../data/nutSeedHierarchy';
 import { GRAIN_TYPES, GRAIN_FORMS, GRAIN_ITEMS } from '../data/grainHierarchy';
 import { FAT_OIL_TYPES, FAT_LEVELS, FAT_OIL_ITEMS } from '../data/fatOilHierarchy';
-import { filterFoods, filterByCategory } from '../utils/nutrition';
+import { filterFoods, filterByCategory, servingMacros } from '../utils/nutrition';
 // rowIconKeyOf and the two category tables moved to utils/foodIcon.js in
 // v0.0.57 so the Today tab and Favorites rows could use them too; the
 // 96pt icon square itself is components/FoodIcon.js for the same reason.
@@ -3738,17 +3738,15 @@ function CustomFoodRow({ row, onEdit, onAdd, onDelete }) {
   const food = customFoodToFood(row);
   const isWeight = food.servingType === 'weight';
 
-  // Weight foods carry per-100g figures and count foods carry the absolute
-  // macros of one serving -- the same split FavoriteListItem handles, and
-  // the same reason the caption above the chips has to say which it is.
-  const chipValues = isWeight
-    ? {
-        calories: food.caloriesPer100g,
-        protein: food.proteinPer100g,
-        carbs: food.carbsPer100g,
-        fat: food.fatPer100g,
-      }
-    : { calories: food.calories, protein: food.protein, carbs: food.carbs, fat: food.fat };
+  // The serving, not per 100g (v0.3.1) -- see FavoriteListItem for the
+  // reasoning. Damon asked for it in Favorites; these two lists were
+  // deliberately made identical in v0.1.0, so changing one and not the
+  // other would undo that. Say the word and this reverts on its own.
+  //
+  // `amount` is declared once and feeds both the chips and the Add
+  // button below, so the card and the entry cannot disagree.
+  const amount = isWeight ? food.typicalGrams : 1;
+  const chipValues = servingMacros(food, amount);
 
   return (
     <View style={styles.favoriteListItem}>
@@ -3773,16 +3771,14 @@ function CustomFoodRow({ row, onEdit, onAdd, onDelete }) {
             </Text>
           </TouchableOpacity>
 
-          <Text style={styles.favCaption}>{isWeight ? 'per 100g' : 'per serving'}</Text>
-
-          <MacroChipRow values={chipValues} />
-
-          <Text style={styles.favServing}>
+          <Text style={styles.favServingLead}>
             Serving{' '}
             <Text style={styles.favServingValue}>
               {isWeight ? `${food.typicalGrams}g` : '1 serving'}
             </Text>
           </Text>
+
+          <MacroChipRow values={chipValues} />
         </View>
       </View>
 
@@ -3802,7 +3798,7 @@ function CustomFoodRow({ row, onEdit, onAdd, onDelete }) {
         <TouchableOpacity
           style={styles.favQuickAddBtn}
           activeOpacity={0.8}
-          onPress={() => onAdd(food, isWeight ? food.typicalGrams : 1)}
+          onPress={() => onAdd(food, amount)}
           accessibilityRole="button"
           accessibilityLabel={`Add ${row.name} to today`}
         >
@@ -3873,10 +3869,14 @@ function FavoriteListItem({
     ]);
   };
 
-  const handleQuickAdd = () => {
-    if (favorite.servingType === 'weight') {
-      onAdd(
-        {
+  // ONE DESCRIPTION OF THE SERVING, used by both the chips and the button
+  // (v0.3.1). It used to be built inside handleQuickAdd, where only the
+  // button could see it; now the card reads the same object, so what the
+  // chips promise and what Add to Today delivers cannot come apart.
+  const isWeight = favorite.servingType === 'weight';
+  const quickAdd = isWeight
+    ? {
+        food: {
           id: favorite.foodId,
           name: favorite.name,
           servingType: 'weight',
@@ -3885,11 +3885,10 @@ function FavoriteListItem({
           carbsPer100g: favorite.carbsPer100g,
           fatPer100g: favorite.fatPer100g,
         },
-        favorite.grams
-      );
-    } else {
-      onAdd(
-        {
+        amount: favorite.grams,
+      }
+    : {
+        food: {
           id: favorite.foodId,
           name: favorite.name,
           servingType: 'count',
@@ -3899,36 +3898,27 @@ function FavoriteListItem({
           fat: favorite.fat,
           servingLabel: favorite.servingLabel,
         },
-        1
-      );
-    }
-  };
-
-  // The run-on summary line this replaced ("per 100g: 291 kcal · P23.7
-  // C0 F21.8 · 100g") said everything the mockup's chips say, in a string
-  // you had to read left to right to find one number in. Same four values,
-  // now findable by position.
-  //
-  // TWO KINDS OF FAVORITE, and they do not carry the same numbers. A weight
-  // favorite stores per-100g values plus the grams you saved; a count
-  // favorite (one egg, one slice) stores the absolute macros of one
-  // serving and has no per-100g at all. So the chips take whichever set
-  // exists, and the caption above them says which you are looking at --
-  // without it, "291" and "0g" are ambiguous between the two.
-  const isWeight = favorite.servingType === 'weight';
-  const chipValues = isWeight
-    ? {
-        calories: favorite.caloriesPer100g,
-        protein: favorite.proteinPer100g,
-        carbs: favorite.carbsPer100g,
-        fat: favorite.fatPer100g,
-      }
-    : {
-        calories: favorite.calories,
-        protein: favorite.protein,
-        carbs: favorite.carbs,
-        fat: favorite.fat,
+        amount: 1,
       };
+
+  const handleQuickAdd = () => onAdd(quickAdd.food, quickAdd.amount);
+
+  // THE CHIPS SHOW THE SAVED SERVING, not per 100g (v0.3.1).
+  //
+  // The point of a favorite is that you already decided the portion. A
+  // card that said "129 kcal" for a 400g serving you were about to log at
+  // 516 was answering a question nobody on this screen was asking, and
+  // the two numbers sat four lines apart inviting you to read the wrong
+  // one. Now the chips are the serving, and the line above them names it.
+  //
+  // Per 100g is not gone -- tapping the row opens the portion editor,
+  // which still leads with it, and that is where comparing densities
+  // actually belongs.
+  //
+  // Derived through servingMacros, which runs the real makeEntryFromFood
+  // on the very object the button sends. Not the same arithmetic: the
+  // same call.
+  const chipValues = servingMacros(quickAdd.food, quickAdd.amount);
 
   return (
     <View style={styles.favoriteListItem}>
@@ -3961,13 +3951,14 @@ function FavoriteListItem({
             </Text>
           </TouchableOpacity>
 
-          <Text style={styles.favCaption}>{isWeight ? 'per 100g' : favorite.servingLabel}</Text>
-
-          <MacroChipRow values={chipValues} />
-
-          <Text style={styles.favServing}>
+          {/* Above the chips now, because it is what they are measured
+              in. Below them it was a footnote; above them it is the unit
+              on the axis. */}
+          <Text style={styles.favServingLead}>
             Serving <Text style={styles.favServingValue}>{isWeight ? `${favorite.grams}g` : favorite.servingLabel}</Text>
           </Text>
+
+          <MacroChipRow values={chipValues} />
         </View>
       </View>
 
@@ -6631,7 +6622,14 @@ const styles = StyleSheet.create({
   // Two lines then ellipsis. These names are built from a food row plus a
   // number ("Beef Ribeye Steak 1") and run long.
   favName: { flex: 1, fontSize: 17, fontWeight: '800', color: COLORS.text, lineHeight: 22 },
-  favCaption: { fontSize: 13.5, color: COLORS.textMuted, fontWeight: '600', marginTop: 3, marginLeft: 34 },
+  // The serving line, sitting above the chips it describes (v0.3.1). It
+  // replaced favCaption ("per 100g"), which was indented 34 to line up
+  // with the name past the chevron; this one is flush left because it
+  // labels the chip row, and a label belongs over what it labels.
+  //
+  // Not favServing with a tweak: ComboRow uses that for its summary and
+  // would move with it.
+  favServingLead: { fontSize: 13.5, color: COLORS.textSoft, marginTop: 4, fontWeight: '500' },
 
   // Four equal chips. `flex: 1` plus `minWidth: 0` is what lets a
   // four-digit calorie count shrink its own chip instead of pushing the
