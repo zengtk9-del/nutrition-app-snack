@@ -16,6 +16,40 @@
 import { assetUri } from '../utils/assetHost';
 
 export const QUIZ_STEPS = [
+  // --- The two intro pages (v0.4.0) ------------------------------------
+  //
+  // A different shape from every step below: no title, no progress bar,
+  // no options -- a speech bubble from the mascot, and on the second one
+  // a single text field. QuizScreen renders `mascotIntro` through its own
+  // frame rather than the standard title/body/nav one.
+  //
+  // THE MASCOT MUST NOT RESTART between these two. That is why they are
+  // two steps of one type rather than two different types: both render
+  // the same frame at the same place in the tree, so React keeps the one
+  // <Mascot> mounted and the animation runs straight through the page
+  // change. See QuizScreen's renderMascotIntro.
+  //
+  // `firstRunOnly` marks them as belonging to the first intake only.
+  // Nothing acts on it yet -- Damon wants them in retakes for now,
+  // because retaking is currently the only way to reach the quiz at all.
+  // When that changes, QuizScreen's `skipIntro` prop is the one line.
+  {
+    key: 'welcome',
+    type: 'mascotIntro',
+    firstRunOnly: true,
+    // Two lines, written out rather than wrapped, so the break lands
+    // where the mockup puts it at every text size.
+    bubble: ['Hi, I’m glad', 'you made it!'],
+  },
+  {
+    key: 'name',
+    type: 'mascotIntro',
+    firstRunOnly: true,
+    // The blank is deliberate: the mascot has no name yet. When he gets
+    // one it goes here and nothing else changes.
+    bubble: ['I am _______.', 'What is your name?'],
+    input: { label: 'YOUR NAME', placeholder: 'Enter your name', icon: 'account-outline' },
+  },
   {
     key: 'age',
     type: 'slider',

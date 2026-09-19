@@ -179,7 +179,7 @@ export function groupEntries(entries) {
   return rows;
 }
 
-export default function DashboardScreen({ entries, goals, onDeleteEntry, onDeleteComboGroup, customFoods = [] }) {
+export default function DashboardScreen({ entries, goals, onDeleteEntry, onDeleteComboGroup, customFoods = [], userName = '' }) {
   const totals = sumEntries(entries);
   // Grouped once, not once per read: the heading counts rows and the list
   // renders them, and calling it twice would rebuild the whole thing for
@@ -214,7 +214,15 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry, onDelet
       </View>
 
       <View style={s.header}>
-        <Text style={s.title}>Today</Text>
+        {/* The name from the quiz intro (v0.4.0). Above the title rather
+            than replacing it: "Today" is what the tab is called, and the
+            greeting is the only place in the app that name is used so
+            far. Nothing renders when there isn't one, so an account that
+            predates the intro pages looks exactly as it did. */}
+        <View style={s.titleCol}>
+          {userName ? <Text style={s.hello}>Hi, {userName}</Text> : null}
+          <Text style={s.title}>Today</Text>
+        </View>
         <Mascot />
       </View>
 
@@ -337,7 +345,11 @@ const s = StyleSheet.create({
   blobC: { width: 46, height: 46, top: 8, right: 210 },
 
   header: { flexDirection: 'row', alignItems: 'center', minHeight: 96 },
-  title: { ...TYPE.screenTitle, color: COLORS.text, flex: 1 },
+  // flex moved off the title and onto its column, so the mascot still
+  // gets pushed to the right edge now that there can be two lines here.
+  titleCol: { flex: 1 },
+  hello: { fontSize: 15, fontWeight: '700', color: COLORS.textSoft, marginBottom: 2 },
+  title: { ...TYPE.screenTitle, color: COLORS.text },
 
   card: {
     backgroundColor: COLORS.card,

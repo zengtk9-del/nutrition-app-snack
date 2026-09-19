@@ -64,6 +64,15 @@ export default function App() {
   // --- Account login state ---
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // What the intro page asked for. Lives on the auth user's metadata, so
+  // it survives a reinstall and needs no table of its own.
+  const [userName, setUserName] = useState('');
+
+  useEffect(() => {
+    const stored = session?.user?.user_metadata?.name;
+    if (stored && stored !== userName) setUserName(stored);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   // "Waving only appears when the user open the app."
   //
@@ -598,6 +607,18 @@ export default function App() {
   };
 
   const handleQuizComplete = (answers) => {
+    // The name from the intro page (v0.4.0). Kept on the Supabase auth
+    // user rather than in a table, so it needs no migration and follows
+    // the account across devices. buildProfile ignores it -- it reads
+    // named fields, so an extra key costs nothing.
+    const typedName = (answers.name || '').trim();
+    if (typedName && typedName !== userName) {
+      setUserName(typedName);
+      supabase.auth
+        .updateUser({ data: { name: typedName } })
+        .catch((err) => console.warn('Failed to save name', err));
+    }
+
     const profile = buildProfile(answers);
     const report = generateGoalsReport(profile);
     setQuizAnswers(answers);
@@ -827,6 +848,7 @@ export default function App() {
             onDeleteEntry={handleDeleteEntry}
             onDeleteComboGroup={handleDeleteComboGroup}
             customFoods={customFoods}
+            userName={userName}
           />
         )}
         {activeTab === 'log' && (

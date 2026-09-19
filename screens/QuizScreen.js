@@ -1,7 +1,21 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Slider from '../components/DragSlider';
 import DietDetailModal from '../components/DietDetailModal';
+import Mascot from '../components/Mascot';
+import { MASCOT_WAVE_BIG } from '../data/brandArt';
+import { COLORS, RADIUS, SPACE } from '../utils/theme';
 import {
   QUIZ_STEPS,
   BODY_FAT_OPTIONS,
@@ -171,7 +185,18 @@ function OptionCard({ label, sub, selected, onPress }) {
 // filled in (e.g. jumping straight to the body-fat step with sex already
 // set) — real usage from App.js never passes them, so the quiz always
 // starts fresh on step 0 exactly as before.
-export default function QuizScreen({ onComplete, onCancel, initialAnswers, initialStepIndex }) {
+export default function QuizScreen({
+  onComplete,
+  onCancel,
+  initialAnswers,
+  initialStepIndex,
+  // Drops the two mascot intro pages (v0.4.0). They belong to the first
+  // intake, not to a retake -- nobody wants "Hi, I'm glad you made it!"
+  // and a name box they already filled in. Left false for now because
+  // retaking from Goals is currently the only way to reach the quiz at
+  // all, so it is also the only way to see these pages.
+  skipIntro = false,
+}) {
   const [answers, setAnswers] = useState({
     age: 25,
     heightUnit: 'ftin',
@@ -217,10 +242,20 @@ export default function QuizScreen({ onComplete, onCancel, initialAnswers, initi
   // "maintain") are filtered out here rather than inside the render loop,
   // so "step 4 of 9" always reflects what the user will actually see.
   const visibleSteps = useMemo(
-    () => QUIZ_STEPS.filter((s) => !s.condition || s.condition(answers)),
-    [answers.goal]
+    () =>
+      QUIZ_STEPS.filter(
+        (s) => (!s.condition || s.condition(answers)) && !(skipIntro && s.firstRunOnly)
+      ),
+    [answers.goal, skipIntro]
   );
   const step = visibleSteps[stepIndex];
+
+  // The intro pages are not questions, so they do not get counted as
+  // "Step 1 of 15". Without this the age question -- the first thing
+  // anyone would call step one -- would announce itself as step three.
+  const introCount = visibleSteps.filter((s) => s.type === 'mascotIntro').length;
+  const questionCount = visibleSteps.length - introCount;
+  const questionNumber = stepIndex + 1 - introCount;
 
   const update = (patch) => setAnswers((prev) => ({ ...prev, ...patch }));
 
@@ -273,6 +308,11 @@ export default function QuizScreen({ onComplete, onCancel, initialAnswers, initi
 
   const isAnswered = () => {
     switch (step.type) {
+      case 'mascotIntro':
+        // A page with no input is always passable. One with an input
+        // needs something in it that is not just spaces -- the mockup
+        // greys the button out until then.
+        return !step.input || (answers[step.key] || '').trim().length > 0;
       case 'slider':
       case 'height':
       case 'weight':
@@ -1052,18 +1092,133 @@ export default function QuizScreen({ onComplete, onCancel, initialAnswers, initi
 
   const subtitle = step.getSubtitle ? step.getSubtitle(answers, QUESTION_HELPERS) : step.subtitle;
 
+  // --- The two intro pages (v0.4.0) ------------------------------------
+  //
+  // Its own frame, because it shares almost nothing with a question: no
+  // progress bar, no title, no Back/Next pair -- a speech bubble, the
+  // mascot, and one full-width button.
+  //
+  // WHY BOTH PAGES COME THROUGH HERE. The mascot has to keep waving
+  // across the page change rather than restarting, and the only way to
+  // promise that is for React to see the same <Mascot> in the same place
+  // in the tree before and after. So the two pages differ by the text in
+  // the bubble and whether the input slot is filled -- never by the shape
+  // of the tree around the mascot. The `{step.input ? ... : null}` below
+  // is load-bearing for that reason: a null child still holds its slot,
+  // where an `&&` that collapsed the element away would shift the
+  // mascot's index and remount it.
+  if (step.type === 'mascotIntro') {
+    const value = answers[step.key] || '';
+    return (
+      // The name field is a few points above the button that dismisses
+      // it, so on iOS the keyboard would cover both. Squeezing the page
+      // instead costs the mascot some height and keeps Next reachable.
+      <KeyboardAvoidingView
+        style={styles.introRoot}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {/* Same texture as every other screen, just more of it -- this
+            page is mostly background, so three blobs would read as three
+            stray circles rather than as a pattern. */}
+        <View pointerEvents="none" style={styles.introBlobs}>
+          <View style={[styles.introBlob, styles.introBlobA]} />
+          <View style={[styles.introBlob, styles.introBlobB]} />
+          <View style={[styles.introBlob, styles.introBlobC]} />
+          <View style={[styles.introBlob, styles.introBlobD]} />
+          <View style={[styles.introBlob, styles.introBlobE]} />
+        </View>
+
+        <View style={styles.introTop}>
+          {onCancel ? (
+            <TouchableOpacity
+              style={styles.introBack}
+              onPress={goBack}
+              accessibilityRole="button"
+              accessibilityLabel={stepIndex === 0 ? 'Cancel' : 'Back'}
+            >
+              <MaterialCommunityIcons
+                name={stepIndex === 0 ? 'close' : 'chevron-left'}
+                size={22}
+                color={COLORS.textMuted}
+              />
+            </TouchableOpacity>
+          ) : null}
+
+          <View style={styles.bubbleWrap}>
+            <View style={styles.bubble}>
+              {step.bubble.map((line) => (
+                <Text key={line} style={styles.bubbleText}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+            <View style={styles.bubbleTail} />
+          </View>
+
+          {step.input ? (
+            <View style={styles.nameCard}>
+              <MaterialCommunityIcons
+                name={step.input.icon || 'account-outline'}
+                size={26}
+                color={COLORS.text}
+                style={styles.nameIcon}
+              />
+              <View style={styles.nameFields}>
+                <Text style={styles.nameLabel}>{step.input.label}</Text>
+                <TextInput
+                  style={styles.nameInput}
+                  value={value}
+                  onChangeText={(t) => update({ [step.key]: t })}
+                  placeholder={step.input.placeholder}
+                  placeholderTextColor={COLORS.textFaint}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  maxLength={40}
+                  onSubmitEditing={() => { if (isAnswered()) goNext(); }}
+                  accessibilityLabel={step.input.label}
+                />
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {/* The stage. Everything here is decoration except the mascot:
+            a pale disc behind him and an ellipse under his feet, which
+            together stop him floating on a flat field. */}
+        <View style={styles.introStage}>
+          <View pointerEvents="none" style={styles.introGlow} />
+          <View pointerEvents="none" style={styles.introGround} />
+          <Mascot key="quiz-intro-mascot" source={MASCOT_WAVE_BIG} style={styles.introMascot} />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.introNext, !isAnswered() && styles.introNextDisabled]}
+          onPress={goNext}
+          disabled={!isAnswered()}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel="Next"
+        >
+          <Text style={styles.introNextText}>Next</Text>
+          <MaterialCommunityIcons name="arrow-right" size={22} color="#fff" />
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.progressTrack}>
         <View
           style={[
             styles.progressFill,
-            { width: `${Math.round(((stepIndex + 1) / visibleSteps.length) * 100)}%` },
+            { width: `${Math.round((questionNumber / questionCount) * 100)}%` },
           ]}
         />
       </View>
       <Text style={styles.progressLabel}>
-        Step {stepIndex + 1} of {visibleSteps.length}
+        Step {questionNumber} of {questionCount}
       </Text>
 
       <ScrollView
@@ -1113,6 +1268,132 @@ export default function QuizScreen({ onComplete, onCancel, initialAnswers, initi
 }
 
 const styles = StyleSheet.create({
+  // --- The mascot intro pages (v0.4.0) ---------------------------------
+  //
+  // The one part of this screen drawn from utils/theme rather than the
+  // hard-coded blues the rest of the quiz still uses. New surface, so it
+  // starts on the system the redesigned screens are already on instead
+  // of inheriting colours that are on their way out.
+  introRoot: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+    paddingHorizontal: SPACE.screen,
+    paddingBottom: 24,
+  },
+  introBlobs: { ...StyleSheet.absoluteFillObject },
+  introBlob: { position: 'absolute', backgroundColor: COLORS.blob, borderRadius: RADIUS.pill },
+  // The big sweep down the right-hand side. Far larger than the frame and
+  // pushed mostly off it, so what shows is one long curve rather than a
+  // circle -- the same trick the Today header uses, at page scale.
+  introBlobA: { width: 520, height: 900, top: -120, right: -260 },
+  introBlobB: { width: 96, height: 96, top: 96, left: 8 },
+  introBlobC: { width: 46, height: 46, top: 176, left: 78 },
+  introBlobD: { width: 74, height: 74, top: '44%', right: 18 },
+  introBlobE: { width: 34, height: 34, top: '50%', right: 96 },
+
+  introTop: { paddingTop: 10 },
+  introBack: { position: 'absolute', top: 6, left: -6, padding: 10, zIndex: 3 },
+
+  // Bubble and tail share a width so the card on page two lines up with
+  // the bubble above it rather than floating a few points off.
+  bubbleWrap: { alignSelf: 'flex-end', width: '84%', alignItems: 'flex-start', marginTop: 46 },
+  bubble: {
+    alignSelf: 'stretch',
+    backgroundColor: COLORS.card,
+    borderRadius: 26,
+    paddingVertical: 16,
+    paddingHorizontal: 22,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  bubbleText: { fontSize: 25, lineHeight: 32, fontWeight: '800', color: COLORS.text },
+  // A drawn triangle rather than a rotated square: the point stays sharp
+  // and it cannot show a corner of the square poking out the side.
+  bubbleTail: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderLeftWidth: 13,
+    borderRightWidth: 13,
+    borderTopWidth: 20,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: COLORS.card,
+    marginLeft: 54,
+    marginTop: -1,
+  },
+
+  nameCard: {
+    alignSelf: 'flex-end',
+    width: '84%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginTop: 6,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  nameIcon: { marginTop: 2 },
+  nameFields: { flex: 1 },
+  nameLabel: { fontSize: 12, fontWeight: '800', letterSpacing: 0.6, color: COLORS.text },
+  // paddingVertical 0 plus an explicit height: Android's TextInput adds
+  // its own padding that would push the card taller than the mockup's.
+  nameInput: { fontSize: 19, color: COLORS.text, paddingVertical: 0, height: 28 },
+
+  // Everything below the bubble and above the button belongs to him.
+  introStage: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', marginTop: 10 },
+  introGlow: {
+    position: 'absolute',
+    width: '104%',
+    aspectRatio: 1,
+    bottom: 34,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.blob,
+    opacity: 0.6,
+  },
+  introGround: {
+    position: 'absolute',
+    bottom: 24,
+    width: '68%',
+    height: 26,
+    borderRadius: RADIUS.pill,
+    backgroundColor: '#d7e3f6',
+    opacity: 0.85,
+  },
+  // Overrides every number components/Mascot.js sets for the corner --
+  // its width, height, alignSelf and both negative margins. Anything
+  // left out would leak the 108pt corner geometry onto this page.
+  introMascot: {
+    width: '100%',
+    height: '100%',
+    alignSelf: 'center',
+    marginTop: 0,
+    marginRight: 0,
+  },
+
+  introNext: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    height: 58,
+    borderRadius: 16,
+    backgroundColor: COLORS.accent,
+    marginTop: 16,
+  },
+  introNextDisabled: { opacity: 0.4 },
+  introNextText: { color: '#fff', fontSize: 21, fontWeight: '800' },
+
   container: { flex: 1, backgroundColor: '#f7f7fa', padding: 16 },
   progressTrack: { height: 6, backgroundColor: '#e3e3e8', borderRadius: 3, overflow: 'hidden', marginTop: 8 },
   progressFill: { height: 6, backgroundColor: '#4f8ef7' },

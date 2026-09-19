@@ -106,6 +106,23 @@ export const MASCOT_POSES = Object.keys(MASCOT_POSE_FILES).reduce((acc, pose) =>
   return acc;
 }, {});
 
+// --- The big one, for the quiz intro (v0.4.0) ---------------------------
+//
+// Same wave, same 3.3 seconds, but 854x1068 instead of 236x262 -- the
+// intro pages draw him around 300pt tall, and the corner file has only
+// 237px of broccoli in it, which would be a 3.8x upscale.
+//
+// NOT in MASCOT_POSES on purpose. Everything in that map shares one
+// canvas so the corner mascot cannot jump when the pose changes; this
+// one is cropped to its own art precisely because nothing sits beside
+// it. Keeping it out of the map is what stops someone wiring it into
+// the rotation by accident.
+//
+// Cut from CapCut's own alpha channel rather than keyed off a black
+// background, so the outline is anti-aliased rather than stair-stepped
+// at this size. 1.4 MB, 10fps to match the other seven.
+export const MASCOT_WAVE_BIG = assetUri('mascot_wave_big.webp');
+
 export const MACRO_ART = {
   calories: assetUri('macro_calories.png'),
   protein: assetUri('macro_protein.png'),
