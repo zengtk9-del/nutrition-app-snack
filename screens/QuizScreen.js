@@ -14,7 +14,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Slider from '../components/DragSlider';
 import DietDetailModal from '../components/DietDetailModal';
 import Mascot from '../components/Mascot';
-import { MASCOT_WAVE_BIG } from '../data/brandArt';
+import { MASCOT_SCENES, MASCOT_WAVE_BIG } from '../data/brandArt';
 import { COLORS, RADIUS, SPACE } from '../utils/theme';
 import {
   QUIZ_STEPS,
@@ -347,22 +347,44 @@ export default function QuizScreen({
   const renderStepBody = () => {
     if (step.type === 'slider') {
       const value = answers[step.key] ?? step.default;
+      const dial = step.sliderVariant === 'dial';
+      const slider = (
+        <Slider
+          style={dial ? styles.dialSlider : styles.slider}
+          variant={dial ? 'dial' : 'ruler'}
+          unitLabel={dial ? step.unitLabel : undefined}
+          minimumValue={step.min}
+          maximumValue={step.max}
+          step={step.step}
+          value={value}
+          minimumTrackTintColor={dial ? COLORS.accent : '#4f8ef7'}
+          onValueChange={(v) => update({ [step.key]: Math.round(v) })}
+          onSlidingStart={lockScroll}
+          onSlidingComplete={unlockScroll}
+        />
+      );
+
+      // The dial carries its own value inside the pill, so the big
+      // number that used to sit above the ruler would be the same figure
+      // twice. The card, the two chevrons and the caption are the frame
+      // the mockup draws around it.
+      if (dial) {
+        return (
+          <View style={styles.dialCard}>
+            <MaterialCommunityIcons name="chevron-up" size={30} color={COLORS.textFaint} />
+            {slider}
+            <MaterialCommunityIcons name="chevron-down" size={30} color={COLORS.textFaint} />
+            <Text style={styles.dialHint}>Drag to choose</Text>
+          </View>
+        );
+      }
+
       return (
         <View>
           <Text style={styles.bigValue}>
             {value} {step.unitLabel}
           </Text>
-          <Slider
-            style={styles.slider}
-            minimumValue={step.min}
-            maximumValue={step.max}
-            step={step.step}
-            value={value}
-            minimumTrackTintColor="#4f8ef7"
-            onValueChange={(v) => update({ [step.key]: Math.round(v) })}
-            onSlidingStart={lockScroll}
-            onSlidingComplete={unlockScroll}
-          />
+          {slider}
         </View>
       );
     }
@@ -1207,42 +1229,69 @@ export default function QuizScreen({
     );
   }
 
+  const isLast = stepIndex === visibleSteps.length - 1;
+
   return (
     <View style={styles.container}>
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progressFill,
-            { width: `${Math.round((questionNumber / questionCount) * 100)}%` },
-          ]}
-        />
+      {/* One dash per question rather than one filling bar (v0.4.1).
+          Same information; a count you can read at a glance instead of a
+          proportion you have to estimate. */}
+      <View style={styles.dashRow}>
+        {Array.from({ length: questionCount }, (_, i) => (
+          <View key={i} style={[styles.dash, i < questionNumber && styles.dashDone]} />
+        ))}
       </View>
       <Text style={styles.progressLabel}>
-        Step {questionNumber} of {questionCount}
+        STEP {questionNumber} OF {questionCount}
       </Text>
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={{ paddingBottom: 24 }}
         scrollEnabled={!scrollLocked}
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>{step.title}</Text>
+        {/* The question either comes out of the mascot's mouth or sits as
+            a plain title, depending on whether this step has been
+            redesigned yet. Both render the same words. */}
+        {step.bubble ? (
+          <View style={styles.askRow}>
+            <View style={styles.askBlobWrap}>
+              <View pointerEvents="none" style={styles.askBlob} />
+              {step.mascot && MASCOT_SCENES[step.mascot] ? (
+                <Mascot source={MASCOT_SCENES[step.mascot]} style={styles.askMascot} />
+              ) : null}
+            </View>
+            <View style={styles.askBubbleWrap}>
+              <View style={styles.askTail} />
+              <View style={styles.askBubble}>
+                {step.bubble.map((line) => (
+                  <Text key={line} style={styles.askText}>
+                    {line}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.title}>{step.title}</Text>
+        )}
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         {renderStepBody()}
       </ScrollView>
 
       <View style={styles.navRow}>
-        <TouchableOpacity style={styles.backBtn} onPress={goBack}>
+        <TouchableOpacity style={styles.backBtn} onPress={goBack} activeOpacity={0.7}>
           <Text style={styles.backBtnText}>{stepIndex === 0 ? 'Cancel' : 'Back'}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.nextBtn, !isAnswered() && styles.nextBtnDisabled]}
           onPress={goNext}
           disabled={!isAnswered()}
+          activeOpacity={0.85}
         >
-          <Text style={styles.nextBtnText}>
-            {stepIndex === visibleSteps.length - 1 ? 'See My Plan' : 'Next'}
-          </Text>
+          <Text style={styles.nextBtnText}>{isLast ? 'See My Plan' : 'Next'}</Text>
+          {isLast ? null : <MaterialCommunityIcons name="arrow-right" size={20} color="#fff" />}
         </TouchableOpacity>
       </View>
 
@@ -1394,10 +1443,84 @@ const styles = StyleSheet.create({
   introNextDisabled: { opacity: 0.4 },
   introNextText: { color: '#fff', fontSize: 21, fontWeight: '800' },
 
-  container: { flex: 1, backgroundColor: '#f7f7fa', padding: 16 },
-  progressTrack: { height: 6, backgroundColor: '#e3e3e8', borderRadius: 3, overflow: 'hidden', marginTop: 8 },
-  progressFill: { height: 6, backgroundColor: '#4f8ef7' },
-  progressLabel: { fontSize: 14, color: '#999', marginTop: 6, marginBottom: 8 },
+  // v0.4.1 moved this screen onto utils/theme, same as the intro pages.
+  // The old #f7f7fa was a near-white the rest of the app has left behind.
+  container: { flex: 1, backgroundColor: COLORS.bg, padding: SPACE.screen },
+  dashRow: { flexDirection: 'row', gap: 5, marginTop: 8 },
+  dash: { flex: 1, height: 7, borderRadius: RADIUS.pill, backgroundColor: '#dbe3f0' },
+  dashDone: { backgroundColor: COLORS.accent },
+  progressLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    color: COLORS.textSoft,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+
+  // --- the mascot asking the question (v0.4.1) -------------------------
+  askRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, marginBottom: 18 },
+  askBlobWrap: { width: '42%', aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
+  // Lopsided corner radii instead of a circle: four different values
+  // read as a hand-drawn blob, which is what the mockup has, and cost
+  // nothing next to shipping an SVG for it.
+  askBlob: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.blob,
+    borderTopLeftRadius: 110,
+    borderTopRightRadius: 84,
+    borderBottomLeftRadius: 92,
+    borderBottomRightRadius: 120,
+    transform: [{ rotate: '-8deg' }],
+  },
+  // Overrides every number components/Mascot.js sets for the corner.
+  askMascot: { width: '86%', height: '86%', alignSelf: 'center', marginTop: 0, marginRight: 0 },
+
+  askBubbleWrap: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  // Points left, at the mascot -- the intro pages' tail points down at
+  // the input, so the two are built the same way with different borders.
+  askTail: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderTopWidth: 12,
+    borderBottomWidth: 12,
+    borderRightWidth: 16,
+    borderTopColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderRightColor: COLORS.card,
+    marginRight: -1,
+    marginTop: 26,
+  },
+  askBubble: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  askText: { fontSize: 24, lineHeight: 30, fontWeight: '800', color: COLORS.text },
+
+  // --- the dial's card -------------------------------------------------
+  dialCard: {
+    backgroundColor: '#fbfcfe',
+    borderRadius: RADIUS.card,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 1,
+  },
+  dialSlider: { width: '100%' },
+  dialHint: { fontSize: 15, color: COLORS.textSoft, marginTop: 8 },
   scroll: { flex: 1 },
   title: { fontSize: 24, fontWeight: '700', color: '#1a1a1a', marginBottom: 6, marginTop: 8 },
   subtitle: { fontSize: 15, color: '#777', marginBottom: 18 },
@@ -1793,10 +1916,28 @@ const styles = StyleSheet.create({
   // card the same size without stretching or cropping any of them.
   bodyFatImage: { width: '100%', height: 150, marginBottom: 8 },
   bodyFatLabel: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
-  navRow: { flexDirection: 'row', paddingTop: 12, gap: 10 },
-  backBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e3e3e8' },
-  backBtnText: { fontSize: 17, fontWeight: '600', color: '#555' },
-  nextBtn: { flex: 2, paddingVertical: 14, borderRadius: 10, alignItems: 'center', backgroundColor: '#4f8ef7' },
-  nextBtnDisabled: { backgroundColor: '#b9d0f7' },
-  nextBtnText: { fontSize: 17, fontWeight: '700', color: '#fff' },
+  navRow: { flexDirection: 'row', paddingTop: 14, gap: 12 },
+  backBtn: {
+    flex: 1,
+    height: 56,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.card,
+    borderWidth: 1.5,
+    borderColor: COLORS.accent,
+  },
+  backBtnText: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  nextBtn: {
+    flex: 1.4,
+    height: 56,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: COLORS.accent,
+  },
+  nextBtnDisabled: { opacity: 0.4 },
+  nextBtnText: { fontSize: 18, fontWeight: '800', color: '#fff' },
 });

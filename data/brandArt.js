@@ -121,7 +121,18 @@ export const MASCOT_POSES = Object.keys(MASCOT_POSE_FILES).reduce((acc, pose) =>
 // Cut from CapCut's own alpha channel rather than keyed off a black
 // background, so the outline is anti-aliased rather than stair-stepped
 // at this size. 1.4 MB, 10fps to match the other seven.
-export const MASCOT_WAVE_BIG = assetUri('mascot_wave_big.webp');
+// Keyed by name so data/quizQuestions.js can ask for a pose with a
+// string ("mascot: 'notes'") instead of importing artwork into a file
+// that is otherwise pure question text.
+export const MASCOT_SCENES = {
+  wave: assetUri('mascot_wave_big.webp'),
+  // He takes notes while you answer (v0.4.1). Interim file cut from the
+  // 240p GIF; a 1080 HEVC(Alpha) export replaces it under the same name
+  // with no code change.
+  notes: assetUri('mascot_notes.webp'),
+};
+
+export const MASCOT_WAVE_BIG = MASCOT_SCENES.wave;
 
 export const MACRO_ART = {
   calories: assetUri('macro_calories.png'),

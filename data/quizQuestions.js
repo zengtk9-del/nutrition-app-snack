@@ -54,6 +54,18 @@ export const QUIZ_STEPS = [
     key: 'age',
     type: 'slider',
     title: 'What is your age?',
+    // v0.4.1: this step asks its question from a speech bubble with the
+    // mascot beside it instead of a plain title, and draws its numbers
+    // as a dial rather than the ruler. Both are opt-in per step -- the
+    // other ten keep the old title and ruler until they have mockups of
+    // their own, so rolling the design forward is adding two lines here
+    // rather than a rewrite of QuizScreen.
+    //
+    // `title` stays because it is what a screen reader announces and
+    // what the step is called everywhere that is not this page.
+    bubble: ['How old', 'are you?'],
+    mascot: 'notes',
+    sliderVariant: 'dial',
     min: 10,
     max: 120,
     step: 1,

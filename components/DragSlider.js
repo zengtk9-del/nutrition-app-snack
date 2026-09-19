@@ -57,6 +57,17 @@ export default function DragSlider({
   // total inches internally, but formatLabel turns 69 into 5'9" for
   // display. Defaults to just showing the number as-is.
   formatLabel = (v) => `${v}`,
+  // 'ruler' (default) is the original: right-aligned numbers with a tick
+  // mark beside each and a thin line across the selected one. 'dial'
+  // (v0.4.1) is the redesign: numbers centred, no tick marks, the
+  // selected row inside a tinted pill with its unit beside it, and the
+  // rows fading out toward the top and bottom.
+  //
+  // A variant rather than a restyle because height and weight still use
+  // the ruler, and changing it here would silently change them too.
+  variant = 'ruler',
+  // Dial only: the words beside the number in the pill ("years old").
+  unitLabel,
   // Optional: highlights one specific tick with a small label badge next
   // to it (e.g. "Current weight" pointing at 70) — independent of
   // whichever tick is currently selected/dragged. Lives on the ruler
@@ -208,6 +219,8 @@ export default function DragSlider({
       ? null
       : Math.max(minimumValue, Math.min(maximumValue, Math.round(markValue / step) * step));
 
+  const isDial = variant === 'dial';
+
   const ticks = [];
   for (let i = 0; i < tickCount; i++) {
     const tickValue = maximumValue - i * step;
@@ -233,20 +246,38 @@ export default function DragSlider({
       badgeText = markLabel;
     }
 
+    // Dial: rows dim with distance from the selection, so the column
+    // reads as a wheel with depth rather than a flat list. The selected
+    // row's own label is hidden entirely -- the pill below draws it, and
+    // two copies of "25" stacked would fringe against each other.
+    const distance = Math.abs(tickValue - nearestValue) / step;
+    const dialOpacity = distance === 0 ? 0 : distance <= 3 ? 1 : distance === 4 ? 0.5 : 0.22;
+
     ticks.push(
       <View key={tickValue} style={[styles.tick, { top: i * PX_PER_TICK - PX_PER_TICK / 2 }]}>
         <Text
-          style={[styles.tickLabel, isCurrent && { color: minimumTrackTintColor, fontWeight: '700' }]}
+          style={[
+            styles.tickLabel,
+            isDial && styles.tickLabelDial,
+            isDial && { opacity: dialOpacity },
+            !isDial && isCurrent && { color: minimumTrackTintColor, fontWeight: '700' },
+          ]}
         >
           {formatLabel(tickValue)}
         </Text>
-        <View
-          style={[
-            styles.tickMark,
-            isMajor && styles.tickMarkMajor,
-            isCurrent && { backgroundColor: minimumTrackTintColor, height: 4 },
-          ]}
-        />
+        {/* Not rendered at all on the dial rather than hidden: at 111
+            ticks an invisible view per row is a hundred nodes doing
+            nothing, and a zero-width view still reports its background
+            colour to anything inspecting the tree. */}
+        {isDial ? null : (
+          <View
+            style={[
+              styles.tickMark,
+              isMajor && styles.tickMarkMajor,
+              isCurrent && { backgroundColor: minimumTrackTintColor, height: 4 },
+            ]}
+          />
+        )}
         {badgeText && (
           <View
             style={[
@@ -270,7 +301,7 @@ export default function DragSlider({
     // back down to something too short to drag comfortably.
     <View style={style}>
       <View
-        style={styles.wrapper}
+        style={[styles.wrapper, isDial && styles.wrapperDial]}
         onLayout={(e) => setTrackHeight(e.nativeEvent.layout.height)}
         {...panResponder.panHandlers}
       >
@@ -281,7 +312,21 @@ export default function DragSlider({
             {ticks}
           </View>
         </View>
-        <View style={[styles.pointer, { backgroundColor: minimumTrackTintColor }]} pointerEvents="none" />
+        {isDial ? (
+          // The pill IS the pointer: fixed at the centre while the column
+          // slides behind it. pointerEvents none so it never eats a drag
+          // that starts on top of the number.
+          <View style={styles.dialPointer} pointerEvents="none">
+            <View style={styles.dialRule} />
+            <Text style={styles.dialValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {formatLabel(nearestValue)}
+            </Text>
+            {unitLabel ? <Text style={styles.dialUnit}>{unitLabel}</Text> : null}
+            <View style={styles.dialRule} />
+          </View>
+        ) : (
+          <View style={[styles.pointer, { backgroundColor: minimumTrackTintColor }]} pointerEvents="none" />
+        )}
       </View>
     </View>
   );
@@ -321,4 +366,37 @@ const styles = StyleSheet.create({
     right: 0,
     height: 3,
   },
+
+  // --- the 'dial' variant (v0.4.1) -------------------------------------
+  wrapperDial: { width: '100%' },
+  // Centred, and wide enough that a three-digit age or a 6'11" label has
+  // room without the column shifting sideways as the value changes.
+  tickLabelDial: {
+    width: '100%',
+    marginRight: 0,
+    textAlign: 'center',
+    fontSize: 27,
+    fontWeight: '600',
+    color: '#8a97ae',
+  },
+  dialPointer: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -31,
+    left: 0,
+    right: 0,
+    height: 62,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: '#d8e8fb',
+  },
+  // The thin lines either side of the number. They take the leftover
+  // width, so the number and its unit stay centred whatever their length.
+  dialRule: { flex: 1, height: 2, borderRadius: 1, backgroundColor: '#2f80f0', opacity: 0.45 },
+  dialValue: { fontSize: 38, fontWeight: '900', color: '#16213f', letterSpacing: -0.5 },
+  dialUnit: { fontSize: 17, fontWeight: '800', color: '#2f80f0' },
 });
