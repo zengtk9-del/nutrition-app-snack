@@ -1,20 +1,23 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   Image,
   TextInput,
   TouchableOpacity,
+  Pressable,
   ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Slider from '../components/DragSlider';
 import DietDetailModal from '../components/DietDetailModal';
 import Mascot from '../components/Mascot';
-import { MASCOT_SCENES, MASCOT_WAVE_BIG } from '../data/brandArt';
+import { MASCOT_PEEK, MASCOT_SCENES, MASCOT_WAVE_BIG, PEEK_GEOMETRY } from '../data/brandArt';
 import { COLORS, RADIUS, SPACE } from '../utils/theme';
 import {
   QUIZ_STEPS,
@@ -163,6 +166,251 @@ function goalWeightRange(answers) {
     selectMax: fullRange.max,
     currentWeightDisplay,
   };
+}
+
+// --- The tall answer card on the sex question (v0.4.3) -----------------
+//
+// Damon's brief for the selection: the card "enlarges, gets highlighted,
+// and is slightly raised", as a typical UI animation that "pretty much
+// finishes in the same moment the user clicks it".
+//
+// SELECT_MS is that moment. 140ms sits inside the 100-150ms range the
+// platform guidelines give for a small component changing state -- long
+// enough to read as motion rather than a jump cut, short enough that the
+// card has settled before a thumb has finished lifting.
+//
+// EVERYTHING ANIMATES THROUGH transform AND opacity, which is what lets
+// the whole thing run on the native driver. That matters more than the
+// curve: a native-driven animation keeps running at frame rate even if
+// the JS thread is busy (say, the next step's images decoding), where a
+// JS-driven one would stutter exactly when the user is watching it. So:
+//   raise    translateY   0 -> -LIFT
+//   enlarge  scale        1 -> GROW
+//   border   a pre-drawn blue outline, fading in   (not an animated
+//   glow     a pre-drawn blue halo, fading in       borderColor -- colour
+//   tint     a pre-drawn wash on the inner card     cannot be native-driven)
+//   check    the filled tick fading and popping in over the empty ring
+//
+// GROW is 3.5%: on a ~175pt card that is 3pt a side, which fits in the
+// gap between the two cards instead of overlapping its neighbour.
+const SELECT_MS = 140;
+const LIFT = 6;
+const GROW = 1.035;
+
+function PeekCard({ option, progress, selected, onPress }) {
+  // `progress` is owned by PeekCardsLayout, not by the card (v0.4.4):
+  // the hand resting on this card has to move on the very same value, and
+  // it lives outside the card in a layer drawn above both cards.
+  const translateY = progress.interpolate({ inputRange: [0, 1], outputRange: [0, -LIFT] });
+  const scale = progress.interpolate({ inputRange: [0, 1], outputRange: [1, GROW] });
+  const checkScale = progress.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.peekCardHit}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={option.label}
+    >
+      <Animated.View style={[styles.peekCard, { transform: [{ translateY }, { scale }] }]}>
+        <Animated.View pointerEvents="none" style={[styles.peekGlow, { opacity: progress }]} />
+        <View style={styles.peekInner}>
+          <Animated.View pointerEvents="none" style={[styles.peekInnerTint, { opacity: progress }]} />
+          <View style={styles.peekRadio} />
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.peekCheck, { opacity: progress, transform: [{ scale: checkScale }] }]}
+          >
+            <MaterialCommunityIcons name="check" size={17} color="#fff" />
+          </Animated.View>
+          <View style={styles.peekIconDisc}>
+            {option.symbol ? <Text style={styles.peekSymbol}>{option.symbol}</Text> : null}
+          </View>
+          <Text style={styles.peekLabel}>{option.label}</Text>
+        </View>
+        <Animated.View pointerEvents="none" style={[styles.peekBorder, { opacity: progress }]} />
+      </Animated.View>
+    </Pressable>
+  );
+}
+
+// --- The whole peeking composition (v0.4.4) ----------------------------
+//
+// Bubble, mascot and cards, laid out together because they are one
+// picture. DRAW ORDER, bottom to top:
+//
+//   1. blob, dots and the little excitement marks by his face
+//   2. his BODY                  behind the cards
+//   3. the cards                 which cut across his stem
+//   4. his HANDS                 over the cards, one riding each
+//   5. the bubble
+//
+// That order is the whole trick. It is what lets the stem disappear
+// behind a card while the fingers hang over its face -- something no
+// single image can do, since an image is either in front or behind.
+//
+// Two things keep the hand layer honest, same as before:
+//   - it is pointerEvents="none", so a tap on a finger lands on the card;
+//   - it carries elevation above the cards'. Android sorts by elevation
+//     before tree order, so without it the cards would draw over the
+//     hands there and look right only on iOS.
+//
+// SIZES come from the measured content width, so the mascot, the hands
+// and the cards all scale together on any phone and the hands land on
+// their painted spots. The first render assumes a 393pt phone; onLayout
+// corrects it before anything is visible.
+const PEEK_BODY_SHARE = 0.61; // body width / content width -- crown ~210pt on a 393pt phone
+const PEEK_TOP = 40; // stage top -> top of his canvas; leaves room for the bubble above
+const PEEK_GAP = 8; // between the two cards
+const PEEK_CARD_H = 236;
+// How far a card's TOP EDGE travels when chosen: the lift, plus half the
+// growth of a card this tall (it scales about its centre). The hand on it
+// travels exactly this far, so the fingers never slide off the edge.
+const PEEK_EDGE_LIFT = LIFT + ((GROW - 1) * PEEK_CARD_H) / 2;
+
+function PeekCardsLayout({ step, options, value, onChoose }) {
+  const [contentW, setContentW] = useState(361);
+
+  // One animated value per option, kept for the life of the page.
+  const progressRef = useRef(null);
+  if (!progressRef.current) {
+    progressRef.current = {};
+    options.forEach((o) => {
+      progressRef.current[o.value] = new Animated.Value(value === o.value ? 1 : 0);
+    });
+  }
+  const progress = progressRef.current;
+
+  // Only the values that actually change get an animation: choosing
+  // Female animates Female up and Male down, not both of them to where
+  // they already are.
+  const shown = useRef(value);
+  useEffect(() => {
+    const was = shown.current;
+    shown.current = value;
+    if (was === value) return;
+    options.forEach((o) => {
+      const to = value === o.value ? 1 : 0;
+      const from = was === o.value ? 1 : 0;
+      if (to === from) return;
+      Animated.timing(progress[o.value], {
+        toValue: to,
+        duration: SELECT_MS,
+        // Fast out, gentle landing: most of the travel happens in the
+        // first few frames, which is what makes it feel attached to the tap.
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [value, options, progress]);
+
+  const bodyW = contentW * PEEK_BODY_SHARE;
+  const bodyH = bodyW * PEEK_GEOMETRY.aspect;
+  const bodyLeft = (contentW - bodyW) / 2;
+  const stageH = PEEK_TOP + bodyH * PEEK_GEOMETRY.cardEdge;
+  const cardW = (contentW - PEEK_GAP) / 2;
+
+  // Each hand in content coordinates, plus how far its card's top edge
+  // drifts sideways at that point as the card grows about its centre.
+  const hands = [PEEK_GEOMETRY.handLeft, PEEK_GEOMETRY.handRight].map((g, i) => {
+    const left = bodyLeft + g.x * bodyW;
+    const width = g.w * bodyW;
+    const cardCentre = i === 0 ? cardW / 2 : cardW + PEEK_GAP + cardW / 2;
+    return {
+      left,
+      top: PEEK_TOP + g.y * bodyH,
+      width,
+      height: g.h * bodyH,
+      drift: (left + width / 2 - cardCentre) * (GROW - 1),
+    };
+  });
+
+  return (
+    <View
+      style={styles.peekWrap}
+      onLayout={(e) => {
+        const w = Math.round(e.nativeEvent.layout.width);
+        if (w && w !== contentW) setContentW(w);
+      }}
+    >
+      <View pointerEvents="none" style={[styles.peekStage, { height: stageH }]}>
+        <View style={styles.peekBlob} />
+        <View style={[styles.peekDot, { width: 23, height: 23, top: 30, left: '20%' }]} />
+        <View style={[styles.peekDot, { width: 14, height: 14, top: 92, left: '6%' }]} />
+        <View style={[styles.peekDot, { width: 20, height: 20, top: 170, left: '6%' }]} />
+        <View style={[styles.peekDot, { width: 14, height: 14, top: 12, left: '57%' }]} />
+        <View style={[styles.peekDot, { width: 24, height: 24, top: 150, right: '8%' }]} />
+        {/* The little marks either side of his face. */}
+        <View style={[styles.peekSpark, { top: PEEK_TOP + bodyH * 0.7, left: bodyLeft - 4, transform: [{ rotate: '50deg' }] }]} />
+        <View style={[styles.peekSpark, { top: PEEK_TOP + bodyH * 0.79, left: bodyLeft - 14, transform: [{ rotate: '20deg' }] }]} />
+        <View style={[styles.peekSpark, { top: PEEK_TOP + bodyH * 0.7, left: bodyLeft + bodyW - 12, transform: [{ rotate: '-50deg' }] }]} />
+        <View style={[styles.peekSpark, { top: PEEK_TOP + bodyH * 0.79, left: bodyLeft + bodyW - 2, transform: [{ rotate: '-20deg' }] }]} />
+
+        <Mascot
+          source={MASCOT_PEEK.body}
+          style={[styles.peekBody, { left: bodyLeft, top: PEEK_TOP, width: bodyW, height: bodyH }]}
+        />
+
+        <View style={styles.peekBubbleWrap}>
+          <View style={styles.peekBubble}>
+            {step.bubble.map((line) => (
+              <Text key={line} style={styles.askText}>
+                {line}
+              </Text>
+            ))}
+          </View>
+          <View style={styles.peekTail} />
+        </View>
+      </View>
+
+      <View style={styles.peekRow}>
+        {options.map((opt) => (
+          <PeekCard
+            key={opt.value}
+            option={opt}
+            progress={progress[opt.value]}
+            selected={value === opt.value}
+            onPress={() => onChoose(opt.value)}
+          />
+        ))}
+      </View>
+
+      <Text style={styles.peekHint}>Choose one to continue</Text>
+
+      {/* Layer 4: the hands. Laid over everything above, sized to the
+          stage plus the finger overhang, touching nothing. */}
+      <View pointerEvents="none" style={[styles.peekHands, { height: stageH + 40 }]}>
+        {options.slice(0, 2).map((opt, i) => {
+          const h = hands[i];
+          const p = progress[opt.value];
+          return (
+            <Animated.View
+              key={opt.value}
+              style={{
+                position: 'absolute',
+                left: h.left,
+                top: h.top,
+                width: h.width,
+                height: h.height,
+                transform: [
+                  { translateX: p.interpolate({ inputRange: [0, 1], outputRange: [0, h.drift] }) },
+                  { translateY: p.interpolate({ inputRange: [0, 1], outputRange: [0, -PEEK_EDGE_LIFT] }) },
+                ],
+              }}
+            >
+              <Mascot
+                layer
+                testID={i === 0 ? 'peek-hand-left' : 'peek-hand-right'}
+                source={i === 0 ? MASCOT_PEEK.handLeft : MASCOT_PEEK.handRight}
+                style={styles.peekHandImg}
+              />
+            </Animated.View>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 // A single tappable option — used for single-choice, multi-choice, and the
@@ -395,6 +643,20 @@ export default function QuizScreen({
       // A couple of steps (currently just "sex") ask for this to be shown
       // as a row of big square boxes instead of the usual stacked list —
       // see the `layout` flag in data/quizQuestions.js.
+      // The mascot peeking over two tall cards (v0.4.3, layered in
+      // v0.4.4). One composition, drawn by PeekCardsLayout -- see the
+      // note on it for why the mascot is three pieces.
+      if (step.layout === 'peekCards') {
+        return (
+          <PeekCardsLayout
+            step={step}
+            options={options}
+            value={answers[step.key]}
+            onChoose={(v) => update({ [step.key]: v })}
+          />
+        );
+      }
+
       if (step.layout === 'squareRow') {
         return (
           <View style={styles.squareRow}>
@@ -1253,8 +1515,10 @@ export default function QuizScreen({
       >
         {/* The question either comes out of the mascot's mouth or sits as
             a plain title, depending on whether this step has been
-            redesigned yet. Both render the same words. */}
-        {step.bubble ? (
+            redesigned yet. Both render the same words. peekCards is the
+            exception: its bubble is part of its own composition, drawn
+            by the layout itself, so nothing goes here. */}
+        {step.layout === 'peekCards' ? null : step.bubble ? (
           <View style={styles.askRow}>
             <View style={styles.askBlobWrap}>
               <View pointerEvents="none" style={styles.askBlob} />
@@ -1505,6 +1769,150 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   askText: { fontSize: 24, lineHeight: 30, fontWeight: '800', color: COLORS.text },
+
+  // --- peekCards: the mascot over two tall cards (v0.4.3/v0.4.4) -------
+  // The hand layer is positioned against this box.
+  peekWrap: { marginTop: 4, position: 'relative' },
+  // Layers 1, 2 and 5. Height is set inline from the measured width, so
+  // that its bottom edge IS the line where the cards cross his paws. No
+  // zIndex or elevation: the body belongs behind the cards.
+  peekStage: {},
+  peekBlob: {
+    position: 'absolute',
+    top: 18,
+    left: '14%',
+    width: '66%',
+    height: 196,
+    backgroundColor: COLORS.blob,
+    borderTopLeftRadius: 120,
+    borderTopRightRadius: 100,
+    borderBottomLeftRadius: 90,
+    borderBottomRightRadius: 110,
+  },
+  peekDot: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#d6e6fb' },
+  // The excitement marks by his face: short, round-ended, accent blue.
+  peekSpark: {
+    position: 'absolute',
+    width: 16,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.accent,
+    opacity: 0.55,
+  },
+  peekBody: { position: 'absolute', marginTop: 0, marginRight: 0, alignSelf: 'auto' },
+  peekBubbleWrap: { position: 'absolute', top: 0, right: 0, width: '39%', alignItems: 'flex-start' },
+  peekBubble: {
+    alignSelf: 'stretch',
+    backgroundColor: COLORS.card,
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  peekTail: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderLeftWidth: 10,
+    borderRightWidth: 10,
+    borderTopWidth: 18,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: COLORS.card,
+    marginLeft: 40,
+    marginTop: -1,
+    transform: [{ rotate: '18deg' }],
+  },
+
+  // Layer 3. Starts exactly where the stage ends -- the card edge line.
+  peekRow: { flexDirection: 'row', gap: 8, zIndex: 1 },
+  // Layer 4, over the cards. elevation is for Android's draw order only;
+  // with no background there is no shadow to cast.
+  peekHands: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 3, elevation: 10 },
+  peekHandImg: { width: '100%', height: '100%' },
+  peekCardHit: { flex: 1 },
+  // Fixed height: the hand riding this card moves by exactly how far its
+  // top edge moves, which depends on the height (see PEEK_EDGE_LIFT).
+  peekCard: {
+    height: PEEK_CARD_H,
+    backgroundColor: '#f7f9fd',
+    borderRadius: 26,
+    padding: 10,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
+  },
+  // The two layers that fade in on selection. Absolutely placed, so they
+  // add no size and the card does not reflow when they appear.
+  peekGlow: {
+    position: 'absolute',
+    top: -6,
+    left: -6,
+    right: -6,
+    bottom: -6,
+    borderRadius: 32,
+    backgroundColor: 'rgba(47,128,240,0.14)',
+  },
+  peekBorder: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 26,
+    borderWidth: 2.5,
+    borderColor: COLORS.accent,
+  },
+  peekInner: {
+    flex: 1,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 8,
+    overflow: 'hidden',
+  },
+  peekInnerTint: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(47,128,240,0.06)' },
+  // Empty ring and filled check share a spot; the check fades in over it.
+  peekRadio: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#cfd6e3',
+  },
+  peekCheck: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  peekIconDisc: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#e2edfc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  peekSymbol: { fontSize: 50, lineHeight: 58, fontWeight: '700', color: COLORS.text },
+  peekLabel: { fontSize: 21, fontWeight: '800', color: COLORS.text },
+  peekHint: { fontSize: 15, color: COLORS.textSoft, textAlign: 'center', marginTop: 22 },
 
   // --- the dial's card -------------------------------------------------
   dialCard: {

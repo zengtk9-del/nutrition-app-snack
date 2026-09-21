@@ -251,7 +251,34 @@ export default class Mascot extends React.Component {
     // see that file's header.
     if (!ART_READY) return null;
 
-    const { source, size = MASCOT_SIZE, style } = this.props;
+    const { source, size = MASCOT_SIZE, style, layer, testID } = this.props;
+
+    // A PIECE of the mascot rather than the mascot (v0.4.4) -- the hands
+    // on the peeking page, drawn over the answer cards while the body
+    // sits behind them. Same renderer and the same safety net as the
+    // whole mascot, but:
+    //   - hidden from screen readers, or the page would announce three
+    //     broccolis where there is one;
+    //   - no pose machine, since a hand has no pose of its own;
+    //   - on a render failure it draws NOTHING rather than the fallback
+    //     PNG -- a whole broccoli where a hand should be is worse than a
+    //     missing hand.
+    if (layer) {
+      if (this.state.renderFailed) return null;
+      const Renderer = ExpoImage || RNImage;
+      const fit = ExpoImage ? { contentFit: 'contain', transition: 0 } : { resizeMode: 'contain' };
+      return (
+        <Renderer
+          source={source}
+          style={style}
+          {...fit}
+          testID={testID}
+          accessible={false}
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+        />
+      );
+    }
 
     if (this.state.renderFailed) {
       // Deliberately the PNG and deliberately React Native's Image: if

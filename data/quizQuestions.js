@@ -76,14 +76,17 @@ export const QUIZ_STEPS = [
     key: 'sex',
     type: 'single',
     title: 'Sex',
-    // Renders as two big square boxes side by side instead of the usual
-    // stacked list — see QuizScreen.js's renderStepBody for the 'single'
-    // step type. Any other two-option single-choice step could opt into
-    // the same layout just by adding this flag.
-    layout: 'squareRow',
-    // `symbol` is optional — squareRow shows it above the label when
-    // present (see QuizScreen.js) and just skips it otherwise, so any other
-    // squareRow step can leave it out without needing a change there.
+    // v0.4.3: the mascot peeks over two tall cards and asks from a bubble
+    // -- one composition, so this layout draws its own header instead of
+    // taking the standard bubble row. The cards animate on selection
+    // (raise, grow, highlight) in about 140ms.
+    //
+    // squareRow, which this used to be, is still in QuizScreen for any
+    // other two-option question that wants plain boxes.
+    layout: 'peekCards',
+    bubble: ['What is', 'your sex?'],
+    // `symbol` is optional — squareRow and peekCards both show it above
+    // the label when present (see QuizScreen.js) and skip it otherwise.
     options: [
       { value: 'male', label: 'Male', symbol: '♂' },
       { value: 'female', label: 'Female', symbol: '♀' },

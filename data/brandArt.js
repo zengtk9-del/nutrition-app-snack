@@ -132,6 +132,43 @@ export const MASCOT_SCENES = {
   notes: assetUri('mascot_notes.webp'),
 };
 
+// --- Peeking over the answer cards (v0.4.4) -----------------------------
+//
+// Damon's reference art, split into THREE LAYERS instead of drawn as one
+// image, because the pose asks for something no single image can do: his
+// stem goes BEHIND the cards (the card top cuts across it) while his
+// fingers hang IN FRONT of them. So:
+//
+//   body   behind the cards, never moves
+//   hands  one per card, drawn over it, riding that card's own animation
+//
+// When a card is chosen it lifts, and the hand resting on it lifts on the
+// same curve in the same frames -- the thing a swap between three whole
+// poses could not do, since a swap is instant and the card takes 140ms.
+//
+// The body keeps its own painted paws. That is on purpose: a raised hand
+// only ever uncovers the bottom curve of the paw beneath it, and that
+// curve is below the card edge, i.e. behind the card. No hole, no patch.
+//
+// All three share one 1010x969 canvas, cut from the 1254px original.
+// PEEK_GEOMETRY says where each piece sits on it, as fractions, so the
+// layout can draw him at any width and the hands still land on their
+// painted positions to the pixel.
+export const MASCOT_PEEK = {
+  body: assetUri('mascot_peek_body.webp'),
+  handLeft: assetUri('mascot_peek_hand_l.webp'),
+  handRight: assetUri('mascot_peek_hand_r.webp'),
+};
+
+export const PEEK_GEOMETRY = {
+  aspect: 969 / 1010, // canvas height / width
+  // Where the card's top edge crosses him: through the paws, just above
+  // the finger lines, so the fingers hang over the card face.
+  cardEdge: 0.9484,
+  handLeft: { x: 0.2267, y: 0.8658, w: 0.1614, h: 0.1249 },
+  handRight: { x: 0.603, y: 0.8658, w: 0.1614, h: 0.1249 },
+};
+
 export const MASCOT_WAVE_BIG = MASCOT_SCENES.wave;
 
 export const MACRO_ART = {
