@@ -14,10 +14,16 @@ import {
   Easing,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Slider from '../components/DragSlider';
+import Slider, { DIAL_COMPACT_INSET } from '../components/DragSlider';
 import DietDetailModal from '../components/DietDetailModal';
 import Mascot from '../components/Mascot';
-import { MASCOT_PEEK, MASCOT_SCENES, MASCOT_WAVE_BIG, PEEK_GEOMETRY } from '../data/brandArt';
+import {
+  HEIGHT_GEOMETRY,
+  MASCOT_PEEK,
+  MASCOT_SCENES,
+  MASCOT_WAVE_BIG,
+  PEEK_GEOMETRY,
+} from '../data/brandArt';
 import { COLORS, RADIUS, SPACE } from '../utils/theme';
 import {
   QUIZ_STEPS,
@@ -408,6 +414,253 @@ function PeekCardsLayout({ step, options, value, onChoose }) {
             </Animated.View>
           );
         })}
+      </View>
+    </View>
+  );
+}
+
+// --- The height page (v0.4.5) -------------------------------------------
+//
+// One card: the dial in a panel on the left, the mascot at a stadiometer
+// on the right, and a dashed line from the dial's pill to the stick, as
+// if the dial were reading it off.
+//
+// THE LINE is the one piece that has to know where two unrelated things
+// are: the pill, which DragSlider centres in its window, and the stick,
+// which is a spot in a drawing. So everything that decides how far down
+// the card the pill sits -- the panel's top padding, the unit switch,
+// the gap under it and the dial's window -- is a fixed number here, and
+// the line and the artwork are both placed from those same numbers.
+// Measuring the pill instead would get the right answer one frame late,
+// and draw the line somewhere else for that first frame.
+//
+// The artwork's side of it comes from HEIGHT_GEOMETRY in data/brandArt.js,
+// so new art means new numbers there, not a change here.
+
+// The card's own border. Absolutely placed children are measured from
+// inside it, so it only matters for the card's outer size and width.
+const HC_BORDER = 1;
+const HC_PAD = 10; // card edge -> panel
+const HC_PANEL_SHARE = 0.44; // panel width / card width, as drawn
+const HC_PANEL_MAX = 190; // ...but no wider than this on a tablet or a desktop browser
+const HC_PANEL_TOP = 12; // panel edge -> unit switch
+const HC_TOGGLE_H = 34;
+const HC_TOGGLE_GAP = 8; // unit switch -> dial window
+const HC_ROW_H = 36; // one row of the dial
+const HC_DIAL_H = 310; // the dial's window: four rows either side of the pill
+const HC_HINT_GAP = 4;
+const HC_HINT_H = 24;
+const HC_PANEL_BOTTOM = 12;
+const HC_PANEL_H =
+  HC_PANEL_TOP + HC_TOGGLE_H + HC_TOGGLE_GAP + HC_DIAL_H + HC_HINT_GAP + HC_HINT_H + HC_PANEL_BOTTOM;
+const HC_CARD_H = HC_PANEL_H + 2 * HC_PAD + 2 * HC_BORDER;
+// The pill's centre line, measured from the top of the card's inside.
+const HC_PILL_Y = HC_PAD + HC_PANEL_TOP + HC_TOGGLE_H + HC_TOGGLE_GAP + HC_DIAL_H / 2;
+const HC_ART_GAP = 3; // panel -> the foot of the stand
+const HC_ART_RIGHT = 2; // his crown -> the card's right edge
+const HC_ART_MAX_H = 300; // on a wide screen he stops growing and centres instead
+const HC_DASH = 5;
+const HC_DASH_GAP = 3;
+const HC_SPARK_LEN = 18;
+const HC_GROUND_H = 22; // the shadow under him, top to bottom
+
+const clampTo = (v, range) => Math.max(range.min, Math.min(range.max, v));
+const formatFeetInches = (totalInches) => {
+  const { feet, inches } = inchesToFeetAndInches(totalInches);
+  return `${feet}'${inches}"`;
+};
+
+function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete }) {
+  // The first render assumes a 393pt phone; onLayout corrects it before
+  // anything is visible, same as the peeking page.
+  const [cardW, setCardW] = useState(361);
+  const isCm = answers.heightUnit === 'cm';
+  const g = HEIGHT_GEOMETRY;
+
+  // --- where everything goes, inside the border ---
+  const innerW = cardW - 2 * HC_BORDER;
+  const panelW = Math.min(HC_PANEL_MAX, Math.round(innerW * HC_PANEL_SHARE));
+  const regionLeft = HC_PAD + panelW + HC_ART_GAP;
+  const regionW = innerW - regionLeft - HC_ART_RIGHT;
+  const artW = Math.max(0, Math.min(regionW, HC_ART_MAX_H * g.aspect));
+  const artH = artW / g.aspect;
+  const artLeft = regionLeft + (regionW - artW) / 2;
+  // Hung from the line rather than stood on the card's floor: the stick
+  // is at the pill's height because the art is placed that way round.
+  const artTop = HC_PILL_Y - g.reachY * artH;
+  const at = (fx, fy) => ({ x: artLeft + fx * artW, y: artTop + fy * artH });
+
+  const lineLeft = HC_PAD + panelW - DIAL_COMPACT_INSET;
+  const lineRight = artLeft + g.stickRight * artW;
+  const dashCount = Math.max(0, Math.floor((lineRight - lineLeft + HC_DASH_GAP) / (HC_DASH + HC_DASH_GAP)));
+
+  // The disc behind his crown, kept inside the card's rounded edge.
+  const haloD = g.halo.size * artW;
+  const haloC = at(g.halo.x, g.halo.y);
+  const haloLeft = Math.min(haloC.x - haloD / 2, innerW - 6 - haloD);
+  const haloTop = Math.max(6, haloC.y - haloD / 2);
+  const ground = at(g.ground.x, g.ground.y);
+  const groundW = g.ground.w * artW;
+
+  // --- the numbers ---
+  // Clamped for display only: nothing the dials can do puts a value out
+  // of range, but a stored answer from an older build could be.
+  const totalInches = clampTo(answers.heightFeet * 12 + answers.heightInches, HEIGHT_IN_RANGE);
+  const cm = clampTo(Math.round(answers.heightCm), HEIGHT_CM_RANGE);
+  const { feet, inches } = inchesToFeetAndInches(totalInches);
+
+  // heightCm is the one number both dials keep current -- the ft + in
+  // dial writes it on every change as well -- so switching to ft + in
+  // works feet and inches out from it. Before v0.4.5 the switch only
+  // flipped the unit: choose 185 cm, switch to ft + in, and it still said
+  // 5'8", which is also what would have been saved.
+  //
+  // heightCm itself is left alone, so flipping back and forth never
+  // drifts: 184 cm shows as 6'0", but 6'0" converted back would be 183.
+  const switchUnit = (unit) => {
+    if ((unit === 'cm') === isCm) return;
+    if (unit === 'cm') {
+      update({ heightUnit: 'cm' });
+      return;
+    }
+    const derived = inchesToFeetAndInches(clampTo(Math.round(answers.heightCm / 2.54), HEIGHT_IN_RANGE));
+    update({ heightUnit: 'ftin', heightFeet: derived.feet, heightInches: derived.inches });
+  };
+
+  const onDial = (v) => {
+    if (isCm) {
+      update({ heightCm: Math.round(v) });
+      return;
+    }
+    const next = inchesToFeetAndInches(v);
+    update({ heightFeet: next.feet, heightInches: next.inches, heightCm: feetInchesToCm(next.feet, next.inches) });
+  };
+
+  return (
+    <View>
+      <View
+        testID="height-card"
+        style={[styles.hcCard, { height: HC_CARD_H }]}
+        onLayout={(e) => {
+          const w = Math.round(e.nativeEvent.layout.width);
+          if (w && w !== cardW) setCardW(w);
+        }}
+      >
+        {/* Bottom layer: the disc behind his crown, two loose dots, the
+            marks off his crown and the shadow under him. */}
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <View
+            style={[styles.hcHalo, { left: haloLeft, top: haloTop, width: haloD, height: haloD, borderRadius: haloD / 2 }]}
+          />
+          {g.dots.map((d, i) => {
+            const p = at(d.x, d.y);
+            const size = d.size * artW;
+            return (
+              <View
+                key={`dot${i}`}
+                style={[styles.hcDot, { left: p.x - size / 2, top: p.y - size / 2, width: size, height: size }]}
+              />
+            );
+          })}
+          {/* A circle stretched sideways: the one way to get a true
+              ellipse out of a View, where a wide rounded box would come
+              out as a pill with flat sides. */}
+          <View
+            style={[
+              styles.hcGround,
+              { left: ground.x - HC_GROUND_H / 2, top: ground.y - HC_GROUND_H / 2, transform: [{ scaleX: groundW / HC_GROUND_H }] },
+            ]}
+          />
+          {g.sparks.map((s, i) => {
+            const p = at(s.x, s.y);
+            return (
+              <View
+                key={`spark${i}`}
+                style={[
+                  styles.hcSpark,
+                  { left: p.x - HC_SPARK_LEN / 2, top: p.y - 2, transform: [{ rotate: `${s.angle}deg` }] },
+                ]}
+              />
+            );
+          })}
+        </View>
+
+        <Mascot source={scene} style={[styles.hcArt, { left: artLeft, top: artTop, width: artW, height: artH }]} />
+
+        <View testID="height-panel" style={[styles.hcPanel, { width: panelW, height: HC_PANEL_H }]}>
+          <View style={styles.hcToggle}>
+            {[
+              ['ftin', 'ft + in'],
+              ['cm', 'cm'],
+            ].map(([unit, label]) => {
+              const on = (unit === 'cm') === isCm;
+              return (
+                <TouchableOpacity
+                  key={unit}
+                  style={[styles.hcToggleBtn, on && styles.hcToggleBtnOn]}
+                  onPress={() => switchUnit(unit)}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: on }}
+                >
+                  <Text style={[styles.hcToggleText, on && styles.hcToggleTextOn]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* keyed by unit: a fresh dial per unit starts exactly on its
+              value, where a reused one would spend its first frame on
+              the old unit's position before catching up. */}
+          <Slider
+            key={isCm ? 'cm' : 'ftin'}
+            style={styles.hcDial}
+            variant="dial"
+            dialSize="compact"
+            dialRules={false}
+            dialChevrons
+            dialTicks
+            rowHeight={HC_ROW_H}
+            trackLength={HC_DIAL_H}
+            minimumValue={isCm ? HEIGHT_CM_RANGE.min : HEIGHT_IN_RANGE.min}
+            maximumValue={isCm ? HEIGHT_CM_RANGE.max : HEIGHT_IN_RANGE.max}
+            step={1}
+            value={isCm ? cm : totalInches}
+            unitLabel={isCm ? 'cm' : undefined}
+            formatLabel={isCm ? undefined : formatFeetInches}
+            minimumTrackTintColor={COLORS.accent}
+            onValueChange={onDial}
+            onSlidingStart={onSlidingStart}
+            onSlidingComplete={onSlidingComplete}
+          />
+
+          <View style={styles.hcHint}>
+            <MaterialCommunityIcons name="arrow-up-down" size={20} color={COLORS.accent} />
+            <Text style={styles.hcHintText}>Drag to choose</Text>
+          </View>
+        </View>
+
+        {/* Top layer: the dashed line, over the stick so it reads across
+            its face. elevation is only there to beat the panel's own in
+            Android's draw order; with no background it casts nothing. */}
+        <View
+          testID="height-connector"
+          pointerEvents="none"
+          style={[styles.hcLine, { left: lineLeft, top: HC_PILL_Y - 1, width: Math.max(0, lineRight - lineLeft) }]}
+        >
+          {Array.from({ length: dashCount }, (_, i) => (
+            <View key={i} style={[styles.hcDash, { left: i * (HC_DASH + HC_DASH_GAP) }]} />
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.hcInfo}>
+        <View style={styles.hcInfoDisc}>
+          <MaterialCommunityIcons name="ruler" size={24} color={COLORS.text} />
+        </View>
+        <Text style={styles.hcInfoText}>
+          Height: {isCm ? `${cm} cm` : `${feet}' ${inches}"`}
+        </Text>
       </View>
     </View>
   );
@@ -1163,75 +1416,17 @@ export default function QuizScreen({
       );
     }
 
+    // v0.4.5: one card with the dial, the unit switch and the mascot at a
+    // stadiometer -- see HeightCard above for how it fits together.
     if (step.type === 'height') {
-      const isCm = answers.heightUnit === 'cm';
       return (
-        <View>
-          <View style={styles.unitToggle}>
-            <TouchableOpacity
-              style={[styles.unitBtn, !isCm && styles.unitBtnActive]}
-              onPress={() => update({ heightUnit: 'ftin' })}
-            >
-              <Text style={[styles.unitBtnText, !isCm && styles.unitBtnTextActive]}>ft + in</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.unitBtn, isCm && styles.unitBtnActive]}
-              onPress={() => update({ heightUnit: 'cm' })}
-            >
-              <Text style={[styles.unitBtnText, isCm && styles.unitBtnTextActive]}>cm</Text>
-            </TouchableOpacity>
-          </View>
-
-          {isCm ? (
-            <View>
-              <Text style={styles.bigValue}>{Math.round(answers.heightCm)} cm</Text>
-              <Slider
-                style={styles.slider}
-                minimumValue={HEIGHT_CM_RANGE.min}
-                maximumValue={HEIGHT_CM_RANGE.max}
-                step={1}
-                value={answers.heightCm}
-                minimumTrackTintColor="#4f8ef7"
-                onValueChange={(v) => update({ heightCm: Math.round(v) })}
-                onSlidingStart={lockScroll}
-                onSlidingComplete={unlockScroll}
-              />
-            </View>
-          ) : (
-            <View>
-              <Text style={styles.bigValue}>
-                {answers.heightFeet}' {answers.heightInches}"
-              </Text>
-              <Slider
-                style={styles.slider}
-                minimumValue={HEIGHT_IN_RANGE.min}
-                maximumValue={HEIGHT_IN_RANGE.max}
-                step={1}
-                value={answers.heightFeet * 12 + answers.heightInches}
-                minimumTrackTintColor="#4f8ef7"
-                onValueChange={(v) => {
-                  const { feet, inches } = inchesToFeetAndInches(v);
-                  update({ heightFeet: feet, heightInches: inches, heightCm: feetInchesToCm(feet, inches) });
-                }}
-                formatLabel={(totalInches) => {
-                  const { feet, inches } = inchesToFeetAndInches(totalInches);
-                  return `${feet}'${inches}"`;
-                }}
-                onSlidingStart={lockScroll}
-                onSlidingComplete={unlockScroll}
-              />
-            </View>
-          )}
-
-          <View style={styles.infoPanel}>
-            <Text style={[styles.infoPanelText, styles.infoPanelTextLast]}>
-              Height:{' '}
-              {isCm
-                ? `${Math.round(answers.heightCm)} cm`
-                : `${answers.heightFeet}' ${answers.heightInches}"`}
-            </Text>
-          </View>
-        </View>
+        <HeightCard
+          answers={answers}
+          update={update}
+          scene={MASCOT_SCENES[step.mascot] || MASCOT_SCENES.height}
+          onSlidingStart={lockScroll}
+          onSlidingComplete={unlockScroll}
+        />
       );
     }
 
@@ -1517,8 +1712,30 @@ export default function QuizScreen({
             a plain title, depending on whether this step has been
             redesigned yet. Both render the same words. peekCards is the
             exception: its bubble is part of its own composition, drawn
-            by the layout itself, so nothing goes here. */}
-        {step.layout === 'peekCards' ? null : step.bubble ? (
+            by the layout itself, so nothing goes here. A 'solo' bubble
+            (v0.4.5) stands on its own at the top, its tail pointing down
+            at the card where the mascot is. */}
+        {step.layout === 'peekCards' ? null : step.bubble && step.bubbleLayout === 'solo' ? (
+          <View style={styles.soloHead}>
+            {/* Texture, same family as the other pages' blobs: a dome
+                rising from behind the card, and a few dots. */}
+            <View pointerEvents="none" style={styles.soloDecor}>
+              <View style={styles.soloDome} />
+              <View style={[styles.soloDot, { width: 46, height: 46, top: -20, left: '30%' }]} />
+              <View style={[styles.soloDot, { width: 12, height: 12, top: -2, left: '68%' }]} />
+              <View style={[styles.soloDot, { width: 28, height: 28, top: -14, right: 10 }]} />
+              <View style={[styles.soloDot, styles.soloDotDeep, { width: 12, height: 12, top: 56, right: 38 }]} />
+            </View>
+            <View style={styles.soloBubble}>
+              {step.bubble.map((line) => (
+                <Text key={line} style={styles.askText}>
+                  {line}
+                </Text>
+              ))}
+            </View>
+            <View style={styles.soloTail} />
+          </View>
+        ) : step.bubble ? (
           <View style={styles.askRow}>
             <View style={styles.askBlobWrap}>
               <View pointerEvents="none" style={styles.askBlob} />
@@ -1913,6 +2130,162 @@ const styles = StyleSheet.create({
   peekSymbol: { fontSize: 50, lineHeight: 58, fontWeight: '700', color: COLORS.text },
   peekLabel: { fontSize: 21, fontWeight: '800', color: COLORS.text },
   peekHint: { fontSize: 15, color: COLORS.textSoft, textAlign: 'center', marginTop: 22 },
+
+  // --- the solo bubble (v0.4.5) ------------------------------------------
+  // marginTop leaves room for the dot that peeks over the bubble's top.
+  soloHead: { marginTop: 24, marginBottom: 4 },
+  soloDecor: { ...StyleSheet.absoluteFillObject },
+  // Far bigger than the space it shows in: only its top rises between
+  // the bubble and the card, and the card is drawn over the rest.
+  soloDome: {
+    position: 'absolute',
+    top: 26,
+    right: -44,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
+    backgroundColor: COLORS.blob,
+  },
+  soloDot: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#e2ebfa' },
+  soloDotDeep: { backgroundColor: '#d3e2f8' },
+  // Hugs its one line of text rather than stretching across the page.
+  soloBubble: {
+    alignSelf: 'flex-start',
+    maxWidth: '84%',
+    backgroundColor: COLORS.card,
+    borderRadius: 26,
+    paddingVertical: 16,
+    paddingHorizontal: 22,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.07,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
+  },
+  // Tipped 30deg so it points down and to the left, starting inside the
+  // bubble so the turned base never shows as an edge below it.
+  soloTail: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderLeftWidth: 11,
+    borderRightWidth: 11,
+    borderTopWidth: 24,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: COLORS.card,
+    marginLeft: 26,
+    marginTop: -8,
+    transform: [{ rotate: '30deg' }],
+  },
+
+  // --- the height card (v0.4.5) -----------------------------------------
+  // Height is set inline from HC_CARD_H; every child is placed absolutely
+  // from the HC_ numbers, which is what keeps the line on the pill.
+  hcCard: {
+    backgroundColor: '#f8fafd',
+    borderRadius: 24,
+    borderWidth: HC_BORDER,
+    borderColor: '#e9eef7',
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+  hcHalo: { position: 'absolute', backgroundColor: COLORS.blob },
+  hcDot: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#dde8f9' },
+  hcGround: {
+    position: 'absolute',
+    width: HC_GROUND_H,
+    height: HC_GROUND_H,
+    borderRadius: HC_GROUND_H / 2,
+    backgroundColor: '#dfe9f8',
+  },
+  hcSpark: {
+    position: 'absolute',
+    width: HC_SPARK_LEN,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.accent,
+    opacity: 0.6,
+  },
+  // Overrides every number components/Mascot.js sets for the corner.
+  hcArt: { position: 'absolute', alignSelf: 'auto', marginTop: 0, marginRight: 0 },
+  // No horizontal padding: the pill runs nearly edge to edge, as drawn.
+  // The switch and the caption bring their own side margins instead.
+  hcPanel: {
+    position: 'absolute',
+    left: HC_PAD,
+    top: HC_PAD,
+    paddingTop: HC_PANEL_TOP,
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  hcToggle: {
+    height: HC_TOGGLE_H,
+    marginHorizontal: 12,
+    marginBottom: HC_TOGGLE_GAP,
+    flexDirection: 'row',
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    borderColor: '#d5e2f5',
+    backgroundColor: COLORS.card,
+    overflow: 'hidden',
+  },
+  hcToggleBtn: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  hcToggleBtnOn: { backgroundColor: COLORS.accent },
+  hcToggleText: { fontSize: 16, fontWeight: '800', color: COLORS.text },
+  hcToggleTextOn: { color: '#fff' },
+  hcDial: { width: '100%' },
+  hcHint: {
+    height: HC_HINT_H,
+    marginTop: HC_HINT_GAP,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  hcHintText: { fontSize: 15, color: COLORS.textSoft },
+  hcLine: { position: 'absolute', height: 2, zIndex: 3, elevation: 4 },
+  hcDash: {
+    position: 'absolute',
+    top: 0,
+    width: HC_DASH,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: COLORS.accent,
+  },
+  hcInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    marginTop: 20,
+    minHeight: 56,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    backgroundColor: COLORS.card,
+    borderRadius: 18,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 1,
+  },
+  hcInfoDisc: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#e2edfc',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  hcInfoText: { fontSize: 18, fontWeight: '800', color: COLORS.text },
 
   // --- the dial's card -------------------------------------------------
   dialCard: {

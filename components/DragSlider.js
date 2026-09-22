@@ -41,6 +41,10 @@ import { View, Text, PanResponder, StyleSheet } from 'react-native';
 const PX_PER_TICK = 44;
 const RULER_LENGTH = 360;
 const LABEL_WIDTH = 78; // wide enough for labels like 6'11", not just plain numbers
+// How far the compact dial's pill stands in from each side of the dial.
+// Exported because the height page draws a line starting at the pill's
+// right end, and has to know where that is without measuring it.
+export const DIAL_COMPACT_INSET = 2;
 
 export default function DragSlider({
   value,
@@ -63,11 +67,30 @@ export default function DragSlider({
   // selected row inside a tinted pill with its unit beside it, and the
   // rows fading out toward the top and bottom.
   //
-  // A variant rather than a restyle because height and weight still use
-  // the ruler, and changing it here would silently change them too.
+  // A variant rather than a restyle because weight still uses the ruler,
+  // and changing it here would silently change it too.
   variant = 'ruler',
   // Dial only: the words beside the number in the pill ("years old").
   unitLabel,
+  // --- v0.4.5, for the height page's dial. Every default below is what
+  // the age dial and the rulers already had, so they are unchanged. ---
+  //
+  // Distance between two rows, in points. The drag uses it too (a finger
+  // moving one row's distance moves the value one step), which is why it
+  // is read through propsRef below like every other prop the drag needs.
+  rowHeight = PX_PER_TICK,
+  // How tall the visible window is.
+  trackLength = RULER_LENGTH,
+  // 'large' is the age dial. 'compact' is the height dial: smaller rows,
+  // a slimmer fully-rounded pill with a white rim and a soft blue glow,
+  // sized to sit in a narrow panel rather than across the whole screen.
+  dialSize = 'large',
+  // The thin lines either side of the number in the pill.
+  dialRules = true,
+  // A small up/down pair of arrowheads at the right end of the pill.
+  dialChevrons = false,
+  // A short dash between every two rows.
+  dialTicks = false,
   // Optional: highlights one specific tick with a small label badge next
   // to it (e.g. "Current weight" pointing at 70) — independent of
   // whichever tick is currently selected/dragged. Lives on the ruler
@@ -93,7 +116,12 @@ export default function DragSlider({
   valueMin,
   valueMax,
 }) {
-  const [trackHeight, setTrackHeight] = useState(0);
+  // Starts at the window's own fixed height rather than 0. The wrapper's
+  // height is set right here and nothing can stretch it, so the measured
+  // value can only ever equal this -- starting from 0 just meant the very
+  // first frame put the selected row at the top edge instead of centred,
+  // until onLayout caught up.
+  const [trackHeight, setTrackHeight] = useState(trackLength);
   const [liveValue, setLiveValue] = useState(value);
   const isDraggingRef = useRef(false);
   // The value the drag started from — every move is measured as an offset
@@ -128,6 +156,7 @@ export default function DragSlider({
     valueMin: valueMin ?? minimumValue,
     valueMax: valueMax ?? maximumValue,
     step,
+    rowHeight,
     onValueChange,
     onSlidingStart,
     onSlidingComplete,
@@ -179,8 +208,8 @@ export default function DragSlider({
         if (Math.abs(gestureState.dy) < 4) {
           return;
         }
-        const { step: s, onValueChange: onChange } = propsRef.current;
-        const rawValue = dragStartValueRef.current + (gestureState.dy / PX_PER_TICK) * s;
+        const { step: s, rowHeight: px, onValueChange: onChange } = propsRef.current;
+        const rawValue = dragStartValueRef.current + (gestureState.dy / px) * s;
         lastRawValueRef.current = rawValue;
         setLiveValue(clamp(rawValue));
         if (onChange) onChange(clampToStep(rawValue));
@@ -203,11 +232,11 @@ export default function DragSlider({
   ).current;
 
   const tickCount = Math.round((maximumValue - minimumValue) / step) + 1;
-  const columnHeight = (tickCount - 1) * PX_PER_TICK;
+  const columnHeight = (tickCount - 1) * rowHeight;
   // Index 0 is the maximum value (top of the column) and index increases
   // going down — the mirror image of a plain ascending list — so bigger
   // numbers land near the top of the ruler.
-  const currentTickY = ((maximumValue - liveValue) / step) * PX_PER_TICK;
+  const currentTickY = ((maximumValue - liveValue) / step) * rowHeight;
   const translateY = trackHeight / 2 - currentTickY;
   const nearestValue = clampToStep(liveValue);
   // Which tick markValue lands on/nearest to — same "round to the nearest
@@ -220,6 +249,10 @@ export default function DragSlider({
       : Math.max(minimumValue, Math.min(maximumValue, Math.round(markValue / step) * step));
 
   const isDial = variant === 'dial';
+  const compact = isDial && dialSize === 'compact';
+  // Dial: rows dim with distance from the selection, so the column reads
+  // as a wheel with depth rather than a flat list.
+  const fade = (distance) => (distance === 0 ? 0 : distance <= 3 ? 1 : distance === 4 ? 0.5 : 0.22);
 
   const ticks = [];
   for (let i = 0; i < tickCount; i++) {
@@ -246,19 +279,23 @@ export default function DragSlider({
       badgeText = markLabel;
     }
 
-    // Dial: rows dim with distance from the selection, so the column
-    // reads as a wheel with depth rather than a flat list. The selected
-    // row's own label is hidden entirely -- the pill below draws it, and
-    // two copies of "25" stacked would fringe against each other.
+    // The selected row's own label is hidden entirely -- the pill below
+    // draws it, and two copies of "25" stacked would fringe against each
+    // other.
     const distance = Math.abs(tickValue - nearestValue) / step;
-    const dialOpacity = distance === 0 ? 0 : distance <= 3 ? 1 : distance === 4 ? 0.5 : 0.22;
+    const dialOpacity = fade(distance);
+    // The dash under this row sits halfway to the next one down, and
+    // fades as far as the fainter of the two rows it separates.
+    const showDash = isDial && dialTicks && i < tickCount - 1;
+    const dashOpacity = showDash ? fade(Math.max(distance, Math.abs(tickValue - step - nearestValue) / step)) : 0;
 
     ticks.push(
-      <View key={tickValue} style={[styles.tick, { top: i * PX_PER_TICK - PX_PER_TICK / 2 }]}>
+      <View key={tickValue} style={[styles.tick, { top: i * rowHeight - rowHeight / 2, height: rowHeight }]}>
         <Text
           style={[
             styles.tickLabel,
             isDial && styles.tickLabelDial,
+            compact && styles.tickLabelCompact,
             isDial && { opacity: dialOpacity },
             !isDial && isCurrent && { color: minimumTrackTintColor, fontWeight: '700' },
           ]}
@@ -278,6 +315,7 @@ export default function DragSlider({
             ]}
           />
         )}
+        {showDash ? <View style={[styles.dialDash, { opacity: dashOpacity }]} /> : null}
         {badgeText && (
           <View
             style={[
@@ -301,28 +339,46 @@ export default function DragSlider({
     // back down to something too short to drag comfortably.
     <View style={style}>
       <View
-        style={[styles.wrapper, isDial && styles.wrapperDial]}
+        style={[styles.wrapper, isDial && styles.wrapperDial, { height: trackLength }]}
         onLayout={(e) => setTrackHeight(e.nativeEvent.layout.height)}
         {...panResponder.panHandlers}
       >
         <View style={styles.viewport}>
           <View
-            style={[styles.column, { height: columnHeight + PX_PER_TICK, transform: [{ translateY }] }]}
+            style={[styles.column, { height: columnHeight + rowHeight, transform: [{ translateY }] }]}
           >
             {ticks}
           </View>
         </View>
+        {/* The compact pill's soft blue halo. A separate layer rather than
+            a shadow: Android draws elevation shadows grey whatever colour
+            is asked for, and this is meant to read as light, not depth. */}
+        {compact ? <View style={styles.dialGlow} pointerEvents="none" /> : null}
         {isDial ? (
           // The pill IS the pointer: fixed at the centre while the column
           // slides behind it. pointerEvents none so it never eats a drag
           // that starts on top of the number.
-          <View style={styles.dialPointer} pointerEvents="none">
-            <View style={styles.dialRule} />
-            <Text style={styles.dialValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+          <View style={[styles.dialPointer, compact && styles.dialPointerCompact]} pointerEvents="none">
+            {dialRules ? <View style={styles.dialRule} /> : null}
+            <Text
+              style={[styles.dialValue, compact && styles.dialValueCompact]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.6}
+            >
               {formatLabel(nearestValue)}
             </Text>
-            {unitLabel ? <Text style={styles.dialUnit}>{unitLabel}</Text> : null}
-            <View style={styles.dialRule} />
+            {unitLabel ? <Text style={[styles.dialUnit, compact && styles.dialUnitCompact]}>{unitLabel}</Text> : null}
+            {dialRules ? <View style={styles.dialRule} /> : null}
+            {/* Two arrowheads drawn from borders, the same way the rest of
+                the app draws its small triangles -- no icon font to load
+                and no glyph metrics to fight when centring them. */}
+            {dialChevrons ? (
+              <View style={styles.dialChevrons}>
+                <View style={styles.dialChevronUp} />
+                <View style={styles.dialChevronDown} />
+              </View>
+            ) : null}
           </View>
         ) : (
           <View style={[styles.pointer, { backgroundColor: minimumTrackTintColor }]} pointerEvents="none" />
@@ -399,4 +455,84 @@ const styles = StyleSheet.create({
   dialRule: { flex: 1, height: 2, borderRadius: 1, backgroundColor: '#2f80f0', opacity: 0.45 },
   dialValue: { fontSize: 38, fontWeight: '900', color: '#16213f', letterSpacing: -0.5 },
   dialUnit: { fontSize: 17, fontWeight: '800', color: '#2f80f0' },
+
+  // --- dialSize 'compact' and its extras (v0.4.5) ----------------------
+  tickLabelCompact: { fontSize: 20, fontWeight: '500', color: '#7a87a3' },
+  // Nearly the full width of the column, fully rounded, with a white rim.
+  // The symmetric padding keeps the number centred on the rows above and
+  // below it while leaving the right end free for the arrowheads.
+  dialPointerCompact: {
+    marginTop: -21,
+    height: 42,
+    left: DIAL_COMPACT_INSET,
+    right: DIAL_COMPACT_INSET,
+    gap: 6,
+    paddingHorizontal: 30,
+    borderRadius: 21,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+    backgroundColor: '#d9e9fc',
+    shadowColor: '#2f80f0',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  dialGlow: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -26,
+    left: -3,
+    right: -3,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(47,128,240,0.09)',
+  },
+  // flexShrink lets a narrow phone squeeze "213 cm" into the pill, where
+  // adjustsFontSizeToFit then scales it down instead of letting it run
+  // under the arrowheads.
+  dialValueCompact: { fontSize: 30, letterSpacing: -0.3, flexShrink: 1 },
+  dialUnitCompact: { fontSize: 15 },
+  dialChevrons: {
+    position: 'absolute',
+    right: 14,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 3,
+  },
+  dialChevronUp: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderLeftWidth: 5.5,
+    borderRightWidth: 5.5,
+    borderBottomWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#2f80f0',
+  },
+  dialChevronDown: {
+    width: 0,
+    height: 0,
+    backgroundColor: 'transparent',
+    borderLeftWidth: 5.5,
+    borderRightWidth: 5.5,
+    borderTopWidth: 7,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#2f80f0',
+  },
+  // Sits on the bottom edge of its row's box -- exactly halfway to the
+  // next row -- and is centred under the number.
+  dialDash: {
+    position: 'absolute',
+    bottom: -1,
+    left: '50%',
+    marginLeft: -5.5,
+    width: 11,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: '#a9c4ec',
+  },
 });

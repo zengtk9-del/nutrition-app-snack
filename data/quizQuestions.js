@@ -96,6 +96,14 @@ export const QUIZ_STEPS = [
     key: 'height',
     type: 'height',
     title: 'Height',
+    // v0.4.5: the question sits in a bubble on its own -- 'solo', no
+    // mascot beside it, because he is further down, standing at a
+    // stadiometer beside the dial (the `mascot` pose below). The dial,
+    // the unit switch and the illustration are one card, drawn by
+    // QuizScreen's HeightCard.
+    bubble: ['How tall are you?'],
+    bubbleLayout: 'solo',
+    mascot: 'height',
   },
   {
     key: 'weight',

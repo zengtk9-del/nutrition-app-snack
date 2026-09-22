@@ -130,6 +130,45 @@ export const MASCOT_SCENES = {
   // 240p GIF; a 1080 HEVC(Alpha) export replaces it under the same name
   // with no code change.
   notes: assetUri('mascot_notes.webp'),
+  // Standing at a stadiometer, for the height question (v0.4.5). A still,
+  // keyed off Damon's magenta background: 837x1142, 80 KB.
+  height: assetUri('mascot_height.webp'),
+};
+
+// --- The height page's artwork, as numbers (v0.4.5) ---------------------
+//
+// The page draws a dashed line from the dial's pill to the stick, and a
+// few marks around his head. Where those land depends on where things
+// are in THIS drawing, so the positions live here as fractions of the
+// canvas (x of its width, y of its height), next to the file they
+// describe. New art means new numbers here, not a change to the layout.
+export const HEIGHT_GEOMETRY = {
+  aspect: 837 / 1142, // canvas width / height
+  // The outer edge of the stick's right-hand outline. The line ends here,
+  // where his hair meets the stick.
+  stickRight: 190 / 837,
+  // How far down the canvas the line meets the stick. His hair touches
+  // the stick from 0.11 to 0.58, below the head bar and above both hands
+  // (from 0.60), and 0.48 is inside that. It also decides how high he
+  // stands in the card, since the line's height is fixed by the dial.
+  reachY: 0.48,
+  // The pale disc behind his crown: centre and diameter (of the width).
+  halo: { x: 0.64, y: 0.2, size: 0.66 },
+  // The three excitement marks off the top-right of his crown: centre and
+  // angle. Each sits just outside the outline at that height.
+  sparks: [
+    { x: 0.78, y: 0.08, angle: -70 },
+    { x: 0.875, y: 0.13, angle: -42 },
+    { x: 0.93, y: 0.19, angle: -18 },
+  ],
+  // Two loose dots in the empty corners: centre and diameter (of the
+  // width). The first is above the canvas, so y is negative.
+  dots: [
+    { x: 0.31, y: -0.12, size: 0.128 },
+    { x: 0.94, y: 0.81, size: 0.086 },
+  ],
+  // The shadow he and the stand cast: centre x, centre y, width.
+  ground: { x: 0.45, y: 0.985, w: 0.92 },
 };
 
 // --- Peeking over the answer cards (v0.4.4) -----------------------------
