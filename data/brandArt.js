@@ -133,25 +133,39 @@ export const MASCOT_SCENES = {
   // Standing at a stadiometer, for the height question (v0.4.5). A still,
   // keyed off Damon's magenta background: 837x1142, 80 KB.
   height: assetUri('mascot_height.webp'),
+  // On a bathroom scale, for the weight question (v0.4.6). 841x1123,
+  // 80 KB, keyed the same way.
+  weight: assetUri('mascot_weight.webp'),
 };
 
-// --- The height page's artwork, as numbers (v0.4.5) ---------------------
+// --- The measuring pages' artwork, as numbers (v0.4.5, v0.4.6) ---------
 //
-// The page draws a dashed line from the dial's pill to the stick, and a
-// few marks around his head. Where those land depends on where things
-// are in THIS drawing, so the positions live here as fractions of the
-// canvas (x of its width, y of its height), next to the file they
-// describe. New art means new numbers here, not a change to the layout.
+// Height and weight are the same page with different art: a dial on the
+// left, him on the right, and a dashed line from the dial to the thing
+// doing the measuring. Where that line lands, and where the marks around
+// him go, depends on where things are in THESE drawings -- so the
+// positions live here as fractions of each canvas (x of its width, y of
+// its height), next to the file they describe. New art means new numbers
+// here, not a change to the layout.
+//
+// Shared by both:
+//   aspect   canvas width / height
+//   pillY    the height of the dial's pill, as a fraction of the canvas.
+//            This is what places him in the card: the pill's own height
+//            is fixed by the dial, so the art hangs from it.
+//   halo     the pale disc behind his crown: centre and diameter
+//   sparks   the marks off his crown: centre and angle, each just clear
+//            of the outline at that height
+//   dots     two loose dots in the empty corners
+//   ground   the shadow under him: centre x, centre y, width
 export const HEIGHT_GEOMETRY = {
-  aspect: 837 / 1142, // canvas width / height
-  // The outer edge of the stick's right-hand outline. The line ends here,
-  // where his hair meets the stick.
+  aspect: 837 / 1142,
+  // The outer edge of the stick's right-hand outline. The line runs
+  // level from the pill and ends here, where his hair meets the stick.
   stickRight: 190 / 837,
-  // How far down the canvas the line meets the stick. His hair touches
-  // the stick from 0.11 to 0.58, below the head bar and above both hands
-  // (from 0.60), and 0.48 is inside that. It also decides how high he
-  // stands in the card, since the line's height is fixed by the dial.
-  reachY: 0.48,
+  // His hair touches the stick from 0.11 to 0.58, below the head bar and
+  // above both hands (from 0.60), and 0.48 is inside that.
+  pillY: 0.48,
   // The pale disc behind his crown: centre and diameter (of the width).
   halo: { x: 0.64, y: 0.2, size: 0.66 },
   // The three excitement marks off the top-right of his crown: centre and
@@ -169,6 +183,32 @@ export const HEIGHT_GEOMETRY = {
   ],
   // The shadow he and the stand cast: centre x, centre y, width.
   ground: { x: 0.45, y: 0.985, w: 0.92 },
+};
+
+export const WEIGHT_GEOMETRY = {
+  aspect: 841 / 1123,
+  // Nothing on the scale is level with the pill, so this is placement
+  // only: 0.4 is in his crown, which leaves him the same share of space
+  // above and below as the mockup and still gives the line a clear run
+  // down to the scale.
+  pillY: 0.4,
+  // The ring at the end of the line, just left of the display.
+  anchor: { x: 0.345, y: 0.916 },
+  // The scale's own display, outer edge of its dark outline included.
+  // The live weight is drawn over this, which is also what hides the
+  // three placeholder dashes the artwork has there.
+  readout: { x: 330 / 841, y: 997 / 1123, w: 205 / 841, h: 63 / 1123 },
+  halo: { x: 0.64, y: 0.2, size: 0.66 },
+  sparks: [
+    { x: 0.72, y: 0.03, angle: -70 },
+    { x: 0.8, y: 0.09, angle: -42 },
+    { x: 0.86, y: 0.145, angle: -18 },
+  ],
+  dots: [
+    { x: 0.31, y: -0.12, size: 0.128 },
+    { x: 0.94, y: 0.81, size: 0.086 },
+  ],
+  ground: { x: 0.5, y: 0.995, w: 0.86 },
 };
 
 // --- Peeking over the answer cards (v0.4.4) -----------------------------

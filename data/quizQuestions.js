@@ -109,6 +109,14 @@ export const QUIZ_STEPS = [
     key: 'weight',
     type: 'weight',
     title: 'Weight',
+    // v0.4.6: the same card as height, with him on a bathroom scale --
+    // the dial's number also shows on the scale's display. `layout` is
+    // what keeps this off the goalWeight step below, which shares this
+    // step type but asks a different question and keeps the ruler.
+    layout: 'dialCard',
+    bubble: ['How much do you weigh?'],
+    bubbleLayout: 'solo',
+    mascot: 'weight',
   },
   {
     key: 'bodyFat',

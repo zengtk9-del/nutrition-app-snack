@@ -14,7 +14,7 @@ import {
   Easing,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import Slider, { DIAL_COMPACT_INSET } from '../components/DragSlider';
+import Slider, { DIAL_COMPACT_HEIGHT, DIAL_COMPACT_INSET } from '../components/DragSlider';
 import DietDetailModal from '../components/DietDetailModal';
 import Mascot from '../components/Mascot';
 import {
@@ -23,6 +23,7 @@ import {
   MASCOT_SCENES,
   MASCOT_WAVE_BIG,
   PEEK_GEOMETRY,
+  WEIGHT_GEOMETRY,
 } from '../data/brandArt';
 import { COLORS, RADIUS, SPACE } from '../utils/theme';
 import {
@@ -461,6 +462,7 @@ const HC_ART_RIGHT = 2; // his crown -> the card's right edge
 const HC_ART_MAX_H = 300; // on a wide screen he stops growing and centres instead
 const HC_DASH = 5;
 const HC_DASH_GAP = 3;
+const HC_RING = 11; // the little circle where the line meets the scale
 const HC_SPARK_LEN = 18;
 const HC_GROUND_H = 22; // the shadow under him, top to bottom
 
@@ -470,12 +472,48 @@ const formatFeetInches = (totalInches) => {
   return `${feet}'${inches}"`;
 };
 
-function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete }) {
+// A row of dashes from (x0, y0) to (x1, y1). Straight runs are just a
+// box of dashes; a diagonal is the same box turned about its middle,
+// because a View cannot be drawn on a slant any other way.
+function dashesBetween(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const count = Math.max(0, Math.floor((length + HC_DASH_GAP) / (HC_DASH + HC_DASH_GAP)));
+  return {
+    count,
+    box: {
+      left: from.x + dx / 2 - length / 2,
+      top: from.y + dy / 2 - 1,
+      width: length,
+      transform: dy === 0 ? undefined : [{ rotate: `${(Math.atan2(dy, dx) * 180) / Math.PI}deg` }],
+    },
+  };
+}
+
+// --- The card itself ----------------------------------------------------
+//
+// Height and weight are the same picture with different artwork, so they
+// are one component. What differs is passed in: the two units, the dial's
+// numbers, which drawing, where the line lands in it (`geometry`), and,
+// for the scale, the number to show on its display (`readout`).
+function DialCard({
+  testPrefix,
+  scene,
+  geometry,
+  readout,
+  units,
+  unit,
+  onUnit,
+  dial,
+  info,
+  onSlidingStart,
+  onSlidingComplete,
+}) {
   // The first render assumes a 393pt phone; onLayout corrects it before
   // anything is visible, same as the peeking page.
   const [cardW, setCardW] = useState(361);
-  const isCm = answers.heightUnit === 'cm';
-  const g = HEIGHT_GEOMETRY;
+  const g = geometry;
 
   // --- where everything goes, inside the border ---
   const innerW = cardW - 2 * HC_BORDER;
@@ -485,14 +523,26 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
   const artW = Math.max(0, Math.min(regionW, HC_ART_MAX_H * g.aspect));
   const artH = artW / g.aspect;
   const artLeft = regionLeft + (regionW - artW) / 2;
-  // Hung from the line rather than stood on the card's floor: the stick
-  // is at the pill's height because the art is placed that way round.
-  const artTop = HC_PILL_Y - g.reachY * artH;
+  // Hung from the pill rather than stood on the card's floor: the pill's
+  // height is fixed by the dial, and the art is placed against it.
+  const artTop = HC_PILL_Y - g.pillY * artH;
   const at = (fx, fy) => ({ x: artLeft + fx * artW, y: artTop + fy * artH });
 
-  const lineLeft = HC_PAD + panelW - DIAL_COMPACT_INSET;
-  const lineRight = artLeft + g.stickRight * artW;
-  const dashCount = Math.max(0, Math.floor((lineRight - lineLeft + HC_DASH_GAP) / (HC_DASH + HC_DASH_GAP)));
+  // The line out of the pill. Height's runs level into the stick, so it
+  // leaves the pill at its widest point; weight's slopes down to the
+  // scale, so it leaves the rounded end at the angle it travels.
+  const pillRight = HC_PAD + panelW - DIAL_COMPACT_INSET;
+  const anchored = !!g.anchor;
+  const lineFrom = anchored
+    ? {
+        x: pillRight - (DIAL_COMPACT_HEIGHT / 2) * (1 - Math.SQRT1_2),
+        y: HC_PILL_Y + (DIAL_COMPACT_HEIGHT / 2) * Math.SQRT1_2,
+      }
+    : { x: pillRight, y: HC_PILL_Y };
+  const lineTo = anchored
+    ? at(g.anchor.x, g.anchor.y)
+    : { x: artLeft + g.stickRight * artW, y: HC_PILL_Y };
+  const line = dashesBetween(lineFrom, lineTo);
 
   // The disc behind his crown, kept inside the card's rounded edge.
   const haloD = g.halo.size * artW;
@@ -501,45 +551,18 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
   const haloTop = Math.max(6, haloC.y - haloD / 2);
   const ground = at(g.ground.x, g.ground.y);
   const groundW = g.ground.w * artW;
-
-  // --- the numbers ---
-  // Clamped for display only: nothing the dials can do puts a value out
-  // of range, but a stored answer from an older build could be.
-  const totalInches = clampTo(answers.heightFeet * 12 + answers.heightInches, HEIGHT_IN_RANGE);
-  const cm = clampTo(Math.round(answers.heightCm), HEIGHT_CM_RANGE);
-  const { feet, inches } = inchesToFeetAndInches(totalInches);
-
-  // heightCm is the one number both dials keep current -- the ft + in
-  // dial writes it on every change as well -- so switching to ft + in
-  // works feet and inches out from it. Before v0.4.5 the switch only
-  // flipped the unit: choose 185 cm, switch to ft + in, and it still said
-  // 5'8", which is also what would have been saved.
-  //
-  // heightCm itself is left alone, so flipping back and forth never
-  // drifts: 184 cm shows as 6'0", but 6'0" converted back would be 183.
-  const switchUnit = (unit) => {
-    if ((unit === 'cm') === isCm) return;
-    if (unit === 'cm') {
-      update({ heightUnit: 'cm' });
-      return;
-    }
-    const derived = inchesToFeetAndInches(clampTo(Math.round(answers.heightCm / 2.54), HEIGHT_IN_RANGE));
-    update({ heightUnit: 'ftin', heightFeet: derived.feet, heightInches: derived.inches });
-  };
-
-  const onDial = (v) => {
-    if (isCm) {
-      update({ heightCm: Math.round(v) });
-      return;
-    }
-    const next = inchesToFeetAndInches(v);
-    update({ heightFeet: next.feet, heightInches: next.inches, heightCm: feetInchesToCm(next.feet, next.inches) });
+  // The scale's display, redrawn at the same spot over the artwork's own.
+  const screen = g.readout && {
+    left: artLeft + g.readout.x * artW,
+    top: artTop + g.readout.y * artH,
+    width: g.readout.w * artW,
+    height: g.readout.h * artH,
   };
 
   return (
     <View>
       <View
-        testID="height-card"
+        testID={`${testPrefix}-card`}
         style={[styles.hcCard, { height: HC_CARD_H }]}
         onLayout={(e) => {
           const w = Math.round(e.nativeEvent.layout.width);
@@ -587,18 +610,39 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
 
         <Mascot source={scene} style={[styles.hcArt, { left: artLeft, top: artTop, width: artW, height: artH }]} />
 
-        <View testID="height-panel" style={[styles.hcPanel, { width: panelW, height: HC_PANEL_H }]}>
+        {/* The live weight on the scale's display. Drawn rather than
+            painted into the artwork, which is why the file has three
+            placeholder dashes there -- this covers them. */}
+        {screen && readout ? (
+          <View
+            testID={`${testPrefix}-readout`}
+            pointerEvents="none"
+            style={[
+              styles.hcScreen,
+              screen,
+              { borderRadius: screen.height / 4, borderWidth: Math.max(1.5, screen.height * 0.16) },
+            ]}
+          >
+            <Text
+              style={[styles.hcScreenText, { fontSize: screen.height * 0.58 }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.5}
+            >
+              {readout}
+            </Text>
+          </View>
+        ) : null}
+
+        <View testID={`${testPrefix}-panel`} style={[styles.hcPanel, { width: panelW, height: HC_PANEL_H }]}>
           <View style={styles.hcToggle}>
-            {[
-              ['ftin', 'ft + in'],
-              ['cm', 'cm'],
-            ].map(([unit, label]) => {
-              const on = (unit === 'cm') === isCm;
+            {units.map(([value, label]) => {
+              const on = value === unit;
               return (
                 <TouchableOpacity
-                  key={unit}
+                  key={value}
                   style={[styles.hcToggleBtn, on && styles.hcToggleBtnOn]}
-                  onPress={() => switchUnit(unit)}
+                  onPress={() => onUnit(value)}
                   activeOpacity={0.8}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
@@ -613,7 +657,7 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
               value, where a reused one would spend its first frame on
               the old unit's position before catching up. */}
           <Slider
-            key={isCm ? 'cm' : 'ftin'}
+            key={unit}
             style={styles.hcDial}
             variant="dial"
             dialSize="compact"
@@ -622,14 +666,14 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
             dialTicks
             rowHeight={HC_ROW_H}
             trackLength={HC_DIAL_H}
-            minimumValue={isCm ? HEIGHT_CM_RANGE.min : HEIGHT_IN_RANGE.min}
-            maximumValue={isCm ? HEIGHT_CM_RANGE.max : HEIGHT_IN_RANGE.max}
+            minimumValue={dial.min}
+            maximumValue={dial.max}
             step={1}
-            value={isCm ? cm : totalInches}
-            unitLabel={isCm ? 'cm' : undefined}
-            formatLabel={isCm ? undefined : formatFeetInches}
+            value={dial.value}
+            unitLabel={dial.unitLabel}
+            formatLabel={dial.formatLabel}
             minimumTrackTintColor={COLORS.accent}
-            onValueChange={onDial}
+            onValueChange={dial.onChange}
             onSlidingStart={onSlidingStart}
             onSlidingComplete={onSlidingComplete}
           />
@@ -640,29 +684,120 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
           </View>
         </View>
 
-        {/* Top layer: the dashed line, over the stick so it reads across
-            its face. elevation is only there to beat the panel's own in
-            Android's draw order; with no background it casts nothing. */}
+        {/* Top layer: the dashed line, drawn over the artwork so it reads
+            across the stick's face or down to the scale. elevation is
+            only there to beat the panel's own in Android's draw order;
+            with no background it casts nothing. */}
         <View
-          testID="height-connector"
+          testID={`${testPrefix}-connector`}
           pointerEvents="none"
-          style={[styles.hcLine, { left: lineLeft, top: HC_PILL_Y - 1, width: Math.max(0, lineRight - lineLeft) }]}
+          style={[styles.hcLine, line.box]}
         >
-          {Array.from({ length: dashCount }, (_, i) => (
+          {Array.from({ length: line.count }, (_, i) => (
             <View key={i} style={[styles.hcDash, { left: i * (HC_DASH + HC_DASH_GAP) }]} />
           ))}
         </View>
+        {anchored ? (
+          <View
+            pointerEvents="none"
+            style={[styles.hcRing, { left: lineTo.x - HC_RING / 2, top: lineTo.y - HC_RING / 2 }]}
+          />
+        ) : null}
       </View>
 
       <View style={styles.hcInfo}>
         <View style={styles.hcInfoDisc}>
-          <MaterialCommunityIcons name="ruler" size={24} color={COLORS.text} />
+          <MaterialCommunityIcons name={info.icon} size={24} color={COLORS.text} />
         </View>
-        <Text style={styles.hcInfoText}>
-          Height: {isCm ? `${cm} cm` : `${feet}' ${inches}"`}
-        </Text>
+        <Text style={styles.hcInfoText}>{info.text}</Text>
       </View>
     </View>
+  );
+}
+
+function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete }) {
+  const isCm = answers.heightUnit === 'cm';
+  // Clamped for display only: nothing the dials can do puts a value out
+  // of range, but a stored answer from an older build could be.
+  const totalInches = clampTo(answers.heightFeet * 12 + answers.heightInches, HEIGHT_IN_RANGE);
+  const cm = clampTo(Math.round(answers.heightCm), HEIGHT_CM_RANGE);
+  const { feet, inches } = inchesToFeetAndInches(totalInches);
+
+  // heightCm is the one number both dials keep current -- the ft + in
+  // dial writes it on every change as well -- so switching to ft + in
+  // works feet and inches out from it. Before v0.4.5 the switch only
+  // flipped the unit: choose 185 cm, switch to ft + in, and it still said
+  // 5'8", which is also what would have been saved.
+  //
+  // heightCm itself is left alone, so flipping back and forth never
+  // drifts: 184 cm shows as 6'0", but 6'0" converted back would be 183.
+  const switchUnit = (next) => {
+    if ((next === 'cm') === isCm) return;
+    if (next === 'cm') {
+      update({ heightUnit: 'cm' });
+      return;
+    }
+    const derived = inchesToFeetAndInches(clampTo(Math.round(answers.heightCm / 2.54), HEIGHT_IN_RANGE));
+    update({ heightUnit: 'ftin', heightFeet: derived.feet, heightInches: derived.inches });
+  };
+
+  const onDial = (v) => {
+    if (isCm) {
+      update({ heightCm: Math.round(v) });
+      return;
+    }
+    const next = inchesToFeetAndInches(v);
+    update({ heightFeet: next.feet, heightInches: next.inches, heightCm: feetInchesToCm(next.feet, next.inches) });
+  };
+
+  return (
+    <DialCard
+      testPrefix="height"
+      scene={scene}
+      geometry={HEIGHT_GEOMETRY}
+      units={[
+        ['ftin', 'ft + in'],
+        ['cm', 'cm'],
+      ]}
+      unit={isCm ? 'cm' : 'ftin'}
+      onUnit={switchUnit}
+      dial={{
+        min: isCm ? HEIGHT_CM_RANGE.min : HEIGHT_IN_RANGE.min,
+        max: isCm ? HEIGHT_CM_RANGE.max : HEIGHT_IN_RANGE.max,
+        value: isCm ? cm : totalInches,
+        unitLabel: isCm ? 'cm' : undefined,
+        formatLabel: isCm ? undefined : formatFeetInches,
+        onChange: onDial,
+      }}
+      info={{ icon: 'ruler', text: `Height: ${isCm ? `${cm} cm` : `${feet}' ${inches}"`}` }}
+      onSlidingStart={onSlidingStart}
+      onSlidingComplete={onSlidingComplete}
+    />
+  );
+}
+
+function WeightCard({ answers, value, range, onChange, switchUnit, scene, onSlidingStart, onSlidingComplete }) {
+  const isLb = answers.weightUnit === 'lb';
+  return (
+    <DialCard
+      testPrefix="weight"
+      scene={scene}
+      geometry={WEIGHT_GEOMETRY}
+      // A real scale reads to a tenth. The dial only offers whole units,
+      // so the tenth is always .0 -- it is there to make the display look
+      // like a scale rather than a repeat of the number above it.
+      readout={`${value}.0`}
+      units={[
+        ['lb', 'lbs'],
+        ['kg', 'kg'],
+      ]}
+      unit={isLb ? 'lb' : 'kg'}
+      onUnit={switchUnit}
+      dial={{ min: range.min, max: range.max, value, unitLabel: isLb ? 'lbs' : 'kg', onChange }}
+      info={{ icon: 'scale-bathroom', text: `Weight: ${value} ${isLb ? 'lbs' : 'kg'}` }}
+      onSlidingStart={onSlidingStart}
+      onSlidingComplete={onSlidingComplete}
+    />
   );
 }
 
@@ -1508,6 +1643,25 @@ export default function QuizScreen({
         update(patch);
       };
 
+      // v0.4.6: the main weight question is the height page's card with
+      // the scale artwork -- see DialCard. goalWeight keeps the ruler:
+      // it is a different question (a target, with your current weight
+      // marked on the scale beside it) and has no mockup of its own.
+      if (!isGoalWeight && step.layout === 'dialCard') {
+        return (
+          <WeightCard
+            answers={answers}
+            value={clampTo(currentDisplayValue, range)}
+            range={range}
+            onChange={handleChange}
+            switchUnit={switchWeightUnit}
+            scene={MASCOT_SCENES[step.mascot] || MASCOT_SCENES.weight}
+            onSlidingStart={lockScroll}
+            onSlidingComplete={unlockScroll}
+          />
+        );
+      }
+
       return (
         <View>
           <View style={styles.unitToggle}>
@@ -2253,6 +2407,32 @@ const styles = StyleSheet.create({
   },
   hcHintText: { fontSize: 15, color: COLORS.textSoft },
   hcLine: { position: 'absolute', height: 2, zIndex: 3, elevation: 4 },
+  // The end of the weight page's line: an open circle sitting beside the
+  // scale's display, the way a callout on a diagram points at a part.
+  hcRing: {
+    position: 'absolute',
+    width: HC_RING,
+    height: HC_RING,
+    borderRadius: HC_RING / 2,
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.card,
+    zIndex: 3,
+    elevation: 4,
+  },
+  // The scale's display, drawn over the artwork's own. The colours are
+  // the artwork's: the same blue face, the same near-black outline.
+  hcScreen: {
+    position: 'absolute',
+    backgroundColor: '#0093fc',
+    borderColor: '#0b1f44',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    zIndex: 2,
+    elevation: 3,
+  },
+  hcScreenText: { color: '#eafbff', fontWeight: '800', letterSpacing: 0.4 },
   hcDash: {
     position: 'absolute',
     top: 0,

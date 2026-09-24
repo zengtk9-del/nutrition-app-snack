@@ -41,10 +41,12 @@ import { View, Text, PanResponder, StyleSheet } from 'react-native';
 const PX_PER_TICK = 44;
 const RULER_LENGTH = 360;
 const LABEL_WIDTH = 78; // wide enough for labels like 6'11", not just plain numbers
-// How far the compact dial's pill stands in from each side of the dial.
-// Exported because the height page draws a line starting at the pill's
-// right end, and has to know where that is without measuring it.
+// The compact dial's pill: how far it stands in from each side of the
+// dial, and how tall it is. Both are exported because the height and
+// weight pages draw a line that starts on the pill's edge, and have to
+// know where that edge is without measuring it.
 export const DIAL_COMPACT_INSET = 2;
+export const DIAL_COMPACT_HEIGHT = 42;
 
 export default function DragSlider({
   value,
@@ -254,8 +256,19 @@ export default function DragSlider({
   // as a wheel with depth rather than a flat list.
   const fade = (distance) => (distance === 0 ? 0 : distance <= 3 ? 1 : distance === 4 ? 0.5 : 0.22);
 
+  // Only the rows that can actually be seen are built (v0.4.6). Weight in
+  // pounds is 485 of them, and rebuilding all 485 on every frame of a
+  // drag is exactly the work that makes a drag stutter on a mid-range
+  // phone. Two rows of slack either side cover the half-row showing at
+  // each edge and a fractional position mid-drag. Nothing about the
+  // column's size or position changes, so this is invisible.
+  const half = Math.ceil(trackHeight / rowHeight / 2) + 2;
+  const centreIndex = Math.round((maximumValue - liveValue) / step);
+  const firstTick = Math.max(0, centreIndex - half);
+  const lastTick = Math.min(tickCount - 1, centreIndex + half);
+
   const ticks = [];
-  for (let i = 0; i < tickCount; i++) {
+  for (let i = firstTick; i <= lastTick; i++) {
     const tickValue = maximumValue - i * step;
     const isMajor = tickValue % 5 === 0;
     const isCurrent = tickValue === nearestValue;
@@ -462,13 +475,13 @@ const styles = StyleSheet.create({
   // The symmetric padding keeps the number centred on the rows above and
   // below it while leaving the right end free for the arrowheads.
   dialPointerCompact: {
-    marginTop: -21,
-    height: 42,
+    marginTop: -DIAL_COMPACT_HEIGHT / 2,
+    height: DIAL_COMPACT_HEIGHT,
     left: DIAL_COMPACT_INSET,
     right: DIAL_COMPACT_INSET,
     gap: 6,
     paddingHorizontal: 30,
-    borderRadius: 21,
+    borderRadius: DIAL_COMPACT_HEIGHT / 2,
     borderWidth: 1.5,
     borderColor: '#ffffff',
     backgroundColor: '#d9e9fc',
