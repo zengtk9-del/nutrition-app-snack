@@ -122,6 +122,13 @@ export const QUIZ_STEPS = [
     key: 'bodyFat',
     type: 'bodyFat',
     title: 'What is your body fat level?',
+    // v0.4.7: asks from a bubble with its subtitle inside it, and he
+    // leans in over the top-right corner. `bubbleMascot` is decoration
+    // -- unlike `mascot` on height and weight, which is the drawing the
+    // page is built around -- so it names a pose, not a scene.
+    bubble: ['What is your body fat percentage?'],
+    bubbleLayout: 'solo',
+    bubbleMascot: 'peekRight',
     subtitle: 'Choose the closest — no need to be too precise!',
   },
   {

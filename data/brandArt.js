@@ -136,7 +136,25 @@ export const MASCOT_SCENES = {
   // On a bathroom scale, for the weight question (v0.4.6). 841x1123,
   // 80 KB, keyed the same way.
   weight: assetUri('mascot_weight.webp'),
+  // Leaning in from the right-hand edge of the screen, for the body-fat
+  // page (v0.4.8). 766x1048, 64 KB. See CORNER_GEOMETRY below -- this one
+  // has a rule about where it can be put.
+  peekRight: assetUri('mascot_peek_right.webp'),
 };
+
+// --- The corner pose's one rule (v0.4.8) -------------------------------
+//
+// mascot_peek_right.webp is drawn as a figure CUT OFF flush with the
+// right-hand side of its own canvas: the two paws he grips the edge with
+// are half there, and 732 of its 1048 rows run right up to that side.
+// That edge is not a mistake, it is the point -- but it means the art can
+// only ever be placed with that side PAST THE EDGE OF THE SCREEN. Put it
+// anywhere else and the flat cut shows.
+//
+// (Damon's file leans the other way, since that is how his generator drew
+// it; the copy in the assets repo is mirrored, so the file matches what
+// is on screen rather than needing a flip at runtime.)
+export const CORNER_GEOMETRY = { aspect: 766 / 1048 };
 
 // --- The measuring pages' artwork, as numbers (v0.4.5, v0.4.6) ---------
 //

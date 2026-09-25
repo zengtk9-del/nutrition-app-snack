@@ -18,6 +18,7 @@ import Slider, { DIAL_COMPACT_HEIGHT, DIAL_COMPACT_INSET } from '../components/D
 import DietDetailModal from '../components/DietDetailModal';
 import Mascot from '../components/Mascot';
 import {
+  CORNER_GEOMETRY,
   HEIGHT_GEOMETRY,
   MASCOT_PEEK,
   MASCOT_SCENES,
@@ -50,6 +51,10 @@ import {
 // data/quizQuestions.js) so question text can be computed from earlier
 // answers without QuizScreen needing to know the details of that math.
 const QUESTION_HELPERS = { weightHistoryThresholds, formatWeightForUnit, formatWeightRangeForUnit };
+
+// How wide the corner mascot is drawn on the body-fat page, of which the
+// page shows all but the 6pt that hang past the screen (see soloMascot).
+const CORNER_MASCOT_W = 110;
 
 const HEIGHT_CM_RANGE = { min: 119, max: 213 };
 const HEIGHT_IN_RANGE = { min: 47, max: 84 }; // ~3'11" to 7'0"
@@ -801,6 +806,61 @@ function WeightCard({ answers, value, range, onChange, switchUnit, scene, onSlid
   );
 }
 
+// --- One tile in the body-fat grid (v0.4.7) -----------------------------
+//
+// A reference picture on a pale tile, the range under it, and a ring in
+// the corner that fills in when it is the chosen one. The ring, the
+// outline and the wash all fade in together over SELECT_MS -- the same
+// moment-of-the-tap timing as the sex page's cards, and opacity only, so
+// it runs on the native driver. No lift or grow here: eight tiles
+// jumping about is busier than two.
+function BodyFatCard({ rangeKey, image, selected, onPress }) {
+  const progress = useRef(null);
+  if (!progress.current) progress.current = new Animated.Value(selected ? 1 : 0);
+  const p = progress.current;
+
+  useEffect(() => {
+    Animated.timing(p, {
+      toValue: selected ? 1 : 0,
+      duration: SELECT_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [selected, p]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={styles.bfHit}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${rangeKey}% body fat`}
+    >
+      <View style={styles.bfCard}>
+        <Animated.View pointerEvents="none" style={[styles.bfTint, { opacity: p }]} />
+        <View style={styles.bfTile}>
+          <Image source={image} style={styles.bfImage} resizeMode="contain" />
+        </View>
+        {/* An en dash between the two numbers, as drawn -- the plain
+            hyphen the range is stored and spoken as is too short to read
+            as "to" at this weight. */}
+        <Text style={styles.bfLabel}>{`${rangeKey.replace('-', '–')}%`}</Text>
+        <View style={styles.bfRadio} />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.bfCheck,
+            { opacity: p, transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }] },
+          ]}
+        >
+          <MaterialCommunityIcons name="check" size={15} color="#fff" />
+        </Animated.View>
+        <Animated.View pointerEvents="none" style={[styles.bfBorder, { opacity: p }]} />
+      </View>
+    </Pressable>
+  );
+}
+
 // A single tappable option — used for single-choice, multi-choice, and the
 // body-fat grid, so all three share one visual style.
 function OptionCard({ label, sub, selected, onPress }) {
@@ -1516,7 +1576,7 @@ export default function QuizScreen({
       const ranges = BODY_FAT_OPTIONS[sexKey];
       const images = BODY_FAT_IMAGES[sexKey];
       return (
-        <View style={styles.bodyFatGrid}>
+        <View style={styles.bfGrid}>
           {ranges.map((rangeKey) => {
             // Fails loudly rather than silently showing a blank card — if
             // BODY_FAT_OPTIONS and BODY_FAT_IMAGES (data/quizQuestions.js)
@@ -1529,22 +1589,13 @@ export default function QuizScreen({
               );
             }
             return (
-              <TouchableOpacity
+              <BodyFatCard
                 key={rangeKey}
-                style={[styles.bodyFatCard, answers.bodyFatRange === rangeKey && styles.optionSelected]}
+                rangeKey={rangeKey}
+                image={images[rangeKey]}
+                selected={answers.bodyFatRange === rangeKey}
                 onPress={() => update({ bodyFatRange: rangeKey })}
-                activeOpacity={0.7}
-              >
-                <Image source={images[rangeKey]} style={styles.bodyFatImage} resizeMode="contain" />
-                <Text
-                  style={[
-                    styles.bodyFatLabel,
-                    answers.bodyFatRange === rangeKey && styles.optionLabelSelected,
-                  ]}
-                >
-                  {rangeKey}%
-                </Text>
-              </TouchableOpacity>
+              />
             );
           })}
         </View>
@@ -1858,7 +1909,13 @@ export default function QuizScreen({
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        // Full-bleed, with the page's side margin moved inside it
+        // (v0.4.7). Everything lands exactly where it did -- the content
+        // box is the same width -- but what hangs off the side of the
+        // content, like the mascot leaning in on the body-fat page, is
+        // now cut off by the edge of the SCREEN rather than 16pt short
+        // of it.
+        contentContainerStyle={{ paddingHorizontal: SPACE.screen, paddingBottom: 24 }}
         scrollEnabled={!scrollLocked}
         showsVerticalScrollIndicator={false}
       >
@@ -1870,24 +1927,46 @@ export default function QuizScreen({
             (v0.4.5) stands on its own at the top, its tail pointing down
             at the card where the mascot is. */}
         {step.layout === 'peekCards' ? null : step.bubble && step.bubbleLayout === 'solo' ? (
-          <View style={styles.soloHead}>
+          <View style={[styles.soloHead, step.bubbleMascot && styles.soloHeadTall]}>
             {/* Texture, same family as the other pages' blobs: a dome
-                rising from behind the card, and a few dots. */}
+                rising from behind the card, and a few dots. The two on
+                the right make way when he is leaning in over there. */}
             <View pointerEvents="none" style={styles.soloDecor}>
               <View style={styles.soloDome} />
               <View style={[styles.soloDot, { width: 46, height: 46, top: -20, left: '30%' }]} />
               <View style={[styles.soloDot, { width: 12, height: 12, top: -2, left: '68%' }]} />
-              <View style={[styles.soloDot, { width: 28, height: 28, top: -14, right: 10 }]} />
-              <View style={[styles.soloDot, styles.soloDotDeep, { width: 12, height: 12, top: 56, right: 38 }]} />
+              {step.bubbleMascot ? null : (
+                <>
+                  <View style={[styles.soloDot, { width: 28, height: 28, top: -14, right: 10 }]} />
+                  <View style={[styles.soloDot, styles.soloDotDeep, { width: 12, height: 12, top: 56, right: 38 }]} />
+                </>
+              )}
             </View>
+
+            {/* He leans in over the top-right corner, behind the bubble
+                and past the edge of the page. The artwork is drawn cut
+                off on its right-hand side, which is why it hangs over
+                that edge -- see soloMascot and CORNER_GEOMETRY. */}
+            {step.bubbleMascot && MASCOT_SCENES[step.bubbleMascot] ? (
+              <>
+                {/* Both marks sit ABOVE the bubble's top edge: beside it
+                    there is only a few points between the bubble and his
+                    crown, and anything put there is behind the bubble. */}
+                <View pointerEvents="none" style={[styles.soloSpark, { right: 74, bottom: 133, transform: [{ rotate: '-55deg' }] }]} />
+                <View pointerEvents="none" style={[styles.soloSpark, { right: 92, bottom: 119, transform: [{ rotate: '-20deg' }] }]} />
+                <Mascot source={MASCOT_SCENES[step.bubbleMascot]} style={styles.soloMascot} />
+              </>
+            ) : null}
+
             <View style={styles.soloBubble}>
               {step.bubble.map((line) => (
                 <Text key={line} style={styles.askText}>
                   {line}
                 </Text>
               ))}
+              {subtitle ? <Text style={styles.soloSub}>{subtitle}</Text> : null}
             </View>
-            <View style={styles.soloTail} />
+            {step.bubbleMascot ? null : <View style={styles.soloTail} />}
           </View>
         ) : step.bubble ? (
           <View style={styles.askRow}>
@@ -1911,7 +1990,9 @@ export default function QuizScreen({
         ) : (
           <Text style={styles.title}>{step.title}</Text>
         )}
-        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        {/* A solo bubble carries its own subtitle inside it (v0.4.7), so
+            it must not also be drawn under the header. */}
+        {subtitle && step.bubbleLayout !== 'solo' ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         {renderStepBody()}
       </ScrollView>
 
@@ -2288,6 +2369,10 @@ const styles = StyleSheet.create({
   // --- the solo bubble (v0.4.5) ------------------------------------------
   // marginTop leaves room for the dot that peeks over the bubble's top.
   soloHead: { marginTop: 24, marginBottom: 4 },
+  // A little more room above the bubble when he is leaning in over it,
+  // so his crown clears its top edge instead of being cut off by the top
+  // of the scroll area.
+  soloHeadTall: { marginTop: 34 },
   soloDecor: { ...StyleSheet.absoluteFillObject },
   // Far bigger than the space it shows in: only its top rises between
   // the bubble and the card, and the card is drawn over the rest.
@@ -2302,13 +2387,43 @@ const styles = StyleSheet.create({
   },
   soloDot: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#e2ebfa' },
   soloDotDeep: { backgroundColor: '#d3e2f8' },
+  // Leaning in over the corner. Overrides every number
+  // components/Mascot.js sets for the corner mascot on the Today screen.
+  //
+  // The 22pt overhang is the whole trick: the artwork is cut off flush
+  // with its own right-hand side (see CORNER_GEOMETRY in brandArt), the
+  // scroll area is full-bleed, and 16pt of that overhang is the page's
+  // side margin -- so the cut lands 6pt beyond the screen and never
+  // shows. His height follows the art's own ratio, and is as tall as
+  // fits between the top of the scroll area and the bubble on a 393pt
+  // phone. Bigger text grows the bubble downwards, which moves him down
+  // with it rather than cropping him.
+  soloMascot: {
+    position: 'absolute',
+    right: -22,
+    bottom: -4,
+    width: CORNER_MASCOT_W,
+    height: CORNER_MASCOT_W / CORNER_GEOMETRY.aspect,
+    alignSelf: 'auto',
+    marginTop: 0,
+    marginRight: 0,
+  },
+  soloSpark: {
+    position: 'absolute',
+    width: 16,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.accent,
+    opacity: 0.55,
+  },
+  soloSub: { fontSize: 15, lineHeight: 19, color: COLORS.textSoft, marginTop: 6 },
   // Hugs its one line of text rather than stretching across the page.
   soloBubble: {
     alignSelf: 'flex-start',
     maxWidth: '84%',
     backgroundColor: COLORS.card,
     borderRadius: 26,
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 22,
     shadowColor: '#152a4a',
     shadowOpacity: 0.07,
@@ -2482,7 +2597,7 @@ const styles = StyleSheet.create({
   },
   dialSlider: { width: '100%' },
   dialHint: { fontSize: 15, color: COLORS.textSoft, marginTop: 8 },
-  scroll: { flex: 1 },
+  scroll: { flex: 1, marginHorizontal: -SPACE.screen },
   title: { fontSize: 24, fontWeight: '700', color: '#1a1a1a', marginBottom: 6, marginTop: 8 },
   subtitle: { fontSize: 15, color: '#777', marginBottom: 18 },
   bigValue: { fontSize: 33, fontWeight: '700', color: '#4f8ef7', textAlign: 'center', marginBottom: 8, marginTop: 16 },
@@ -2860,23 +2975,65 @@ const styles = StyleSheet.create({
   unitBtnActive: { backgroundColor: '#4f8ef7' },
   unitBtnText: { fontSize: 15, fontWeight: '600', color: '#555' },
   unitBtnTextActive: { color: '#fff' },
-  bodyFatGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  bodyFatCard: {
-    width: '48%',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e3e3e8',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
+  // --- the body-fat grid (v0.4.7) ---------------------------------------
+  bfGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginTop: 2 },
+  bfHit: { width: '48.6%', marginBottom: 10 },
+  bfCard: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    paddingTop: 8,
+    paddingBottom: 8,
     alignItems: 'center',
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
-  // height fixed, width auto via resizeMode: 'contain' — the reference
-  // images aren't all exactly the same aspect ratio (male ones are
-  // slightly shorter/wider than female ones), so a fixed height keeps every
-  // card the same size without stretching or cropping any of them.
-  bodyFatImage: { width: '100%', height: 150, marginBottom: 8 },
-  bodyFatLabel: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  // The picture sits on its own pale tile rather than on the card, which
+  // is what keeps eight different photographs looking like one set.
+  // aspectRatio, not a fixed height, so the tiles keep their shape on
+  // every phone; the picture is contained inside, never cropped.
+  bfTile: {
+    width: '53%',
+    aspectRatio: 0.69,
+    borderRadius: 14,
+    backgroundColor: '#e6f0fd',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  bfImage: { width: '100%', height: '100%' },
+  bfLabel: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginTop: 4 },
+  // Empty ring and filled check share a spot; the check fades in over it.
+  bfRadio: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#bcd6f6',
+  },
+  bfCheck: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bfTint: { ...StyleSheet.absoluteFillObject, borderRadius: 20, backgroundColor: 'rgba(47,128,240,0.06)' },
+  bfBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 20,
+    borderWidth: 2.5,
+    borderColor: COLORS.accent,
+  },
   navRow: { flexDirection: 'row', paddingTop: 14, gap: 12 },
   backBtn: {
     flex: 1,
