@@ -21,6 +21,7 @@ import {
   CORNER_GEOMETRY,
   HEIGHT_GEOMETRY,
   MASCOT_PEEK,
+  MASCOT_POSES,
   MASCOT_SCENES,
   MASCOT_WAVE_BIG,
   PEEK_GEOMETRY,
@@ -31,7 +32,6 @@ import {
   QUIZ_STEPS,
   BODY_FAT_OPTIONS,
   BODY_FAT_IMAGES,
-  GOAL_IMAGES,
   ACTIVITY_IMAGES,
   TRAINING_IMAGES,
   DIET_IMAGES,
@@ -806,6 +806,101 @@ function WeightCard({ answers, value, range, onChange, switchUnit, scene, onSlid
   );
 }
 
+// --- The goal page's three cards (v0.4.9) -------------------------------
+//
+// Each card has the mascot ACTING OUT its goal, and acting it out for
+// real: these are the same seven animations the corner mascot rotates
+// through (data/brandArt.js), playing in the card. He lifts on Gain,
+// meditates on Maintain, runs on Lose.
+//
+// The run is that file mirrored. All seven poses were drawn facing left,
+// which is right for a mascot in the top-right corner and wrong for one
+// running across a card -- he would be sprinting off the side of it.
+//
+// Each sign keeps its own colour, as drawn: blue up, green level, red
+// down. The inks are the app's own three (accent / good / over) rather
+// than the mockup's neon versions -- #36e844 on a pale green disc is
+// 1.6:1, and these little signs are the one part of the card that has
+// to be legible at a glance. The tones are a hint, not a verdict:
+// nothing here is the "good" option.
+const GOAL_TONES = {
+  up: { oval: '#e9f2fe', badge: '#d3e6fc', icon: 'arrow-up', ink: COLORS.accent },
+  level: { oval: '#ecf7ec', badge: '#d7eed6', icon: 'equal', ink: COLORS.good },
+  down: { oval: '#fdeeee', badge: '#fbdcda', icon: 'arrow-down', ink: COLORS.over },
+};
+const GOAL_OVAL_W = 116;
+const GOAL_OVAL_H = 156;
+// The seven poses share a canvas with room around the art for the jump
+// and the sleep, so the canvas has to be bigger than the broccoli you
+// want: at 122 he comes out about 95 x 119, which fills the oval and
+// still leaves the badge above his crown.
+const GOAL_POSE_W = 122;
+// The seven poses share one 236x262 canvas so he cannot jump when the
+// pose changes -- see MASCOT_POSE_FILES. Keeping that ratio here is what
+// makes the three cards agree with each other.
+const GOAL_POSE_H = (GOAL_POSE_W * 262) / 236;
+
+function GoalCard({ option, selected, onPress }) {
+  const tone = GOAL_TONES[option.tone] || GOAL_TONES.level;
+  const progress = useRef(null);
+  if (!progress.current) progress.current = new Animated.Value(selected ? 1 : 0);
+  const p = progress.current;
+
+  useEffect(() => {
+    Animated.timing(p, {
+      toValue: selected ? 1 : 0,
+      duration: SELECT_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [selected, p]);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${option.label}. ${option.sub}`}
+    >
+      <View style={styles.goalCard}>
+        <Animated.View pointerEvents="none" style={[styles.goalTint, { opacity: p }]} />
+
+        <View style={styles.goalArt}>
+          {/* A circle stretched downwards: a rounded box this tall would
+              read as a pill with flat sides, not the oval as drawn. */}
+          <View pointerEvents="none" style={[styles.goalOval, { backgroundColor: tone.oval }]} />
+          {/* Behind him on purpose -- his crown crosses it, which is
+              what stops the badge looking stuck on. */}
+          <View style={[styles.goalBadge, { backgroundColor: tone.badge }]}>
+            <MaterialCommunityIcons name={tone.icon} size={22} color={tone.ink} />
+          </View>
+          <Mascot
+            source={MASCOT_POSES[option.pose]}
+            style={[styles.goalPose, option.flip && styles.goalPoseFlipped]}
+          />
+        </View>
+
+        <View style={styles.goalText}>
+          <Text style={styles.goalLabel}>{option.label}</Text>
+          <Text style={styles.goalSub}>{option.sub}</Text>
+        </View>
+
+        <View style={styles.goalRadio} />
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.goalCheck,
+            { opacity: p, transform: [{ scale: p.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }] },
+          ]}
+        >
+          <MaterialCommunityIcons name="check" size={16} color="#fff" />
+        </Animated.View>
+        <Animated.View pointerEvents="none" style={[styles.goalBorder, { opacity: p }]} />
+      </View>
+    </Pressable>
+  );
+}
+
 // --- One tile in the body-fat grid (v0.4.7) -----------------------------
 //
 // A reference picture on a pale tile, the range under it, and a ring in
@@ -1288,46 +1383,25 @@ export default function QuizScreen({
         );
       }
 
-      // The goal step shows three square icon tiles stacked vertically
-      // instead of plain text — see the `layout` flag and GOAL_IMAGES in
-      // data/quizQuestions.js. Each tile is small enough (unlike the
-      // original full-width portrait "card" images) that all three still
-      // fit on one screen with no scrolling. These icon images don't have
-      // any text baked in, so the label is rendered separately below each
-      // tile here. Selection can't be shown by recoloring the image itself
-      // (each icon already has its own fixed theme color), so it's shown
-      // externally instead: a blue ring around the tile plus a checkmark
-      // badge in the corner, same scheme as before.
-      if (step.layout === 'imageCards') {
+      // The goal step (v0.4.9): three wide cards with the mascot acting
+      // out each goal -- see GoalCard above. It replaced three static
+      // icons; the pictures are still in the assets repo, unused.
+      if (step.layout === 'goalCards') {
         return (
-          <View style={styles.imageCardStack}>
+          <View style={styles.goalStack}>
             {options.map((opt) => {
-              const selected = answers[step.key] === opt.value;
-              const source = GOAL_IMAGES[opt.value];
-              if (!source) {
+              if (!MASCOT_POSES[opt.pose]) {
                 throw new Error(
-                  `No image for goal option "${opt.value}" — add it to GOAL_IMAGES in data/quizQuestions.js`
+                  `No animation for goal option "${opt.value}" — its \`pose\` must name one in MASCOT_POSE_FILES (data/brandArt.js)`
                 );
               }
               return (
-                <TouchableOpacity
+                <GoalCard
                   key={opt.value}
-                  style={styles.imageCardTile}
+                  option={opt}
+                  selected={answers[step.key] === opt.value}
                   onPress={() => update({ [step.key]: opt.value })}
-                  activeOpacity={0.8}
-                >
-                  <View style={[styles.imageCardSquare, selected && styles.imageCardSquareSelected]}>
-                    <Image source={source} style={styles.imageCardPicture} resizeMode="contain" />
-                    {selected ? (
-                      <View style={styles.imageCardCheck}>
-                        <Text style={styles.imageCardCheckText}>✓</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Text style={[styles.imageCardLabel, selected && styles.imageCardLabelSelected]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
+                />
               );
             })}
           </View>
@@ -1988,7 +2062,20 @@ export default function QuizScreen({
             </View>
           </View>
         ) : (
-          <Text style={styles.title}>{step.title}</Text>
+          // A plain title. `bigTitle` (v0.4.9) is the goal page's
+          // version of it: the same words, twice the size, with a few
+          // pale circles behind them instead of a mascot.
+          <View style={[styles.titleWrap, step.bigTitle && styles.titleWrapBig]}>
+            {step.bigTitle ? (
+              <View pointerEvents="none" style={styles.titleDecor}>
+                <View style={[styles.titleBlob, { width: 96, height: 96, top: -18, right: 10 }]} />
+                <View style={[styles.titleBlob, { width: 44, height: 44, top: 36, right: 120 }]} />
+                <View style={[styles.soloDot, { width: 20, height: 20, top: 2, right: 92 }]} />
+                <View style={[styles.soloDot, { width: 26, height: 26, top: 60, right: 16 }]} />
+              </View>
+            ) : null}
+            <Text style={[styles.title, step.bigTitle && styles.titleBig]}>{step.title}</Text>
+          </View>
         )}
         {/* A solo bubble carries its own subtitle inside it (v0.4.7), so
             it must not also be drawn under the header. */}
@@ -2599,6 +2686,22 @@ const styles = StyleSheet.create({
   dialHint: { fontSize: 15, color: COLORS.textSoft, marginTop: 8 },
   scroll: { flex: 1, marginHorizontal: -SPACE.screen },
   title: { fontSize: 24, fontWeight: '700', color: '#1a1a1a', marginBottom: 6, marginTop: 8 },
+  // The wrapper exists for the pale circles behind a big title; it adds
+  // nothing of its own to the pages that still use the plain one.
+  titleWrap: {},
+  titleWrapBig: { marginTop: 4, marginBottom: 16 },
+  titleDecor: { ...StyleSheet.absoluteFillObject },
+  // Paler than the dots that go with a bubble: these sit under type,
+  // where anything stronger reads as a box behind the words.
+  titleBlob: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#eaf1fb' },
+  titleBig: {
+    fontSize: 32,
+    lineHeight: 40,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginTop: 0,
+    marginBottom: 0,
+  },
   subtitle: { fontSize: 15, color: '#777', marginBottom: 18 },
   bigValue: { fontSize: 33, fontWeight: '700', color: '#4f8ef7', textAlign: 'center', marginBottom: 8, marginTop: 16 },
   // No fixed height here on purpose — DragSlider now renders as a tall
@@ -2641,44 +2744,87 @@ const styles = StyleSheet.create({
   },
   squareOptionSymbol: { fontSize: 40, fontWeight: '700', color: '#1a1a1a', marginBottom: 4 },
   squareOptionLabel: { fontSize: 22, fontWeight: '700', color: '#1a1a1a' },
-  // Three tiles stacked vertically and centered — each one is small enough
-  // (unlike the old full-width portrait cards) that all three plus their
-  // labels still fit on one screen with plenty of room to spare.
-  imageCardStack: { alignItems: 'center' },
-  imageCardTile: { width: '46%', alignItems: 'center', marginBottom: 18 },
-  imageCardSquare: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: 18,
-    borderWidth: 3,
-    borderColor: 'transparent',
-    backgroundColor: '#fff',
-    position: 'relative',
+  // --- the goal page's cards (v0.4.9) -----------------------------------
+  goalStack: {},
+  goalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingLeft: 8,
+    paddingRight: 14,
+    marginBottom: 12,
+    borderRadius: 24,
+    backgroundColor: COLORS.card,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
-  imageCardSquareSelected: { borderColor: '#4f8ef7' },
-  imageCardPicture: { width: '100%', height: '100%', borderRadius: 15 },
-  imageCardCheck: {
+  // The art's own box: the oval is painted behind, and the badge and the
+  // animation are placed inside it.
+  goalArt: { width: GOAL_OVAL_W, height: GOAL_OVAL_H },
+  goalOval: {
     position: 'absolute',
-    top: -10,
-    right: -10,
+    left: 0,
+    top: (GOAL_OVAL_H - GOAL_OVAL_W) / 2,
+    width: GOAL_OVAL_W,
+    height: GOAL_OVAL_W,
+    borderRadius: GOAL_OVAL_W / 2,
+    transform: [{ scaleY: GOAL_OVAL_H / GOAL_OVAL_W }],
+  },
+  goalBadge: {
+    position: 'absolute',
+    top: 2,
+    alignSelf: 'center',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Overrides every number components/Mascot.js sets for the corner.
+  goalPose: {
+    position: 'absolute',
+    bottom: 2,
+    alignSelf: 'center',
+    width: GOAL_POSE_W,
+    height: GOAL_POSE_H,
+    marginTop: 0,
+    marginRight: 0,
+  },
+  goalPoseFlipped: { transform: [{ scaleX: -1 }] },
+  goalText: { flex: 1, marginLeft: 14, paddingRight: 30 },
+  goalLabel: { fontSize: 22, fontWeight: '800', color: COLORS.text },
+  goalSub: { fontSize: 16, color: COLORS.textMuted, marginTop: 4 },
+  goalRadio: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: '#4f8ef7',
-    borderWidth: 2,
-    borderColor: '#fff',
-    justifyContent: 'center',
+    borderWidth: 2.5,
+    borderColor: '#b9c2d6',
+  },
+  goalCheck: {
+    position: 'absolute',
+    top: 13,
+    right: 13,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: COLORS.accent,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  imageCardCheckText: { color: '#fff', fontSize: 14, fontWeight: '800' },
-  imageCardLabel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1a1a1a',
-    textAlign: 'center',
-    marginTop: 8,
+  goalTint: { ...StyleSheet.absoluteFillObject, borderRadius: 24, backgroundColor: 'rgba(47,128,240,0.06)' },
+  goalBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 24,
+    borderWidth: 2.5,
+    borderColor: COLORS.accent,
   },
-  imageCardLabelSelected: { color: '#4f8ef7' },
   // --- activityLevel step's illustrated horizontal cards — see the
   // 'activityCards' branch in renderStepBody above and ACTIVITY_IMAGES in
   // data/quizQuestions.js for the actual pictures. Sized generously (18px

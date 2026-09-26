@@ -135,20 +135,20 @@ export const QUIZ_STEPS = [
     key: 'goal',
     type: 'single',
     title: 'What is your goal?',
-    // Renders as three square icon tiles stacked vertically (small enough
-    // that all three still fit on one screen with no scrolling) instead of
-    // the usual plain-text list — see
-    // GOAL_IMAGES below and QuizScreen.js's renderStepBody for the
-    // 'single' step type. Unlike the original portrait "card" images,
-    // these icons don't have any text baked in, so `label` is rendered as
-    // a real <Text> under each tile by QuizScreen.js — it's not just kept
-    // around for later reuse (e.g. a future profile summary row) the way
-    // optionLabel() works for other steps in components/ReportPieces.js.
-    layout: 'imageCards',
+    // v0.4.9: three wide cards, each with the mascot ACTING OUT the goal
+    // -- and acting it out for real: `pose` names one of the seven
+    // animations in data/brandArt.js, the same files the corner mascot
+    // rotates through, so the card is not a picture of him lifting, it
+    // is him lifting. `tone` picks the card's colour and badge in
+    // QuizScreen's GOAL_TONES; `flip` mirrors the run, which was drawn
+    // facing left for the top-right corner and would otherwise sprint
+    // off the side of the card.
+    bigTitle: true,
+    layout: 'goalCards',
     options: [
-      { value: 'gain', label: 'Gain weight' },
-      { value: 'maintain', label: 'Maintain' },
-      { value: 'lose', label: 'Lose weight' },
+      { value: 'gain', label: 'Gain weight', sub: 'Build size and strength', pose: 'curl', tone: 'up' },
+      { value: 'maintain', label: 'Maintain', sub: 'Stay steady and balanced', pose: 'meditate', tone: 'level' },
+      { value: 'lose', label: 'Lose weight', sub: 'Reduce weight gradually', pose: 'run', tone: 'down', flip: true },
     ],
   },
   {
@@ -361,24 +361,14 @@ export const BODY_FAT_IMAGES = {
   },
 };
 
-// Square icon (no text baked in — QuizScreen.js renders the label
-// separately) for each goal option — same "explicit static require(),
-// fails loudly if out of sync" pattern as BODY_FAT_IMAGES above, and same
-// reason these live flat in assets/ rather than a nested subfolder. Named
-// after each image's own original filename (gain_weight.png, etc.) rather
-// than the goal-*.png names used during testing — that's what actually
-// ended up in the Snack project's assets folder, so the code matches that.
-// These filenames stayed the same when the images themselves were swapped
-// from the original tall "card" pictures to these square icons.
-export const GOAL_IMAGES = {
-  gain: assetUri('gain_weight.jpg'),
-  maintain: assetUri('maintain.jpg'),
-  lose: assetUri('lose_weight.jpg'),
-};
+// The goal step had three square icons here (gain_weight.jpg and
+// friends) until v0.4.9, when the mascot's own animations took over the
+// job -- see the `pose` on each of that step's options above. The files
+// are still in the assets repo; nothing points at them any more.
 
 // Illustrated PNG for each activityLevel option — same "explicit static
-// require(), fails loudly if out of sync" pattern as GOAL_IMAGES/
-// BODY_FAT_IMAGES above. Unlike GOAL_IMAGES, these are landscape (roughly
+// require(), fails loudly if out of sync" pattern as
+// BODY_FAT_IMAGES above. Unlike those, these are landscape (roughly
 // 694x489, ~1.42:1) rather than square — each one already has its own
 // light rounded-card background baked in from how Damon generated them, so
 // QuizScreen.js's activityCards icon box is sized to that same aspect
