@@ -156,6 +156,14 @@ export const QUIZ_STEPS = [
     type: 'weight',
     title: 'What is your target weight?',
     condition: (answers) => answers.goal !== 'maintain',
+    // v0.5.0: the weight page's card again, with the walking pose and
+    // two figures on the dial -- where you are and where you are going.
+    // QuizScreen tells this step apart from `weight` by its key, since
+    // both are the same step type.
+    layout: 'dialCard',
+    bubble: ['What is your target weight?'],
+    bubbleLayout: 'solo',
+    mascot: 'target',
   },
   {
     key: 'weightHistory',

@@ -25,6 +25,7 @@ import {
   MASCOT_SCENES,
   MASCOT_WAVE_BIG,
   PEEK_GEOMETRY,
+  TARGET_GEOMETRY,
   WEIGHT_GEOMETRY,
 } from '../data/brandArt';
 import { COLORS, RADIUS, SPACE } from '../utils/theme';
@@ -131,21 +132,30 @@ function buildMinorTicks({ upperValue, lowerValue, step, zoneTop, zoneMid, scale
   return ticks;
 }
 
-// The target-weight ("goalWeight") ruler only makes sense in the direction
+// The target-weight ("goalWeight") step only makes sense in the direction
 // of the chosen goal — if you're trying to gain weight, a target below what
-// you weigh right now isn't a real option, and vice versa for losing. So
-// instead of showing the full weight range like the regular "weight" step
-// does, this shows only your current weight and the correct direction past
-// it (`displayMin`/`displayMax`, fed to DragSlider's minimumValue/
-// maximumValue) — but the current-weight tick itself is shown only for
-// reference, via the "Current weight" marker (see markValue/markLabel
-// below); it can't actually be dragged to, since "gain to the same weight"
-// isn't a real target. `selectMin`/`selectMax` (fed to DragSlider's new
-// valueMin/valueMax) are one unit narrower on that side to enforce that.
+// you weigh right now isn't a real option, and vice versa for losing. That
+// limit lives in `selectMin`/`selectMax` (fed to DragSlider's valueMin/
+// valueMax): they stop one unit short of the current weight on the goal's
+// side, since the current-weight tick is there for reference only — "lose
+// to exactly what I weigh" isn't a target — and everything past it in the
+// wrong direction is out of range.
+//
+// What is DISPLAYED (`displayMin`/`displayMax`, fed to minimumValue/
+// maximumValue) is the whole scale, both directions. Until v0.5.0 this
+// step was a tall ruler and the display was clipped to the goal's side,
+// which kept the irrelevant half of the scale off a control that showed
+// all of itself at once. The dial that replaced it shows nine rows, four
+// of them above the pill, so clipping there would leave the top of the
+// window empty instead: what fills it in Damon's drawing is the scale
+// carrying on past "Current 65 kg" — 66, 67, 68 — which is also what
+// makes it read as a dial rather than a column that dead-ends. Those rows
+// are context, not choices; the clamp above means they can never reach
+// the pill.
+//
 // (goalWeight is never shown at all when the goal is "maintain" — see its
-// `condition` in data/quizQuestions.js — so that case is left as the full
-// range here just as a harmless fallback, not because it's ever actually
-// used.)
+// `condition` in data/quizQuestions.js — so that case is left unclamped
+// here just as a harmless fallback, not because it's ever actually used.)
 function goalWeightRange(answers) {
   const isLb = answers.weightUnit === 'lb';
   const fullRange = isLb ? WEIGHT_LB_RANGE : WEIGHT_KG_RANGE;
@@ -155,7 +165,7 @@ function goalWeightRange(answers) {
 
   if (answers.goal === 'gain') {
     return {
-      displayMin: currentWeightDisplay,
+      displayMin: fullRange.min,
       displayMax: fullRange.max,
       selectMin: Math.min(fullRange.max, currentWeightDisplay + 1),
       selectMax: fullRange.max,
@@ -165,7 +175,7 @@ function goalWeightRange(answers) {
   if (answers.goal === 'lose') {
     return {
       displayMin: fullRange.min,
-      displayMax: currentWeightDisplay,
+      displayMax: fullRange.max,
       selectMin: fullRange.min,
       selectMax: Math.max(fullRange.min, currentWeightDisplay - 1),
       currentWeightDisplay,
@@ -457,17 +467,41 @@ const HC_DIAL_H = 310; // the dial's window: four rows either side of the pill
 const HC_HINT_GAP = 4;
 const HC_HINT_H = 24;
 const HC_PANEL_BOTTOM = 12;
-const HC_PANEL_H =
-  HC_PANEL_TOP + HC_TOGGLE_H + HC_TOGGLE_GAP + HC_DIAL_H + HC_HINT_GAP + HC_HINT_H + HC_PANEL_BOTTOM;
-const HC_CARD_H = HC_PANEL_H + 2 * HC_PAD + 2 * HC_BORDER;
-// The pill's centre line, measured from the top of the card's inside.
-const HC_PILL_Y = HC_PAD + HC_PANEL_TOP + HC_TOGGLE_H + HC_TOGGLE_GAP + HC_DIAL_H / 2;
+// The card's height, and the pill's centre line inside it, follow from
+// whatever dial window the page asked for (below): every page used the
+// same 310 until the target page, which needs its extra two info rows to
+// fit under it, so all three numbers are worked out from one figure.
+const hcPanelH = (dialH) =>
+  HC_PANEL_TOP + HC_TOGGLE_H + HC_TOGGLE_GAP + dialH + HC_HINT_GAP + HC_HINT_H + HC_PANEL_BOTTOM;
+const hcCardH = (dialH) => hcPanelH(dialH) + 2 * HC_PAD + 2 * HC_BORDER;
+const hcPillY = (dialH) => HC_PAD + HC_PANEL_TOP + HC_TOGGLE_H + HC_TOGGLE_GAP + dialH / 2;
 const HC_ART_GAP = 3; // panel -> the foot of the stand
 const HC_ART_RIGHT = 2; // his crown -> the card's right edge
 const HC_ART_MAX_H = 300; // on a wide screen he stops growing and centres instead
 const HC_DASH = 5;
 const HC_DASH_GAP = 3;
 const HC_RING = 11; // the little circle where the line meets the scale
+const HC_WALK_GAP = 9; // spacing of the dots he walks along
+const HC_WALK_DOT = 4;
+const HC_FLAG_W = 30; // the flag he is walking towards
+// How much of each dial row the target page keeps clear on the right for
+// the "Current 65 kg" badge -- and the width the badge itself gets. It is
+// measured off Damon's drawing, where the column of numbers sits at about
+// a quarter of the panel's width rather than in its middle: the badges
+// take the right 46% of every row, so the numbers centre in what is left.
+const HC_DIAL_INSET = 80;
+// The target page's panel, as a share of the card. Wider than the other
+// two because its pill holds a badge as well as the number.
+const HC_TARGET_PANEL_SHARE = 0.485;
+// ...and a shorter dial window than the other two. The target page is the
+// only one with three rows under the card instead of one, which is 120pt
+// more than height and weight have to fit; on the shortest phone the app
+// supports (393x852) the full 310 window pushes "1 kg to lose" off the
+// bottom, and a page whose whole point is the gap between two numbers
+// should not make you scroll to see it. This keeps the pill, the current
+// weight above it and two rows past that -- the shape Damon drew -- and,
+// with the tighter info rows below, brings the last row above the fold.
+const HC_TARGET_DIAL_H = 232;
 const HC_SPARK_LEN = 18;
 const HC_GROUND_H = 22; // the shadow under him, top to bottom
 
@@ -496,6 +530,37 @@ function dashesBetween(from, to) {
   };
 }
 
+// Dots along a curve from `from` to `to`, sagging `sag` points at its
+// middle -- the path he is walking on the target-weight page. Sampled by
+// LENGTH rather than by t, so the spacing stays even where it bends.
+function dotsAlongCurve(from, to, sag, spacing) {
+  // A quadratic sits halfway to its control point at the middle, so the
+  // control goes twice as far down as the sag we want.
+  const cx = (from.x + to.x) / 2;
+  const cy = (from.y + to.y) / 2 + sag * 2;
+  const at = (t) => ({
+    x: (1 - t) * (1 - t) * from.x + 2 * (1 - t) * t * cx + t * t * to.x,
+    y: (1 - t) * (1 - t) * from.y + 2 * (1 - t) * t * cy + t * t * to.y,
+  });
+  const steps = 60;
+  const lens = [0];
+  let prev = at(0);
+  for (let i = 1; i <= steps; i++) {
+    const p = at(i / steps);
+    lens.push(lens[i - 1] + Math.sqrt((p.x - prev.x) ** 2 + (p.y - prev.y) ** 2));
+    prev = p;
+  }
+  const total = lens[steps];
+  const dots = [];
+  for (let d = spacing; d < total - spacing / 2; d += spacing) {
+    let i = 1;
+    while (i < lens.length && lens[i] < d) i++;
+    const span = lens[i] - lens[i - 1] || 1;
+    dots.push(at((i - 1 + (d - lens[i - 1]) / span) / steps));
+  }
+  return dots;
+}
+
 // --- The card itself ----------------------------------------------------
 //
 // Height and weight are the same picture with different artwork, so they
@@ -512,6 +577,11 @@ function DialCard({
   onUnit,
   dial,
   info,
+  // The target-weight page's dial has to hold two badges, so its panel
+  // takes a bigger share of the card than height's and weight's.
+  panelShare = HC_PANEL_SHARE,
+  // ...and a shorter window, so its three info rows clear the fold.
+  dialHeight = HC_DIAL_H,
   onSlidingStart,
   onSlidingComplete,
 }) {
@@ -519,18 +589,24 @@ function DialCard({
   // anything is visible, same as the peeking page.
   const [cardW, setCardW] = useState(361);
   const g = geometry;
+  // Everything that fixes this card's height comes off the one figure.
+  const panelH = hcPanelH(dialHeight);
+  const cardH = hcCardH(dialHeight);
+  const pillCy = hcPillY(dialHeight);
 
   // --- where everything goes, inside the border ---
   const innerW = cardW - 2 * HC_BORDER;
-  const panelW = Math.min(HC_PANEL_MAX, Math.round(innerW * HC_PANEL_SHARE));
+  const panelW = Math.min(HC_PANEL_MAX, Math.round(innerW * panelShare));
   const regionLeft = HC_PAD + panelW + HC_ART_GAP;
-  const regionW = innerW - regionLeft - HC_ART_RIGHT;
+  // A pose that walks needs somewhere to walk to: the flag stands in
+  // this strip, to the right of him.
+  const regionW = innerW - regionLeft - HC_ART_RIGHT - (g.flagZone || 0);
   const artW = Math.max(0, Math.min(regionW, HC_ART_MAX_H * g.aspect));
   const artH = artW / g.aspect;
   const artLeft = regionLeft + (regionW - artW) / 2;
   // Hung from the pill rather than stood on the card's floor: the pill's
   // height is fixed by the dial, and the art is placed against it.
-  const artTop = HC_PILL_Y - g.pillY * artH;
+  const artTop = pillCy - g.pillY * artH;
   const at = (fx, fy) => ({ x: artLeft + fx * artW, y: artTop + fy * artH });
 
   // The line out of the pill. Height's runs level into the stick, so it
@@ -541,13 +617,24 @@ function DialCard({
   const lineFrom = anchored
     ? {
         x: pillRight - (DIAL_COMPACT_HEIGHT / 2) * (1 - Math.SQRT1_2),
-        y: HC_PILL_Y + (DIAL_COMPACT_HEIGHT / 2) * Math.SQRT1_2,
+        y: pillCy + (DIAL_COMPACT_HEIGHT / 2) * Math.SQRT1_2,
       }
-    : { x: pillRight, y: HC_PILL_Y };
+    : { x: pillRight, y: pillCy };
   const lineTo = anchored
     ? at(g.anchor.x, g.anchor.y)
-    : { x: artLeft + g.stickRight * artW, y: HC_PILL_Y };
-  const line = dashesBetween(lineFrom, lineTo);
+    : { x: artLeft + g.stickRight * artW, y: pillCy };
+  // The third kind: a dotted path curving from the pill, behind him, to
+  // the flag he is walking towards.
+  const flag = g.flag ? at(g.flag.x, g.flag.y) : null;
+  const walk = flag
+    ? dotsAlongCurve(
+        { x: pillRight - (DIAL_COMPACT_HEIGHT / 2) * (1 - Math.SQRT1_2), y: pillCy + (DIAL_COMPACT_HEIGHT / 2) * Math.SQRT1_2 },
+        { x: flag.x - HC_FLAG_W / 2, y: flag.y },
+        g.pathSag * artH,
+        HC_WALK_GAP
+      )
+    : null;
+  const line = flag ? null : dashesBetween(lineFrom, lineTo);
 
   // The disc behind his crown, kept inside the card's rounded edge.
   const haloD = g.halo.size * artW;
@@ -568,7 +655,7 @@ function DialCard({
     <View>
       <View
         testID={`${testPrefix}-card`}
-        style={[styles.hcCard, { height: HC_CARD_H }]}
+        style={[styles.hcCard, { height: cardH }]}
         onLayout={(e) => {
           const w = Math.round(e.nativeEvent.layout.width);
           if (w && w !== cardW) setCardW(w);
@@ -611,6 +698,22 @@ function DialCard({
               />
             );
           })}
+
+          {/* The walk: the dots and the flag are drawn here, under him,
+              so the path passes BEHIND him rather than over his legs. */}
+          {walk ? (
+            <View testID={`${testPrefix}-walk`} style={StyleSheet.absoluteFill}>
+              {walk.map((p, i) => (
+                <View key={`walk${i}`} style={[styles.hcWalkDot, { left: p.x - HC_WALK_DOT / 2, top: p.y - HC_WALK_DOT / 2 }]} />
+              ))}
+            </View>
+          ) : null}
+          {flag ? (
+            <View testID={`${testPrefix}-flag`} style={[styles.hcFlag, { left: flag.x - HC_FLAG_W / 2, top: flag.y - HC_FLAG_W }]}>
+              <MaterialCommunityIcons name="flag-variant" size={HC_FLAG_W} color="#bcd9f5" />
+              <View style={styles.hcFlagGreen} />
+            </View>
+          ) : null}
         </View>
 
         <Mascot source={scene} style={[styles.hcArt, { left: artLeft, top: artTop, width: artW, height: artH }]} />
@@ -639,7 +742,7 @@ function DialCard({
           </View>
         ) : null}
 
-        <View testID={`${testPrefix}-panel`} style={[styles.hcPanel, { width: panelW, height: HC_PANEL_H }]}>
+        <View testID={`${testPrefix}-panel`} style={[styles.hcPanel, { width: panelW, height: panelH }]}>
           <View style={styles.hcToggle}>
             {units.map(([value, label]) => {
               const on = value === unit;
@@ -670,13 +773,19 @@ function DialCard({
             dialChevrons
             dialTicks
             rowHeight={HC_ROW_H}
-            trackLength={HC_DIAL_H}
+            trackLength={dialHeight}
             minimumValue={dial.min}
             maximumValue={dial.max}
             step={1}
             value={dial.value}
             unitLabel={dial.unitLabel}
             formatLabel={dial.formatLabel}
+            valueMin={dial.selectMin}
+            valueMax={dial.selectMax}
+            markValue={dial.markValue}
+            markLabel={dial.markLabel}
+            dialBadge={dial.badge}
+            dialInset={dial.inset}
             minimumTrackTintColor={COLORS.accent}
             onValueChange={dial.onChange}
             onSlidingStart={onSlidingStart}
@@ -692,16 +801,19 @@ function DialCard({
         {/* Top layer: the dashed line, drawn over the artwork so it reads
             across the stick's face or down to the scale. elevation is
             only there to beat the panel's own in Android's draw order;
-            with no background it casts nothing. */}
-        <View
-          testID={`${testPrefix}-connector`}
-          pointerEvents="none"
-          style={[styles.hcLine, line.box]}
-        >
-          {Array.from({ length: line.count }, (_, i) => (
-            <View key={i} style={[styles.hcDash, { left: i * (HC_DASH + HC_DASH_GAP) }]} />
-          ))}
-        </View>
+            with no background it casts nothing. The walking page has no
+            line here -- its path is under him, above. */}
+        {line ? (
+          <View
+            testID={`${testPrefix}-connector`}
+            pointerEvents="none"
+            style={[styles.hcLine, line.box]}
+          >
+            {Array.from({ length: line.count }, (_, i) => (
+              <View key={i} style={[styles.hcDash, { left: i * (HC_DASH + HC_DASH_GAP) }]} />
+            ))}
+          </View>
+        ) : null}
         {anchored ? (
           <View
             pointerEvents="none"
@@ -710,11 +822,30 @@ function DialCard({
         ) : null}
       </View>
 
-      <View style={styles.hcInfo}>
-        <View style={styles.hcInfoDisc}>
-          <MaterialCommunityIcons name={info.icon} size={24} color={COLORS.text} />
-        </View>
-        <Text style={styles.hcInfoText}>{info.text}</Text>
+      {/* One row per fact. Height and weight have one; the target has
+          three, with a rule between them. */}
+      <View testID={`${testPrefix}-info`} style={[styles.hcInfo, info.length > 1 && styles.hcInfoTight]}>
+        {info.map((row, i) => (
+          <View
+            key={row.icon}
+            // One fact under the card gets a roomy row; three get a
+            // tighter one, or the third falls off the bottom of a small
+            // phone. 46 is the disc plus its padding -- nothing is
+            // squeezed, only the air around it.
+            style={[styles.hcInfoRow, info.length > 1 && styles.hcInfoRowTight, i > 0 && styles.hcInfoRowNext]}
+          >
+            <View style={styles.hcInfoDisc}>
+              <MaterialCommunityIcons name={row.icon} size={24} color={row.accent ? COLORS.accent : COLORS.text} />
+            </View>
+            {row.pill ? (
+              <View style={styles.hcInfoPill}>
+                <Text style={styles.hcInfoText}>{row.text}</Text>
+              </View>
+            ) : (
+              <Text style={[styles.hcInfoText, row.accent && styles.hcInfoTextAccent]}>{row.text}</Text>
+            )}
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -774,7 +905,7 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
         formatLabel: isCm ? undefined : formatFeetInches,
         onChange: onDial,
       }}
-      info={{ icon: 'ruler', text: `Height: ${isCm ? `${cm} cm` : `${feet}' ${inches}"`}` }}
+      info={[{ icon: 'ruler', text: `Height: ${isCm ? `${cm} cm` : `${feet}' ${inches}"`}` }]}
       onSlidingStart={onSlidingStart}
       onSlidingComplete={onSlidingComplete}
     />
@@ -799,7 +930,71 @@ function WeightCard({ answers, value, range, onChange, switchUnit, scene, onSlid
       unit={isLb ? 'lb' : 'kg'}
       onUnit={switchUnit}
       dial={{ min: range.min, max: range.max, value, unitLabel: isLb ? 'lbs' : 'kg', onChange }}
-      info={{ icon: 'scale-bathroom', text: `Weight: ${value} ${isLb ? 'lbs' : 'kg'}` }}
+      info={[{ icon: 'scale-bathroom', text: `Weight: ${value} ${isLb ? 'lbs' : 'kg'}` }]}
+      onSlidingStart={onSlidingStart}
+      onSlidingComplete={onSlidingComplete}
+    />
+  );
+}
+
+// The target-weight page (v0.5.0). The same card again, with three
+// things the other two do not have:
+//   - the dial carries TWO figures, the one you are moving and the one
+//     you started at, so the panel is wider and each row keeps a strip
+//     clear on the right for the "Current" badge;
+//   - he is walking, in an animation rather than a still, along a dotted
+//     path towards a flag;
+//   - the row under the card is three rows: from, to, and the gap.
+function TargetCard({
+  answers,
+  value,
+  current,
+  range,
+  select,
+  onChange,
+  switchUnit,
+  scene,
+  onSlidingStart,
+  onSlidingComplete,
+}) {
+  const isLb = answers.weightUnit === 'lb';
+  const unitLabel = isLb ? 'lbs' : 'kg';
+  const delta = Math.abs(value - current);
+  return (
+    <DialCard
+      testPrefix="target"
+      scene={scene}
+      geometry={TARGET_GEOMETRY}
+      panelShare={HC_TARGET_PANEL_SHARE}
+      dialHeight={HC_TARGET_DIAL_H}
+      units={[
+        ['lb', 'lbs'],
+        ['kg', 'kg'],
+      ]}
+      unit={isLb ? 'lb' : 'kg'}
+      onUnit={switchUnit}
+      dial={{
+        min: range.min,
+        max: range.max,
+        selectMin: select.min,
+        selectMax: select.max,
+        value,
+        unitLabel,
+        onChange,
+        markValue: current,
+        markLabel: `Current ${current} ${unitLabel}`,
+        badge: `Target ${value} ${unitLabel}`,
+        inset: HC_DIAL_INSET,
+      }}
+      info={[
+        { icon: 'scale-bathroom', text: `Current Weight: ${current} ${unitLabel}` },
+        { icon: 'bullseye', text: `Target Weight: ${value} ${unitLabel}`, accent: true },
+        {
+          icon: 'signal-cellular-3',
+          text: `${delta} ${unitLabel} to ${answers.goal === 'gain' ? 'gain' : 'lose'}`,
+          pill: true,
+        },
+      ]}
       onSlidingStart={onSlidingStart}
       onSlidingComplete={onSlidingComplete}
     />
@@ -1772,6 +1967,23 @@ export default function QuizScreen({
       // the scale artwork -- see DialCard. goalWeight keeps the ruler:
       // it is a different question (a target, with your current weight
       // marked on the scale beside it) and has no mockup of its own.
+      if (isGoalWeight && step.layout === 'dialCard') {
+        return (
+          <TargetCard
+            answers={answers}
+            value={clampTo(currentDisplayValue, { min: goalRange.selectMin, max: goalRange.selectMax })}
+            current={goalRange.currentWeightDisplay}
+            range={{ min: range.min, max: range.max }}
+            select={{ min: goalRange.selectMin, max: goalRange.selectMax }}
+            onChange={handleChange}
+            switchUnit={switchWeightUnit}
+            scene={MASCOT_SCENES[step.mascot] || MASCOT_SCENES.target}
+            onSlidingStart={lockScroll}
+            onSlidingComplete={unlockScroll}
+          />
+        );
+      }
+
       if (!isGoalWeight && step.layout === 'dialCard') {
         return (
           <WeightCard
@@ -2536,8 +2748,9 @@ const styles = StyleSheet.create({
   },
 
   // --- the height card (v0.4.5) -----------------------------------------
-  // Height is set inline from HC_CARD_H; every child is placed absolutely
-  // from the HC_ numbers, which is what keeps the line on the pill.
+  // Height is set inline, from the card's own dial window; every child is
+  // placed absolutely from the same numbers, which is what keeps the line
+  // on the pill.
   hcCard: {
     backgroundColor: '#f8fafd',
     borderRadius: 24,
@@ -2643,13 +2856,29 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: COLORS.accent,
   },
+  // The dotted path he walks, and the flag at the end of it.
+  hcWalkDot: {
+    position: 'absolute',
+    width: HC_WALK_DOT,
+    height: HC_WALK_DOT,
+    borderRadius: HC_WALK_DOT / 2,
+    backgroundColor: '#8fc0f0',
+  },
+  hcFlag: { position: 'absolute', width: HC_FLAG_W, alignItems: 'center' },
+  // The little green it stands on: a circle stretched sideways, same
+  // trick as his shadow.
+  hcFlagGreen: {
+    width: 11,
+    height: 11,
+    borderRadius: 5.5,
+    marginTop: -4,
+    backgroundColor: '#d3e6f8',
+    transform: [{ scaleX: 2.6 }],
+  },
+
   hcInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
     marginTop: 20,
-    minHeight: 56,
-    paddingVertical: 7,
+    paddingVertical: 4,
     paddingHorizontal: 16,
     backgroundColor: COLORS.card,
     borderRadius: 18,
@@ -2658,6 +2887,18 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
+  },
+  hcInfoRow: { flexDirection: 'row', alignItems: 'center', gap: 16, minHeight: 56, paddingVertical: 3 },
+  hcInfoRowTight: { minHeight: 44 },
+  hcInfoTight: { marginTop: 14 },
+  // A hairline between rows rather than a gap: three facts about one
+  // journey, not three cards.
+  hcInfoRowNext: { borderTopWidth: 1, borderTopColor: '#eef2f8' },
+  hcInfoPill: {
+    backgroundColor: '#e2edfc',
+    borderRadius: RADIUS.pill,
+    paddingVertical: 7,
+    paddingHorizontal: 16,
   },
   hcInfoDisc: {
     width: 42,
@@ -2668,6 +2909,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   hcInfoText: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  hcInfoTextAccent: { color: COLORS.accent },
 
   // --- the dial's card -------------------------------------------------
   dialCard: {

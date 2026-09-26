@@ -140,6 +140,11 @@ export const MASCOT_SCENES = {
   // page (v0.4.8). 766x1048, 64 KB. See CORNER_GEOMETRY below -- this one
   // has a rule about where it can be put.
   peekRight: assetUri('mascot_peek_right.webp'),
+  // Walking towards the flag with a backpack on, for the target-weight
+  // page (v0.5.0). ANIMATED: 440x568, 16 frames at 63ms -- one walk
+  // cycle, 1.008s, 534 KB. Cut from Damon's 30fps HEVC-with-alpha export
+  // at every other frame, on the seam where the cycle closes cleanest.
+  target: assetUri('mascot_backpack.webp'),
 };
 
 // --- The corner pose's one rule (v0.4.8) -------------------------------
@@ -201,6 +206,40 @@ export const HEIGHT_GEOMETRY = {
   ],
   // The shadow he and the stand cast: centre x, centre y, width.
   ground: { x: 0.45, y: 0.985, w: 0.92 },
+};
+
+export const TARGET_GEOMETRY = {
+  aspect: 440 / 568,
+  // Placement only, same as the weight page: 0.25 is up in his crown,
+  // which leaves him walking across the lower half of the card with the
+  // flag ahead of him.
+  pillY: 0.25,
+  // The flag stands in the empty part of his own box, ahead of his feet:
+  // below his crown nothing he draws reaches past 0.80 of his width in
+  // any frame of the walk, so the flag at 0.90 is clear of him without
+  // the layout having to keep a strip free beside him (flagZone 0), which
+  // is what lets him be as big here as he is on the other two pages.
+  flagZone: 0,
+  flag: { x: 0.9, y: 0.8 },
+  // How far the dotted path sags below a straight line from the dial to
+  // the flag, as a fraction of his height. It is the path he is walking,
+  // so it passes behind him rather than over him.
+  pathSag: 0.24,
+  halo: { x: 0.55, y: 0.25, size: 0.8 },
+  // Three marks off the top right of his crown, fanning out: measured off
+  // the drawing (their centres and angles, as fractions of his box), so
+  // they sit clear of the crown rather than on it. The first one is a
+  // hair above his box, which is why its y is negative.
+  sparks: [
+    { x: 0.82, y: -0.01, angle: -72 },
+    { x: 0.91, y: 0.05, angle: -51 },
+    { x: 0.95, y: 0.13, angle: -20 },
+  ],
+  dots: [
+    { x: 0.12, y: -0.1, size: 0.12 },
+    { x: 1.02, y: 0.28, size: 0.08 },
+  ],
+  ground: { x: 0.52, y: 0.99, w: 0.86 },
 };
 
 export const WEIGHT_GEOMETRY = {

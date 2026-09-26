@@ -48,6 +48,14 @@ const LABEL_WIDTH = 78; // wide enough for labels like 6'11", not just plain num
 export const DIAL_COMPACT_INSET = 2;
 export const DIAL_COMPACT_HEIGHT = 42;
 
+// The pill's contents either sit straight in it (no badge: the pill is
+// only ever the number, and the arrowheads hang off its right end, which
+// is why they are absolute) or travel in a group beside the badge. A
+// wrapper that can be nothing keeps one copy of the markup.
+function PillBits({ wrap, children }) {
+  return wrap ? <View style={styles.dialValueGroup}>{children}</View> : <>{children}</>;
+}
+
 export default function DragSlider({
   value,
   minimumValue = 0,
@@ -93,6 +101,17 @@ export default function DragSlider({
   dialChevrons = false,
   // A short dash between every two rows.
   dialTicks = false,
+  // --- v0.5.0, for the target-weight page's dial ---
+  //
+  // How much of each row's width to keep clear on the right, so a badge
+  // can sit there without landing on the numbers. The numbers, the
+  // dashes and the marked row all centre in what is left, which is what
+  // shifts the whole column to the left of the panel, as drawn.
+  dialInset = 0,
+  // A small outlined badge inside the pill, after the arrowheads
+  // ("Target 64 kg"). It also tightens the pill: the number gives up a
+  // few points to make room for it.
+  dialBadge,
   // Optional: highlights one specific tick with a small label badge next
   // to it (e.g. "Current weight" pointing at 70) — independent of
   // whichever tick is currently selected/dragged. Lives on the ruler
@@ -302,19 +321,31 @@ export default function DragSlider({
     const showDash = isDial && dialTicks && i < tickCount - 1;
     const dashOpacity = showDash ? fade(Math.max(distance, Math.abs(tickValue - step - nearestValue) / step)) : 0;
 
+    // The marked row on a dial is drawn differently from the rest: a
+    // short rule either side of the number, so the eye finds it even
+    // when the badge beside it has scrolled out of the window.
+    const dialMarked = isDial && isMark && !!markLabel;
+    const labelStyle = [
+      styles.tickLabel,
+      isDial && styles.tickLabelDial,
+      compact && styles.tickLabelCompact,
+      isDial && { opacity: dialOpacity },
+      !isDial && isCurrent && { color: minimumTrackTintColor, fontWeight: '700' },
+    ];
+
     ticks.push(
       <View key={tickValue} style={[styles.tick, { top: i * rowHeight - rowHeight / 2, height: rowHeight }]}>
-        <Text
-          style={[
-            styles.tickLabel,
-            isDial && styles.tickLabelDial,
-            compact && styles.tickLabelCompact,
-            isDial && { opacity: dialOpacity },
-            !isDial && isCurrent && { color: minimumTrackTintColor, fontWeight: '700' },
-          ]}
-        >
-          {formatLabel(tickValue)}
-        </Text>
+        {dialMarked ? (
+          <View style={[styles.dialMarkRow, { paddingRight: dialInset }]}>
+            <View style={styles.dialMarkRule} />
+            <Text style={[...labelStyle, styles.dialMarkLabel]}>{formatLabel(tickValue)}</Text>
+            <View style={styles.dialMarkRule} />
+          </View>
+        ) : (
+          <Text style={[...labelStyle, isDial && dialInset ? { paddingRight: dialInset } : null]}>
+            {formatLabel(tickValue)}
+          </Text>
+        )}
         {/* Not rendered at all on the dial rather than hidden: at 111
             ticks an invisible view per row is a hundred nodes doing
             nothing, and a zero-width view still reports its background
@@ -328,15 +359,31 @@ export default function DragSlider({
             ]}
           />
         )}
-        {showDash ? <View style={[styles.dialDash, { opacity: dashOpacity }]} /> : null}
+        {showDash ? (
+          <View style={[styles.dialDash, { opacity: dashOpacity, marginLeft: -5.5 - dialInset / 2 }]} />
+        ) : null}
         {badgeText && (
           <View
             style={[
               styles.markBadge,
+              // On a dial the badge is pinned to the right of the row,
+              // in the strip dialInset keeps clear for it; on a ruler it
+              // sits in the flow, beside the tick, as it always has.
+              isDial && styles.dialMarkBadge,
+              isDial && dialInset ? { width: dialInset - 8 } : null,
               accented && { backgroundColor: '#eaf1ff', borderColor: minimumTrackTintColor },
             ]}
           >
-            <Text style={[styles.markBadgeText, accented && { color: minimumTrackTintColor }]}>
+            <Text
+              style={[
+                styles.markBadgeText,
+                isDial && styles.dialMarkBadgeText,
+                accented && { color: minimumTrackTintColor },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit={isDial}
+              minimumFontScale={0.8}
+            >
               {badgeText}
             </Text>
           </View>
@@ -371,25 +418,53 @@ export default function DragSlider({
           // The pill IS the pointer: fixed at the centre while the column
           // slides behind it. pointerEvents none so it never eats a drag
           // that starts on top of the number.
-          <View style={[styles.dialPointer, compact && styles.dialPointerCompact]} pointerEvents="none">
-            {dialRules ? <View style={styles.dialRule} /> : null}
-            <Text
-              style={[styles.dialValue, compact && styles.dialValueCompact]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.6}
-            >
-              {formatLabel(nearestValue)}
-            </Text>
-            {unitLabel ? <Text style={[styles.dialUnit, compact && styles.dialUnitCompact]}>{unitLabel}</Text> : null}
-            {dialRules ? <View style={styles.dialRule} /> : null}
-            {/* Two arrowheads drawn from borders, the same way the rest of
-                the app draws its small triangles -- no icon font to load
-                and no glyph metrics to fight when centring them. */}
-            {dialChevrons ? (
-              <View style={styles.dialChevrons}>
-                <View style={styles.dialChevronUp} />
-                <View style={styles.dialChevronDown} />
+          <View
+            style={[styles.dialPointer, compact && styles.dialPointerCompact, dialBadge && styles.dialPointerBadged]}
+            pointerEvents="none"
+          >
+            {/* Without a badge these sit straight in the pill, exactly
+                as they have since v0.4.1. With one, they travel together
+                in a group that takes the width the badge leaves and
+                centres them in it -- which puts the number over the
+                column of numbers it belongs to, as drawn, rather than
+                hard against the pill's left end. */}
+            <PillBits wrap={!!dialBadge}>
+              {dialRules ? <View style={styles.dialRule} /> : null}
+              <Text
+                style={[styles.dialValue, compact && styles.dialValueCompact, dialBadge && styles.dialValueBadged]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {formatLabel(nearestValue)}
+              </Text>
+              {unitLabel ? (
+                <Text style={[styles.dialUnit, compact && styles.dialUnitCompact, dialBadge && styles.dialUnitBadged]}>
+                  {unitLabel}
+                </Text>
+              ) : null}
+              {dialRules ? <View style={styles.dialRule} /> : null}
+              {/* Two arrowheads drawn from borders, the same way the rest
+                  of the app draws its small triangles -- no icon font to
+                  load and no glyph metrics to fight when centring them. */}
+              {/* With a badge in the pill the arrowheads join the number
+                  rather than sitting at the pill's right end, which is
+                  where the badge now is. */}
+              {dialChevrons ? (
+                <View style={dialBadge ? styles.dialChevronsInline : styles.dialChevrons}>
+                  <View style={styles.dialChevronUp} />
+                  <View style={styles.dialChevronDown} />
+                </View>
+              ) : null}
+            </PillBits>
+            {dialBadge ? (
+              // The badge stands in the same strip dialInset keeps clear
+              // on every row, so it lines up with the "Current" badge
+              // above or below it.
+              <View style={[styles.dialBadge, dialInset ? { width: dialInset - 8 } : null]}>
+                <Text style={styles.dialBadgeText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {dialBadge}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -427,6 +502,9 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   markBadgeText: { fontSize: 13, fontWeight: '700', color: '#555' },
+  // On a dial the badge has a fixed strip to live in, so its text gives
+  // way a little rather than ending in an ellipsis on a narrow phone.
+  dialMarkBadgeText: { fontSize: 12 },
   pointer: {
     position: 'absolute',
     top: '50%',
@@ -537,15 +615,50 @@ const styles = StyleSheet.create({
     borderTopColor: '#2f80f0',
   },
   // Sits on the bottom edge of its row's box -- exactly halfway to the
-  // next row -- and is centred under the number.
+  // next row -- and is centred under the number. marginLeft is set
+  // inline, because dialInset moves the column's centre.
   dialDash: {
     position: 'absolute',
     bottom: -1,
     left: '50%',
-    marginLeft: -5.5,
     width: 11,
     height: 2,
     borderRadius: 1,
     backgroundColor: '#a9c4ec',
   },
+
+  // --- the marked row and the pill's badge (v0.5.0) --------------------
+  dialMarkRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  dialMarkRule: { width: 18, height: 2, borderRadius: 1, backgroundColor: '#9aa3b5' },
+  // Overrides the dial label's full-width centring: inside the mark row
+  // the number is just one of three things being centred together.
+  dialMarkLabel: { width: 'auto', opacity: 1, color: '#5d6879', fontWeight: '700' },
+  dialMarkBadge: { position: 'absolute', right: 0, marginLeft: 0, paddingHorizontal: 7 },
+  // The pill gives the number a few points back when it has a badge to
+  // hold as well, and the arrowheads move inline.
+  // With a badge the pill holds two things side by side, so its own
+  // padding shrinks and the gap between them is the group's to keep.
+  dialPointerBadged: { paddingHorizontal: 6, gap: 6, justifyContent: 'flex-start' },
+  // The number, its unit and the arrowheads travelling together: it takes
+  // the width the badge does not, and centres them in it.
+  dialValueGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  dialValueBadged: { fontSize: 26 },
+  dialUnitBadged: { fontSize: 14 },
+  dialChevronsInline: { position: 'relative', alignItems: 'center', gap: 3 },
+  dialBadge: {
+    borderWidth: 1.5,
+    borderColor: '#2f80f0',
+    backgroundColor: '#ffffff',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexShrink: 1,
+  },
+  dialBadgeText: { fontSize: 12, fontWeight: '800', color: '#2f80f0' },
 });
