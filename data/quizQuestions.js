@@ -234,45 +234,53 @@ export const QUIZ_STEPS = [
     type: 'single',
     title: 'How active are you each day?',
     subtitle: 'Outside of workouts and gym sessions.',
-    // Renders as four illustrated horizontal cards (Damon's own illustrated
-    // PNG on the left, title/description/step-count badge on the right)
-    // instead of the usual plain-text list — see ACTIVITY_IMAGES below and
-    // QuizScreen.js's renderStepBody for the 'single' step type. `label` is
-    // kept as the short, complete sentence it always was ("I barely move")
-    // since components/ReportPieces.js's optionLabel() still shows it
-    // as-is on the report's profile summary; `description` and `badge` are
-    // fields specific to this card layout, replacing the old `sub`
-    // paragraph that used to cram both ideas into one sentence.
+    // Renders as four horizontal cards: the mascot LIVING that answer on
+    // a tile at the left -- at a desk, on his feet with a clipboard, on a
+    // delivery round, carrying parcels -- with the title, description and
+    // step-count badge beside it. See the 'activityCards' branch in
+    // QuizScreen.js and MASCOT_JOBS in data/brandArt.js; `pose` below
+    // names one of those four animations. Until v0.5.2 the tile held a
+    // still illustration instead.
+    //
+    // `label` is kept as the short, complete sentence it always was ("I
+    // barely move") since components/ReportPieces.js's optionLabel()
+    // still shows it as-is on the report's profile summary; `description`
+    // and `badge` are fields specific to this card layout, replacing the
+    // old `sub` paragraph that used to cram both ideas into one sentence.
     //
     // An earlier version of this step drew its own code-only line-art
-    // figures (components/ActivityIcon.js) instead of image files, same
-    // "no extra assets to manage" reasoning as the weightHistory scale.
-    // Damon then asked for these 4 illustrated images specifically, so this
-    // step now follows the same require()'d-PNG pattern as the goal step
-    // instead — ActivityIcon.js is unused now but left in the project
-    // rather than deleted, in case a future step wants that same approach.
+    // figures (components/ActivityIcon.js) instead of artwork, same "no
+    // extra assets to manage" reasoning as the weightHistory scale. Damon
+    // then drew the four scenes, so this step follows the same named-art
+    // pattern as the goal page instead -- ActivityIcon.js is unused now
+    // but left in the project rather than deleted, in case a future step
+    // wants that same approach.
     layout: 'activityCards',
     options: [
       {
         value: 'barely',
+        pose: 'sitting',
         label: 'I barely move',
         description: 'Sitting most of the day',
         badge: 'Under 5k steps/day',
       },
       {
         value: 'little',
+        pose: 'standing',
         label: 'I move a little bit',
         description: 'Some walking, but mostly sitting',
         badge: '5k–10k steps/day',
       },
       {
         value: 'lot',
+        pose: 'mail',
         label: 'I move a lot',
         description: 'On my feet for much of the day',
         badge: '10k–15k steps/day',
       },
       {
         value: 'super',
+        pose: 'parcel',
         label: 'I am super active',
         description: 'Moving or doing physical work most of the day',
         badge: '15k+ steps/day',
@@ -392,19 +400,10 @@ export const BODY_FAT_IMAGES = {
 // job -- see the `pose` on each of that step's options above. The files
 // are still in the assets repo; nothing points at them any more.
 
-// Illustrated PNG for each activityLevel option — same "explicit static
-// require(), fails loudly if out of sync" pattern as
-// BODY_FAT_IMAGES above. Unlike those, these are landscape (roughly
-// 694x489, ~1.42:1) rather than square — each one already has its own
-// light rounded-card background baked in from how Damon generated them, so
-// QuizScreen.js's activityCards icon box is sized to that same aspect
-// ratio rather than the square box the goal step uses.
-export const ACTIVITY_IMAGES = {
-  barely: assetUri('activity_barely.jpg'),
-  little: assetUri('activity_little.jpg'),
-  lot: assetUri('activity_lot.jpg'),
-  super: assetUri('activity_super.jpg'),
-};
+// The four activityLevel stills went the same way as the goal page's
+// (v0.5.2): each answer now names one of the four animations in
+// MASCOT_JOBS (data/brandArt.js) through its `pose`. The activity_*.jpg
+// files are still in the assets repo; nothing points at them any more.
 
 // Illustrated PNG for each training option — same "explicit static
 // require(), fails loudly if out of sync" pattern as the image maps above.

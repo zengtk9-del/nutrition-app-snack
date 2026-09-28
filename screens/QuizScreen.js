@@ -20,6 +20,8 @@ import Mascot from '../components/Mascot';
 import {
   CORNER_GEOMETRY,
   HEIGHT_GEOMETRY,
+  JOB_ASPECT,
+  MASCOT_JOBS,
   MASCOT_PEEK,
   MASCOT_POSES,
   MASCOT_SCENES,
@@ -33,7 +35,6 @@ import {
   QUIZ_STEPS,
   BODY_FAT_OPTIONS,
   BODY_FAT_IMAGES,
-  ACTIVITY_IMAGES,
   TRAINING_IMAGES,
   DIET_IMAGES,
   DIET_DETAILS,
@@ -554,6 +555,22 @@ const HC_TARGET_PANEL_SHARE = 0.485;
 const HC_TARGET_DIAL_H = 232;
 const HC_SPARK_LEN = 18;
 const HC_GROUND_H = 22; // the shadow under him, top to bottom
+
+// --- The activity-level page (v0.5.2) ---------------------------------
+//
+// The tile is what fixes the card's height: a square of the same pale
+// blue the other pages put their artwork on, with him living inside it.
+// Everything to the right of it -- title, one line about the day, a
+// step-count badge -- stacks in what is left, so a longer description
+// grows the card rather than spilling out of it.
+// 102, not the 114 of a 425pt-wide drawing scaled to this screen: four
+// of these and their gaps have to fit between the question and the
+// buttons on a 393x852 phone, and at the drawing's own size the fourth
+// card's bottom edge lands under the fold.
+const ACT_TILE = 102;
+const ACT_ART_INSET = 3; // tile edge -> the drawing, top and bottom
+const ACT_PAD = 8; // card edge -> tile
+const ACT_GAP = 13; // tile -> the words
 
 const clampTo = (v, range) => Math.max(range.min, Math.min(range.max, v));
 const formatFeetInches = (totalInches) => {
@@ -1845,58 +1862,68 @@ export default function QuizScreen({
         );
       }
 
-      // The activityLevel step shows four illustrated horizontal cards
-      // (Damon's own illustrated PNG + title + short description + a
-      // compact step-count badge) instead of the usual stacked text list —
-      // see the `layout` flag in data/quizQuestions.js and ACTIVITY_IMAGES
-      // there for the actual pictures. Deliberately no red/yellow/green
-      // here (unlike the weightHistory scale above) — none of these
-      // answers should read as a "good" or "bad" choice, so unselected
-      // stays neutral gray/white and selected uses the same plain blue as
-      // every other step. The illustration itself doesn't change color on
-      // selection (unlike the old code-drawn ActivityIcon version) — these
-      // are static images, so only the surrounding card/title/description/
-      // badge/checkmark switch to the selected treatment.
+      // The activity-level page (v0.5.2). Four cards, and on each one
+      // the mascot LIVING that answer: at a desk, on his feet with a
+      // clipboard, out on a delivery round, carrying parcels. They are
+      // animations rather than the stills this page used to show, which
+      // is the whole redesign -- the words were already right.
+      //
+      // Deliberately no red/yellow/green here (unlike the weight-history
+      // scale): none of these answers is a better or worse way to spend
+      // a day, so an unselected card stays neutral and choosing one uses
+      // the same accent blue as every other page. The tile keeps its own
+      // pale blue either way, because it is a frame around a picture,
+      // not a state.
       if (step.layout === 'activityCards') {
         return (
           <View>
             {options.map((opt) => {
               const selected = answers[step.key] === opt.value;
-              const source = ACTIVITY_IMAGES[opt.value];
+              const source = MASCOT_JOBS[opt.pose];
               if (!source) {
                 throw new Error(
-                  `No image for activityLevel option "${opt.value}" — add it to ACTIVITY_IMAGES in data/quizQuestions.js`
+                  `No animation for activityLevel option "${opt.value}" — its \`pose\` must name one in MASCOT_JOBS (data/brandArt.js)`
                 );
               }
+              // Each of the four is drawn to its own width -- his arms
+              // and the parcels reach different distances -- so the tile
+              // scales by that one's ratio rather than a common box.
+              const artH = ACT_TILE - 2 * ACT_ART_INSET;
+              const artW = artH * (JOB_ASPECT[opt.pose] || 0.75);
               return (
                 <TouchableOpacity
                   key={opt.value}
-                  style={[styles.activityCard, selected && styles.activityCardSelected]}
+                  testID={`act-card-${opt.value}`}
+                  style={[styles.actCard, selected && styles.actCardOn]}
                   onPress={() => update({ [step.key]: opt.value })}
-                  activeOpacity={0.8}
+                  activeOpacity={0.85}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`${opt.label}. ${opt.description}. ${opt.badge}`}
                 >
-                  <View style={styles.activityIconBox}>
-                    <Image source={source} style={styles.activityIconImage} resizeMode="contain" />
+                  <View style={styles.actTile}>
+                    {/* The same pale texture the other pages use, so the
+                        tile reads as part of the page rather than as a
+                        photograph's white border. */}
+                    <View pointerEvents="none" style={[styles.actTileDot, { width: 26, height: 26, top: 12, left: 10 }]} />
+                    <View pointerEvents="none" style={[styles.actTileDot, { width: 14, height: 14, top: 62, right: 12 }]} />
+                    <View pointerEvents="none" style={[styles.actTileDot, { width: 34, height: 34, bottom: -8, right: -6 }]} />
+                    <Mascot source={source} style={[styles.actArt, { width: artW, height: artH }]} />
                   </View>
-                  <View style={styles.activityTextCol}>
-                    <Text style={[styles.activityTitle, selected && styles.activityTitleSelected]}>
-                      {opt.label}
-                    </Text>
-                    <Text style={[styles.activityDesc, selected && styles.activityDescSelected]}>
-                      {opt.description}
-                    </Text>
-                    <View style={[styles.activityBadge, selected && styles.activityBadgeSelected]}>
-                      <Text
-                        style={[styles.activityBadgeText, selected && styles.activityBadgeTextSelected]}
-                      >
-                        {opt.badge}
-                      </Text>
+                  <View style={styles.actTextCol}>
+                    <Text style={styles.actTitle}>{opt.label}</Text>
+                    <Text style={styles.actDesc}>{opt.description}</Text>
+                    <View style={styles.actBadge}>
+                      <Text style={styles.actBadgeText}>{opt.badge}</Text>
                     </View>
                   </View>
                   {selected ? (
-                    <View style={styles.activityCheck}>
-                      <Text style={styles.activityCheckText}>✓</Text>
-                    </View>
+                    <>
+                      <View pointerEvents="none" style={styles.actBorder} />
+                      <View style={styles.actCheck}>
+                        <MaterialCommunityIcons name="check-bold" size={16} color="#fff" />
+                      </View>
+                    </>
                   ) : null}
                 </TouchableOpacity>
               );
@@ -1905,16 +1932,6 @@ export default function QuizScreen({
         );
       }
 
-      // The diet step shows illustrated horizontal cards (Damon's own
-      // supplied illustration + bold title + the same short description
-      // used elsewhere + an independent "Learn more" control) instead of
-      // the plain text-only OptionCard every other 'single' step still
-      // falls back to — see the `layout` flag and DIET_IMAGES/DIET_DETAILS
-      // in data/quizQuestions.js. "Learn more" is a nested TouchableOpacity
-      // inside the card's own TouchableOpacity — RN's touch responder
-      // system only fires the innermost element that was actually pressed,
-      // so tapping Learn More never also fires the card's onPress and
-      // selects the diet; no stopPropagation-equivalent is needed.
       if (step.layout === 'illustratedCards') {
         return (
           <View>
@@ -3318,59 +3335,72 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: COLORS.accent,
   },
-  // --- activityLevel step's illustrated horizontal cards — see the
-  // 'activityCards' branch in renderStepBody above and ACTIVITY_IMAGES in
-  // data/quizQuestions.js for the actual pictures. Sized generously (18px
-  // padding, wide icon box) rather than just enough to fit the content, so
-  // the four cards fill most of the screen instead of leaving a large
-  // empty gap above the Back/Next buttons — same reasoning as SCALE_HEIGHT
-  // above for the weightHistory step. activityIconBox is a landscape box
-  // (not square, unlike imageCardSquare above) to match ACTIVITY_IMAGES'
-  // own ~694x489 (~1.42:1) aspect ratio, so resizeMode="contain" doesn't
-  // have to letterbox a big gap on the top/bottom of every icon. ---
-  activityCard: {
+  // --- the activity-level page's four cards (v0.5.2) -------------------
+  //
+  // One row: the animation on its tile, then the words. No red/green
+  // here -- see the branch in renderStepBody for why -- so choosing a
+  // card is the app's own accent blue, drawn as a border over the top of
+  // the card rather than as a wider border on it, which would nudge the
+  // contents by a point as it appeared.
+  actCard: {
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    padding: ACT_PAD,
+    marginBottom: 14,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#e3e3e8',
-    borderRadius: 18,
-    padding: 18,
-    marginBottom: 16,
+    borderColor: '#eef2f8',
+    backgroundColor: COLORS.card,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 2,
   },
-  activityCardSelected: { backgroundColor: '#4f8ef7', borderColor: '#4f8ef7' },
-  activityIconBox: { width: 108, height: 76, marginRight: 14 },
-  activityIconImage: { width: '100%', height: '100%' },
-  activityTextCol: { flex: 1, minWidth: 0 },
-  activityTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a', marginBottom: 4 },
-  activityTitleSelected: { color: '#fff' },
-  activityDesc: { fontSize: 14, color: '#777', lineHeight: 19, marginBottom: 10 },
-  activityDescSelected: { color: '#e6efff' },
-  activityBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#eef4ff',
+  actCardOn: { backgroundColor: '#f5f9ff' },
+  actBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
+    borderWidth: 2.5,
+    borderColor: COLORS.accent,
+  },
+  actTile: {
+    width: ACT_TILE,
+    height: ACT_TILE,
     borderRadius: 20,
-    paddingVertical: 3,
-    paddingHorizontal: 10,
-  },
-  activityBadgeSelected: { backgroundColor: 'rgba(255,255,255,0.25)' },
-  activityBadgeText: { fontSize: 12, fontWeight: '700', color: '#4f8ef7' },
-  activityBadgeTextSelected: { color: '#fff' },
-  activityCheck: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#4f8ef7',
-    borderWidth: 2,
-    borderColor: '#fff',
-    justifyContent: 'center',
+    backgroundColor: '#e6f0fd',
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  activityCheckText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  actTileDot: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#d9e7fa' },
+  // Overrides every number components/Mascot.js sets for the corner.
+  actArt: { alignSelf: 'center', marginTop: 0, marginRight: 0 },
+  actTextCol: { flex: 1, minWidth: 0, marginLeft: ACT_GAP, paddingRight: 8 },
+  actTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
+  actDesc: { fontSize: 15, lineHeight: 20, color: COLORS.textSoft, marginTop: 2 },
+  actBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.pill,
+    backgroundColor: '#e2edfc',
+  },
+  actBadgeText: { fontSize: 14, fontWeight: '800', color: COLORS.accent },
+  actCheck: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   // --- training step's illustrated horizontal cards — see the 'iconCards'
   // branch in the 'multi' step-type handling above and TRAINING_IMAGES in
   // data/quizQuestions.js for the actual pictures. Simpler than

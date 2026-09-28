@@ -147,6 +147,38 @@ export const MASCOT_SCENES = {
   target: assetUri('mascot_backpack.webp'),
 };
 
+// --- The four jobs (v0.5.2) --------------------------------------------
+//
+// One for each answer on the activity-level page: him at a desk, on his
+// feet with a clipboard, walking a delivery round with a letter, and
+// carrying parcels. All four are on that one page at once, which is why
+// they are cut shorter and smaller than the poses above -- the two idles
+// loop in a little over a second, the two walks take their full cycle
+// because half of one reads as a hop rather than a step.
+//
+// ANIMATED, all 330pt tall at 10fps, cut from Damon's 30fps HEVC(Alpha)
+// exports at every third frame:
+//   sitting   247x330, 12 frames, 1.2s, 210 KB
+//   standing  243x330, 13 frames, 1.3s, 206 KB
+//   mail      246x330, 20 frames, 2.0s, 340 KB
+//   parcel    253x330, 20 frames, 2.0s, 317 KB
+// The aspect ratios differ by a few percent (0.736 to 0.767, his arms
+// and boxes reach different distances), so the card scales each one by
+// its own rather than assuming a common box -- see JOB_ASPECT.
+export const MASCOT_JOBS = {
+  sitting: assetUri('mascot_job_sitting.webp'),
+  standing: assetUri('mascot_job_standing.webp'),
+  mail: assetUri('mascot_job_mail.webp'),
+  parcel: assetUri('mascot_job_parcel.webp'),
+};
+
+export const JOB_ASPECT = {
+  sitting: 247 / 330,
+  standing: 243 / 330,
+  mail: 246 / 330,
+  parcel: 253 / 330,
+};
+
 // --- The corner pose's one rule (v0.4.8) -------------------------------
 //
 // mascot_peek_right.webp is drawn as a figure CUT OFF flush with the
