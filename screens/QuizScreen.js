@@ -62,26 +62,76 @@ const HEIGHT_IN_RANGE = { min: 47, max: 84 }; // ~3'11" to 7'0"
 const WEIGHT_KG_RANGE = { min: 30, max: 250 };
 const WEIGHT_LB_RANGE = { min: 66, max: 550 };
 
-// The weightHistory step's vertical scale (see renderStepBody's
-// 'weightScale' branch and its styles further down) uses fixed pixel zone
-// heights rather than measuring anything at runtime — simplest way to
-// guarantee the three colored segments, their two tick marks, and the
-// "both" bracket (see SCALE_TOP_ZONE_CENTER/SCALE_BOTTOM_ZONE_CENTER
-// below) all line up exactly, regardless of phone width.
-// SCALE_ZONE_TOP/MID/BOTTOM must add up to SCALE_HEIGHT. Sized generously
-// (rather than just enough to fit the content) so the step fills most of
-// the screen instead of leaving a large empty gap above the Back/Next
-// buttons, per Damon's feedback.
-const SCALE_HEIGHT = 480;
-const SCALE_ZONE_TOP = 136;
-const SCALE_ZONE_MID = 208;
+// --- The weight-history page (v0.5.1) ---------------------------------
+//
+// The scale down the middle of the card is the page's whole skeleton:
+// the four answers are hung off it and joined to it by lines, so every
+// number below is a fixed figure rather than a measurement that arrives
+// a frame late. SCALE_ZONE_TOP/MID/BOTTOM must add up to SCALE_HEIGHT.
+// The three together are what fits the card between the bubble and the
+// buttons on a 393x852 phone without scrolling.
+const SCALE_HEIGHT = 420;
+const SCALE_ZONE_TOP = 115;
+const SCALE_ZONE_MID = 185; // the healthy band, between the two thresholds
 const SCALE_ZONE_BOTTOM = SCALE_HEIGHT - SCALE_ZONE_TOP - SCALE_ZONE_MID;
-// The vertical midpoints of the top and bottom (red, "outside the healthy
-// range") zones — both the short stubs on the Over/Under bubbles and the
-// "both" bracket's two ends aim at these same points, so everything that
-// points at "the red part of the scale" agrees on exactly where that is.
-const SCALE_TOP_ZONE_CENTER = SCALE_ZONE_TOP / 2;
-const SCALE_BOTTOM_ZONE_CENTER = SCALE_HEIGHT - SCALE_ZONE_BOTTOM / 2;
+const WH_BAR_W = 10; // the coloured bar itself
+const WH_ARROW = 11; // the arrowhead beyond each end of it
+const WH_MARK_W = 26; // the heavier mark at each threshold
+const WH_TICK_W = 18; // a minor tick, drawn across the bar
+const WH_LABEL_GAP = 7; // bar -> its numbers
+// The numbers hang off the bar's right-hand side, so the bar itself sits
+// a little left of the middle to leave room for them -- three digits and
+// a unit, once the weights are in pounds -- without crowding the card on
+// that side.
+const WH_BAR_SHIFT = 6;
+// How much room each threshold's own number takes beside the bar: the
+// figure sits above the mark, the unit under it. A minor tick whose
+// number would land inside that block is not drawn at all -- two numbers
+// on top of each other, and two marks a few points apart on a 10pt bar,
+// both read as a smudge rather than as a scale. Which ticks those are
+// depends on the person: the ticks are counted out from their own
+// thresholds, so how close the last one lands to the other threshold is
+// whatever their height makes it.
+const WH_MARK_LABEL_UP = 14;
+const WH_MARK_LABEL_DOWN = 20;
+const WH_TICK_LABEL_HALF = 8;
+const WH_DOT = 11; // where a line meets the scale
+const WH_LINE = 2.5; // the lines themselves
+const WH_RUN = 13; // how far a line leaves its card before it turns
+// The cards. Widths are shares of the card's inside so the columns keep
+// their proportions on a wider phone; heights are fixed, because the
+// lines are drawn to them.
+const WH_LEFT_SHARE = 0.4;
+const WH_RIGHT_SHARE = 0.39;
+const WH_PAD = 11; // inside a card
+const WH_TILE_W = 52;
+const WH_TILE_H = 44;
+const WH_TILE_GAP = 8; // tile -> words
+const WH_RADIO = 23;
+// The words on these cards are the longest in the quiz -- "I've been both
+// over 175 lbs & under 129 lbs" -- in the narrowest column on the page,
+// so their type is chosen from the width the column actually came out
+// rather than fixed. Measured against three-digit pounds at both ends in
+// a font wider than the phone's, so each step is on the safe side: two
+// lines for the one-sided answers and three for the other two, until a
+// phone narrow enough (320pt) that the longest of them needs a fourth.
+// The card heights follow from this, which is what lets the lines be
+// drawn to cards nobody has measured yet.
+function whType(textW) {
+  const size = textW >= 108 ? 16 : textW >= 102 ? 15 : textW >= 96 ? 14 : 13;
+  return { size, line: size + 4, lines: textW >= 88 ? 3 : 4 };
+}
+// A line leaves the "both" card at its corners rather than its middle,
+// since it has one going up and one going down.
+const WH_BOTH_INSET = 14;
+// One ink per tone, for the icon, the line and the dot. These are the
+// app's own status colours rather than the drawing's brighter ones: the
+// hues are the same, and these are the ones that hold up as a 2.5pt line
+// and a small glyph instead of a poster-sized arrow.
+const WH_INK = { Warn: COLORS.warn, Over: COLORS.over, Good: COLORS.good };
+// How much of the card's own colour is laid over the red zone, slice by
+// slice, from the arrowhead inwards.
+const WH_FADE = [0.95, 0.82, 0.65, 0.47, 0.3, 0.15];
 
 function inchesToFeetAndInches(totalInches) {
   const feet = Math.floor(totalInches / 12);
@@ -510,6 +560,25 @@ const formatFeetInches = (totalInches) => {
   const { feet, inches } = inchesToFeetAndInches(totalInches);
   return `${feet}'${inches}"`;
 };
+
+// One solid line from (x0, y0) to (x1, y1): a box as long as the gap,
+// turned about its own middle, which is the only way a View goes on a
+// slant. Rounded ends, so two of these meeting at an angle read as one
+// line with a bend in it rather than two sticks.
+function lineBetween(from, to, thickness) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  return {
+    position: 'absolute',
+    left: from.x + dx / 2 - length / 2,
+    top: from.y + dy / 2 - thickness / 2,
+    width: length,
+    height: thickness,
+    borderRadius: thickness / 2,
+    transform: [{ rotate: `${(Math.atan2(dy, dx) * 180) / Math.PI}deg` }],
+  };
+}
 
 // A row of dashes from (x0, y0) to (x1, y1). Straight runs are just a
 // box of dashes; a diagonal is the same box turned about its middle,
@@ -1224,6 +1293,12 @@ export default function QuizScreen({
   // this diet" button does that (see the mount below).
   const [learnMoreDietValue, setLearnMoreDietValue] = useState(null);
 
+  // How wide the weight-history card came out. Everything on that page is
+  // placed from it, so the first render assumes a 393pt phone and
+  // onLayout corrects it before anything is visible, same as the dial
+  // pages.
+  const [scaleW, setScaleW] = useState(361);
+
   // Conditional steps (currently just goalWeight, skipped when goal is
   // "maintain") are filtered out here rather than inside the render loop,
   // so "step 4 of 9" always reflects what the user will actually see.
@@ -1425,23 +1500,20 @@ export default function QuizScreen({
         );
       }
 
-      // The weightHistory step shows a vertical weight-range scale (an
-      // individualized upper/lower threshold line, color-coded red/green)
-      // with four bubbles arranged around it, instead of the usual stacked
-      // list — see the `layout` flag in data/quizQuestions.js. The scale
-      // line itself always uses red for "outside the healthy range" and
-      // green for "within it" — but per Damon's explicit request, the
-      // over/under BUBBLES are yellow and the "both" bubble is red (not
-      // the reverse, which is what you'd expect from the scale's own
-      // colors — this is intentional, not a mismatch). Colors stay visible
-      // whether or not that option is currently selected — selection is
-      // shown by strengthening that same color (heavier border, deeper
-      // tint) plus a matching checkmark badge, deliberately not blue, so
-      // each bubble's own color always means the same thing. The over/
-      // under bubbles each get a short stub pointing at the scale; "both"
-      // instead gets a bracket (see scaleGutter below) that visibly
-      // reaches into both red zones, since it relates to both of them
-      // rather than to whatever's beside it.
+      // The weight-history page (v0.5.1). One scale down the middle of a
+      // card, with the four answers hung off it and joined to it by
+      // lines -- so the picture itself says which part of the scale each
+      // answer is about, which is the thing a list of four sentences
+      // cannot do.
+      //
+      // The scale is always red outside the healthy range and green
+      // inside it. The CARDS are amber for the two one-sided answers and
+      // red for "both" -- not the scale's own colours, and not a mistake:
+      // Damon asked for it that way, and being in the red at both ends
+      // is the one answer the plan treats as a flag. A card keeps its
+      // colour whether or not it is chosen; choosing deepens that same
+      // colour rather than turning it blue, so the colour never stops
+      // meaning what it means.
       if (step.layout === 'weightScale') {
         const { underweightKg, overweightKg } = weightHistoryThresholds(answers.heightCm);
         const unit = answers.weightUnit || 'kg';
@@ -1449,7 +1521,7 @@ export default function QuizScreen({
         const upperLabel = formatWeightForUnit(overweightKg, unit);
         const lowerLabel = formatWeightForUnit(underweightKg, unit);
         const selectedValue = answers[step.key];
-        const labelFor = (value) => options.find((o) => o.value === value)?.label ?? '';
+        const optionFor = (value) => options.find((o) => o.value === value) || {};
 
         // Minor ticks every 5kg — or every 10lb when that's the active
         // unit, since 5lb increments come out too dense to label cleanly
@@ -1459,120 +1531,290 @@ export default function QuizScreen({
         // lowerLabel above exactly — not kg values re-labeled.
         const upperValue = isLb ? Math.round(kgToLb(overweightKg)) : Math.round(overweightKg);
         const lowerValue = isLb ? Math.round(kgToLb(underweightKg)) : Math.round(underweightKg);
+        const tickStep = isLb ? 10 : 5;
         const minorTicks = buildMinorTicks({
           upperValue,
           lowerValue,
-          step: isLb ? 10 : 5,
+          step: tickStep,
           zoneTop: SCALE_ZONE_TOP,
           zoneMid: SCALE_ZONE_MID,
           scaleHeight: SCALE_HEIGHT,
-        });
+        }).filter((t) =>
+          [SCALE_ZONE_TOP, SCALE_ZONE_TOP + SCALE_ZONE_MID].every(
+            (th) =>
+              t.top + WH_TICK_LABEL_HALF <= th - WH_MARK_LABEL_UP ||
+              t.top - WH_TICK_LABEL_HALF >= th + WH_MARK_LABEL_DOWN
+          )
+        );
 
-        const renderBubble = (value, tone) => {
+        // --- where everything sits, in the card's own coordinates ---
+        const innerW = scaleW - 2 * WH_PAD;
+        const leftW = Math.round(innerW * WH_LEFT_SHARE);
+        const rightW = Math.round(innerW * WH_RIGHT_SHARE);
+        const leftRight = leftW; // the left cards' right-hand edge
+        const rightLeft = innerW - rightW; // ...and the right card's left one
+        // The two ends of the scale each get a dot one tick beyond the
+        // threshold: far enough in to read as "past this line", and on a
+        // tick rather than between two, which is what makes it look
+        // aimed rather than dropped.
+        const stepPx = (SCALE_ZONE_MID / (upperValue - lowerValue)) * tickStep;
+        const overDotY = Math.max(WH_DOT, SCALE_ZONE_TOP - stepPx);
+        const underDotY = Math.min(SCALE_HEIGHT - WH_DOT, SCALE_ZONE_TOP + SCALE_ZONE_MID + stepPx);
+        const bandDotY = SCALE_ZONE_TOP + SCALE_ZONE_MID / 2;
+        // The three cards on the left fill the scale top to bottom; the
+        // one on the right sits against the band it is about.
+        // The type is set by the left column, which is the one holding
+        // the longest sentence; the right card takes the same, since a
+        // page with two sizes of the same kind of label reads as a
+        // mistake.
+        const type = whType(leftW - 2 * WH_PAD);
+        const figureSize = type.size + 1;
+        const unitSize = Math.max(11, type.size - 3);
+        // How much room the two numbers beside the bar need. Estimated
+        // from the digits rather than measured -- 0.62em is wider than a
+        // bold digit in this app's face, so the estimate errs outwards --
+        // and the bar then sits as near the middle as that allows.
+        const labelW = Math.max(
+          String(upperValue).length * figureSize * 0.62,
+          String(lowerValue).length * figureSize * 0.62,
+          (isLb ? 3 : 2) * unitSize * 0.58
+        );
+        const barX = Math.min(
+          innerW / 2 - WH_BAR_SHIFT,
+          rightLeft - 6 - labelW - WH_LABEL_GAP - WH_BAR_W / 2
+        );
+        // ...and the run a line makes before it turns has to fit in what
+        // is left between the cards and the bar.
+        const run = Math.max(6, Math.min(WH_RUN, barX - WH_BAR_W / 2 - leftRight - 4));
+        const cardTop = 2 * WH_PAD + WH_TILE_H + WH_TILE_GAP;
+        const oneH = cardTop + 2 * type.line;
+        const bigH = cardTop + type.lines * type.line;
+        const bothTop = (SCALE_HEIGHT - bigH) / 2;
+        const boxes = {
+          overweight: { left: 0, top: 0, width: leftW, height: oneH },
+          both: { left: 0, top: bothTop, width: leftW, height: bigH },
+          underweight: { left: 0, top: SCALE_HEIGHT - oneH, width: leftW, height: oneH },
+          neither: { left: rightLeft, top: bandDotY - bigH / 2, width: rightW, height: bigH },
+        };
+
+        // A line out of a card: a short run straight out of its edge, so
+        // it leaves square, then one slant to the dot.
+        const legs = (from, to, dir) => {
+          const turn = { x: from.x + dir * run, y: from.y };
+          return [lineBetween(from, turn, WH_LINE), lineBetween(turn, to, WH_LINE)];
+        };
+        const overDot = { x: barX - WH_BAR_W / 2, y: overDotY };
+        const underDot = { x: barX - WH_BAR_W / 2, y: underDotY };
+        const bandDot = { x: barX + WH_BAR_W / 2, y: bandDotY };
+        const connectors = [
+          ...legs({ x: leftRight, y: boxes.overweight.top + oneH / 2 }, overDot, 1).map((st) => ({
+            key: 'over',
+            st,
+            tone: 'Warn',
+          })),
+          ...legs({ x: leftRight, y: boxes.both.top + WH_BOTH_INSET }, overDot, 1).map((st) => ({
+            key: 'bothUp',
+            st,
+            tone: 'Over',
+          })),
+          ...legs(
+            { x: leftRight, y: boxes.both.top + bigH - WH_BOTH_INSET },
+            underDot,
+            1
+          ).map((st) => ({ key: 'bothDown', st, tone: 'Over' })),
+          ...legs(
+            { x: leftRight, y: boxes.underweight.top + oneH / 2 },
+            underDot,
+            1
+          ).map((st) => ({ key: 'under', st, tone: 'Warn' })),
+          ...legs({ x: rightLeft, y: boxes.neither.top + bigH / 2 }, bandDot, -1).map((st) => ({
+            key: 'band',
+            st,
+            tone: 'Good',
+          })),
+        ];
+
+        const renderCard = (value, tone) => {
+          const opt = optionFor(value);
           const isSelected = selectedValue === value;
+          const box = boxes[value];
           return (
-            <View style={styles.scaleBubbleWrap}>
-              <TouchableOpacity
-                style={[
-                  styles.scaleBubble,
-                  styles[`scaleBubble${tone}`],
-                  isSelected && styles[`scaleBubble${tone}Selected`],
-                ]}
-                onPress={() => update({ [step.key]: value })}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.scaleBubbleText, styles[`scaleBubbleText${tone}`]]}>
-                  {labelFor(value)}
-                </Text>
-              </TouchableOpacity>
+            <TouchableOpacity
+              key={value}
+              testID={`wh-card-${value}`}
+              style={[
+                styles.whCard,
+                styles[`whCard${tone}`],
+                box,
+                isSelected && styles[`whCardOn${tone}`],
+              ]}
+              onPress={() => update({ [step.key]: value })}
+              activeOpacity={0.85}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={opt.label}
+            >
+              <View style={[styles.whTile, styles[`whTile${tone}`]]}>
+                <MaterialCommunityIcons name={opt.icon} size={30} color={WH_INK[tone]} />
+              </View>
               {isSelected ? (
-                <View style={[styles.scaleCheck, styles[`scaleCheck${tone}`]]}>
-                  <Text style={styles.scaleCheckText}>✓</Text>
+                <View style={[styles.whRadioOn, { backgroundColor: WH_INK[tone] }]}>
+                  <MaterialCommunityIcons name="check-bold" size={14} color="#fff" />
                 </View>
-              ) : null}
-            </View>
+              ) : (
+                <View style={styles.whRadio} />
+              )}
+              <Text style={[styles.whCardText, { fontSize: type.size, lineHeight: type.line }]}>{opt.label}</Text>
+            </TouchableOpacity>
           );
         };
 
         return (
-          <View style={styles.scaleRow}>
-            <View style={styles.scaleLeftCol}>
-              <View style={styles.scaleBubbleRow}>
-                {renderBubble('overweight', 'Yellow')}
-                <View style={styles.scaleStub}>
-                  <View style={[styles.scaleStubLine, styles.scaleStubLineYellow]} />
-                </View>
-              </View>
-              {/* No local stub here — the "both" bubble's connection to
-                  the scale is the red bracket in scaleGutter below, which
-                  reaches all the way to the red zones rather than just a
-                  short mark next to the bubble. */}
-              <View style={styles.scaleBubbleRow}>{renderBubble('both', 'Red')}</View>
-              <View style={styles.scaleBubbleRow}>
-                {renderBubble('underweight', 'Yellow')}
-                <View style={styles.scaleStub}>
-                  <View style={[styles.scaleStubLine, styles.scaleStubLineYellow]} />
-                </View>
-              </View>
+          <View
+            testID="wh-frame"
+            style={styles.whCardFrame}
+            onLayout={(e) => {
+              const w = Math.round(e.nativeEvent.layout.width);
+              if (w && w !== scaleW) setScaleW(w);
+            }}
+          >
+            {/* The same pale shapes the other redesigned pages use. */}
+            <View pointerEvents="none" style={styles.whDecor}>
+              <View style={[styles.whBlob, { width: 78, height: 78, top: 96, right: 26 }]} />
+              <View style={[styles.whBlob, { width: 96, height: 96, bottom: 34, right: 12 }]} />
             </View>
 
-            {/* The "both" option relates to BOTH outer (red) zones, not
-                the middle — so instead of a short stub next to the
-                bubble, this is a bracket that visibly reaches from the
-                "both" bubble's row up into the top red zone and down into
-                the bottom red zone. SCALE_TOP_ZONE_CENTER/
-                SCALE_BOTTOM_ZONE_CENTER (top of file) are the same points
-                the scale's own red zones are centered on, so the bracket
-                actually lands inside the red segments, not just near
-                them. */}
-            <View style={styles.scaleGutter}>
+            <View style={[styles.whBody, { height: SCALE_HEIGHT }]}>
+              {/* The scale: an arrowhead at each end, three zones, the
+                  two thresholds marked heavily, and the minor ticks
+                  drawn ACROSS the bar so they read as gradations of it
+                  rather than as marks beside it. */}
+              <View pointerEvents="none" style={[styles.whArrowUp, { left: barX - WH_ARROW }]} />
               <View
+                pointerEvents="none"
+                style={[styles.whZone, styles.whZoneRed, { left: barX - WH_BAR_W / 2, top: 0, height: SCALE_ZONE_TOP }]}
+              />
+              <View
+                pointerEvents="none"
                 style={[
-                  styles.scaleGutterBar,
-                  { top: SCALE_TOP_ZONE_CENTER, height: SCALE_BOTTOM_ZONE_CENTER - SCALE_TOP_ZONE_CENTER },
+                  styles.whZone,
+                  styles.whZoneGreen,
+                  { left: barX - WH_BAR_W / 2, top: SCALE_ZONE_TOP, height: SCALE_ZONE_MID },
                 ]}
               />
-              <View style={[styles.scaleGutterTick, { top: SCALE_TOP_ZONE_CENTER - 1, left: 9, width: 13 }]} />
-              <View style={[styles.scaleGutterTick, { top: SCALE_BOTTOM_ZONE_CENTER - 1, left: 9, width: 13 }]} />
-              <View style={[styles.scaleGutterTick, { top: SCALE_HEIGHT / 2 - 1, left: 0, width: 11 }]} />
-            </View>
-
-            <View style={styles.scaleLineCol}>
-              {/* Arrowheads at both ends signal the line keeps going past
-                  what's drawn (same idea as a number line) — plain
-                  triangles via the border trick, positioned just outside
-                  scaleLineCol's own 0..SCALE_HEIGHT range rather than
-                  eating into it, so they don't shift any of the zone/tick
-                  math above. */}
-              <View style={styles.scaleArrowUp} />
-              <View style={[styles.scaleSeg, styles.scaleSegTop]} />
-              <View style={[styles.scaleSeg, styles.scaleSegMid]} />
-              <View style={[styles.scaleSeg, styles.scaleSegBottom]} />
-              <View style={[styles.scaleArrowDown, { top: SCALE_HEIGHT }]} />
-              <View style={[styles.scaleTick, { top: SCALE_ZONE_TOP - 1 }]} />
-              <View style={[styles.scaleTick, { top: SCALE_ZONE_TOP + SCALE_ZONE_MID - 1 }]} />
-              <Text style={[styles.scaleTickLabel, { top: SCALE_ZONE_TOP - 9 }]}>{upperLabel}</Text>
-              <Text style={[styles.scaleTickLabel, { top: SCALE_ZONE_TOP + SCALE_ZONE_MID - 9 }]}>
-                {lowerLabel}
-              </Text>
-              {/* Every-5kg/10lb minor ticks — lighter and unlabeled with a
-                  unit, so the two bold thresholds above stay the visual
-                  anchors and these just add texture, not competition. */}
-              {minorTicks.map((t) => (
-                <React.Fragment key={t.value}>
-                  <View style={[styles.scaleMinorTick, { top: t.top - 0.75 }]} />
-                  <Text style={[styles.scaleMinorLabel, { top: t.top - 7 }]}>{t.value}</Text>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.whZone,
+                  styles.whZoneRed,
+                  { left: barX - WH_BAR_W / 2, top: SCALE_ZONE_TOP + SCALE_ZONE_MID, height: SCALE_ZONE_BOTTOM },
+                ]}
+              />
+              {/* Both red zones fade out towards their arrowhead: the
+                  scale carries on past what is drawn, and a hard end
+                  would say it stops there. Slices of the card's own
+                  colour rather than a gradient, which React Native has
+                  no way to draw without another package. */}
+              {WH_FADE.map((opacity, i) => (
+                <React.Fragment key={`fade${i}`}>
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.whFade,
+                      {
+                        left: barX - WH_BAR_W / 2,
+                        top: (SCALE_ZONE_TOP / WH_FADE.length) * i,
+                        height: SCALE_ZONE_TOP / WH_FADE.length + 0.5,
+                        opacity,
+                      },
+                    ]}
+                  />
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.whFade,
+                      {
+                        left: barX - WH_BAR_W / 2,
+                        top: SCALE_HEIGHT - (SCALE_ZONE_BOTTOM / WH_FADE.length) * (i + 1),
+                        height: SCALE_ZONE_BOTTOM / WH_FADE.length + 0.5,
+                        opacity,
+                      },
+                    ]}
+                  />
                 </React.Fragment>
               ))}
-            </View>
+              <View pointerEvents="none" style={[styles.whArrowDown, { left: barX - WH_ARROW, top: SCALE_HEIGHT }]} />
 
-            <View style={styles.scaleRightCol}>
-              <View style={styles.scaleBubbleRowRight}>
-                <View style={styles.scaleStub}>
-                  <View style={[styles.scaleStubLine, styles.scaleStubLineGreen]} />
-                </View>
-                {renderBubble('neither', 'Green')}
-              </View>
+              {minorTicks
+                // Whichever tick the band's dot lands on is that dot's
+                // now: two marks in one place read as a mistake, and the
+                // dot is the one carrying a line.
+                .filter((t) => Math.abs(t.top - bandDotY) > WH_DOT / 2 + 6)
+                .map((t) => (
+                <React.Fragment key={t.value}>
+                  <View pointerEvents="none" style={[styles.whTick, { left: barX - WH_TICK_W / 2, top: t.top - 1 }]} />
+                  <Text style={[styles.whTickLabel, { left: barX + WH_BAR_W / 2 + WH_LABEL_GAP, top: t.top - 9 }]}>
+                    {t.value}
+                  </Text>
+                </React.Fragment>
+              ))}
+
+              {/* The two numbers that matter, each on its own mark. */}
+              {[
+                { top: SCALE_ZONE_TOP, label: upperLabel },
+                { top: SCALE_ZONE_TOP + SCALE_ZONE_MID, label: lowerLabel },
+              ].map((th) => {
+                const [figure, ...rest] = th.label.split(' ');
+                return (
+                  <React.Fragment key={th.label}>
+                    <View
+                      pointerEvents="none"
+                      style={[styles.whMark, { left: barX - WH_MARK_W / 2, top: th.top - 2.5 }]}
+                    />
+                    <View pointerEvents="none" style={[styles.whMarkLabel, { left: barX + WH_BAR_W / 2 + WH_LABEL_GAP, top: th.top - 14 }]}>
+                      <Text style={[styles.whMarkFigure, { fontSize: figureSize, lineHeight: figureSize + 2 }]}>
+                        {figure}
+                      </Text>
+                      {rest.length ? (
+                        <Text style={[styles.whMarkUnit, { fontSize: unitSize, lineHeight: unitSize + 2 }]}>
+                          {rest.join(' ')}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </React.Fragment>
+                );
+              })}
+
+              {/* The lines, then the dots that cap them, then the cards
+                  over the top of both. */}
+              {connectors.map((c, i) => (
+                <View
+                  key={`${c.key}${i}`}
+                  pointerEvents="none"
+                  testID={`wh-line-${c.key}`}
+                  style={[c.st, { backgroundColor: WH_INK[c.tone] }]}
+                />
+              ))}
+              {[
+                { key: 'over', at: overDot, tone: 'Warn' },
+                { key: 'under', at: underDot, tone: 'Warn' },
+                { key: 'band', at: bandDot, tone: 'Good' },
+              ].map((d) => (
+                <View
+                  key={d.key}
+                  pointerEvents="none"
+                  testID={`wh-dot-${d.key}`}
+                  style={[
+                    styles.whDot,
+                    { left: d.at.x - WH_DOT / 2, top: d.at.y - WH_DOT / 2, backgroundColor: WH_INK[d.tone] },
+                  ]}
+                />
+              ))}
+
+              {renderCard('overweight', 'Warn')}
+              {renderCard('both', 'Over')}
+              {renderCard('underweight', 'Warn')}
+              {renderCard('neither', 'Good')}
             </View>
           </View>
         );
@@ -2250,7 +2492,7 @@ export default function QuizScreen({
                   {line}
                 </Text>
               ))}
-              {subtitle ? <Text style={styles.soloSub}>{subtitle}</Text> : null}
+              {subtitle && !step.subtitleBelow ? <Text style={styles.soloSub}>{subtitle}</Text> : null}
             </View>
             {step.bubbleMascot ? null : <View style={styles.soloTail} />}
           </View>
@@ -2290,8 +2532,13 @@ export default function QuizScreen({
           </View>
         )}
         {/* A solo bubble carries its own subtitle inside it (v0.4.7), so
-            it must not also be drawn under the header. */}
-        {subtitle && step.bubbleLayout !== 'solo' ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+            it must not also be drawn under the header -- unless the step
+            asks for it below (v0.5.1, the weight-history page, where the
+            question already fills two lines of the bubble and a third
+            line of instruction inside it would crowd him out). */}
+        {subtitle && (step.bubbleLayout !== 'solo' || step.subtitleBelow) ? (
+          <Text style={[styles.subtitle, step.subtitleBelow && styles.subtitleUnderBubble]}>{subtitle}</Text>
+        ) : null}
         {renderStepBody()}
       </ScrollView>
 
@@ -2945,6 +3192,10 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   subtitle: { fontSize: 15, color: '#777', marginBottom: 18 },
+  // Under a solo bubble it is the page's instruction rather than a
+  // caption on a title, so it takes the app's own soft ink and sits
+  // closer to the card it is talking about.
+  subtitleUnderBubble: { fontSize: 15, lineHeight: 20, color: COLORS.textSoft, marginTop: 2, marginBottom: 12 },
   bigValue: { fontSize: 33, fontWeight: '700', color: '#4f8ef7', textAlign: 'center', marginBottom: 8, marginTop: 16 },
   // No fixed height here on purpose — DragSlider now renders as a tall
   // vertical ruler with its own fixed internal height, and a height set
@@ -3207,157 +3458,127 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dietCheckText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  // --- weightHistory step's vertical scale — see the 'weightScale' branch
-  // in renderStepBody above. SCALE_HEIGHT/SCALE_ZONE_* (top of file) drive
-  // both the line segments below and the tick positions, so they always
-  // agree with each other regardless of screen size. ---
-  scaleRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  // minHeight (not height) on the two bubble columns so a phone with
-  // larger accessibility text, or an unusually long translated label,
-  // simply grows the row instead of clipping — the scale line column next
-  // to it stays exactly SCALE_HEIGHT regardless, since its geometry is
-  // fixed pixel math, not content-driven.
-  scaleLeftCol: { flex: 1, justifyContent: 'space-between', minHeight: SCALE_HEIGHT, gap: 10 },
-  scaleRightCol: { flex: 1, justifyContent: 'center', alignItems: 'flex-start', minHeight: SCALE_HEIGHT },
-  scaleBubbleRow: { flexDirection: 'row', alignItems: 'center' },
-  scaleBubbleRowRight: { flexDirection: 'row', alignItems: 'center' },
-  scaleBubbleWrap: { flex: 1, position: 'relative' },
-  scaleBubble: { borderRadius: 12, borderWidth: 1, padding: 11 },
-  scaleBubbleText: { fontSize: 14, fontWeight: '700', lineHeight: 18 },
-  // Each tone's colors stay visible whether or not it's selected (per
-  // Damon's spec — red/green/yellow carry meaning on their own); selecting
-  // an option just deepens the same tint and thickens the border rather
-  // than switching to the app's usual blue, so the semantic color is never
-  // overridden the way optionSelected does elsewhere in this screen.
-  scaleBubbleRed: { backgroundColor: '#fdeceb', borderColor: '#eeb6b1' },
-  scaleBubbleTextRed: { color: '#c1483f' },
-  scaleBubbleRedSelected: { backgroundColor: '#fbdad7', borderColor: '#e0554f', borderWidth: 2 },
-  scaleBubbleTextRedSelected: { color: '#b6392f' },
-  scaleBubbleGreen: { backgroundColor: '#eaf7f0', borderColor: '#a9dcc0' },
-  scaleBubbleTextGreen: { color: '#2f8a5f' },
-  scaleBubbleGreenSelected: { backgroundColor: '#d9f0e3', borderColor: '#3fa172', borderWidth: 2 },
-  scaleBubbleTextGreenSelected: { color: '#256b49' },
-  scaleBubbleYellow: { backgroundColor: '#fbf1de', borderColor: '#edcd8c' },
-  scaleBubbleTextYellow: { color: '#a1791f' },
-  scaleBubbleYellowSelected: { backgroundColor: '#f8e6b8', borderColor: '#d9a441', borderWidth: 2 },
-  scaleBubbleTextYellowSelected: { color: '#8a6414' },
-  scaleCheck: {
+  // --- the weight-history page (v0.5.1) --------------------------------
+  //
+  // Everything inside the card is placed absolutely from the SCALE_ and
+  // WH_ numbers at the top of this file, in the card's own coordinates,
+  // which is what keeps each line landing on the dot it is drawn to.
+  whCardFrame: {
+    backgroundColor: '#f8fafd',
+    borderRadius: 24,
+    paddingHorizontal: WH_PAD,
+    // A little more above and below than at the sides: the scale's
+    // arrowheads stand outside its own height, and the card clips.
+    paddingVertical: WH_PAD + 4,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  whDecor: { ...StyleSheet.absoluteFillObject },
+  whBlob: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#e9f0fb' },
+  whBody: { position: 'relative' },
+  whZone: { position: 'absolute', width: WH_BAR_W, borderRadius: WH_BAR_W / 2 },
+  whZoneRed: { backgroundColor: '#f7b3b0' },
+  whZoneGreen: { backgroundColor: '#8adbab' },
+  // A slice of the card's own colour, laid over the red to fade it out.
+  whFade: { position: 'absolute', width: WH_BAR_W, backgroundColor: '#f8fafd' },
+  whArrowUp: {
     position: 'absolute',
-    top: -8,
-    right: -8,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#fff',
-    justifyContent: 'center',
+    top: -WH_ARROW - 1,
+    width: 0,
+    height: 0,
+    borderLeftWidth: WH_ARROW,
+    borderRightWidth: WH_ARROW,
+    borderBottomWidth: WH_ARROW + 1,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#f9c4c2',
+  },
+  whArrowDown: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    borderLeftWidth: WH_ARROW,
+    borderRightWidth: WH_ARROW,
+    borderTopWidth: WH_ARROW + 1,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#f9c4c2',
+  },
+  // Drawn across the bar rather than beside it: these are gradations of
+  // the scale, not marks pointing at it.
+  whTick: { position: 'absolute', width: WH_TICK_W, height: 2, borderRadius: 1, backgroundColor: '#a9c4ec' },
+  whTickLabel: { position: 'absolute', fontSize: 13, fontWeight: '600', color: '#98a2b6' },
+  whMark: {
+    position: 'absolute',
+    width: WH_MARK_W,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: COLORS.good,
+  },
+  whMarkLabel: { position: 'absolute', alignItems: 'flex-start' },
+  // Sizes come from the page's own type at render time (see whType).
+  whMarkFigure: { fontWeight: '800', color: COLORS.text },
+  whMarkUnit: { fontWeight: '800', color: COLORS.text },
+  whDot: { position: 'absolute', width: WH_DOT, height: WH_DOT, borderRadius: WH_DOT / 2 },
+
+  // The answers. Each keeps its colour whether or not it is chosen;
+  // choosing deepens the same colour instead of turning it blue.
+  whCard: {
+    position: 'absolute',
+    padding: WH_PAD,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    backgroundColor: COLORS.card,
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+  whCardWarn: { borderColor: '#f6dfa8' },
+  whCardOver: { borderColor: '#f7bfbb' },
+  whCardGood: { borderColor: '#a8ddba' },
+  whCardOnWarn: { borderColor: COLORS.warn, borderWidth: 2.5, backgroundColor: '#fffaf0' },
+  whCardOnOver: { borderColor: COLORS.over, borderWidth: 2.5, backgroundColor: '#fff6f5' },
+  whCardOnGood: { borderColor: COLORS.good, borderWidth: 2.5, backgroundColor: '#f4fbf6' },
+  whTile: {
+    width: WH_TILE_W,
+    height: WH_TILE_H,
+    borderRadius: 15,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  scaleCheckRed: { backgroundColor: '#e0554f' },
-  scaleCheckGreen: { backgroundColor: '#3fa172' },
-  scaleCheckYellow: { backgroundColor: '#d9a441' },
-  scaleCheckText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  scaleStub: { width: 16, height: 20, alignItems: 'center', justifyContent: 'center' },
-  scaleStubLine: { width: 12, height: 2, borderRadius: 1 },
-  scaleStubLineYellow: { backgroundColor: '#d9a441' },
-  scaleStubLineGreen: { backgroundColor: '#3fa172' },
-  // The "both" bubble's bracket — a red vertical bar spanning from the top
-  // red zone's own center down to the bottom red zone's own center
-  // (SCALE_TOP_ZONE_CENTER/SCALE_BOTTOM_ZONE_CENTER, top of file), with a
-  // tick at each end reaching right into the scale line, plus a third tick
-  // reaching left toward the "both" bubble at the gutter's own vertical
-  // middle (which lines up with that bubble's row, since scaleLeftCol's
-  // three rows are spaced evenly across this same SCALE_HEIGHT). All three
-  // ticks and the bar share the same red as the scale's own outer zones,
-  // so it's visually obvious this bracket is "reaching into the red."
-  scaleGutter: { width: 22, height: SCALE_HEIGHT, position: 'relative' },
-  scaleGutterBar: { position: 'absolute', left: 9, width: 2, backgroundColor: '#e0554f' },
-  scaleGutterTick: { position: 'absolute', height: 2, backgroundColor: '#e0554f', borderRadius: 1 },
-  scaleLineCol: { width: 88, height: SCALE_HEIGHT, position: 'relative' },
-  scaleSeg: { position: 'absolute', left: '50%', marginLeft: -3, width: 6 },
-  scaleSegTop: {
-    top: 0,
-    height: SCALE_ZONE_TOP,
-    backgroundColor: '#ecb3ae',
-    borderTopLeftRadius: 3,
-    borderTopRightRadius: 3,
-  },
-  scaleSegMid: { top: SCALE_ZONE_TOP, height: SCALE_ZONE_MID, backgroundColor: '#8fd1ac' },
-  scaleSegBottom: {
-    top: SCALE_ZONE_TOP + SCALE_ZONE_MID,
-    height: SCALE_ZONE_BOTTOM,
-    backgroundColor: '#ecb3ae',
-    borderBottomLeftRadius: 3,
-    borderBottomRightRadius: 3,
-  },
-  // Plain triangles via the border trick (width/height 0, three sides
-  // transparent, one side colored) — no image or SVG needed. Matches
-  // scaleSegTop/Bottom's own color so each arrowhead reads as a
-  // continuation of the zone it caps.
-  scaleArrowUp: {
+  whTileWarn: { backgroundColor: COLORS.warnSoft },
+  whTileOver: { backgroundColor: COLORS.overSoft },
+  whTileGood: { backgroundColor: COLORS.goodSoft },
+  whRadio: {
     position: 'absolute',
-    left: '50%',
-    marginLeft: -7,
-    width: 0,
-    height: 0,
-    top: -9,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderBottomWidth: 9,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderBottomColor: '#ecb3ae',
+    top: WH_PAD + 3,
+    right: WH_PAD,
+    width: WH_RADIO,
+    height: WH_RADIO,
+    borderRadius: WH_RADIO / 2,
+    borderWidth: 2.5,
+    borderColor: '#b9c2d6',
   },
-  scaleArrowDown: {
+  whRadioOn: {
     position: 'absolute',
-    left: '50%',
-    marginLeft: -7,
-    width: 0,
-    height: 0,
-    borderLeftWidth: 7,
-    borderRightWidth: 7,
-    borderTopWidth: 9,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    borderTopColor: '#ecb3ae',
+    top: WH_PAD + 3,
+    right: WH_PAD,
+    width: WH_RADIO,
+    height: WH_RADIO,
+    borderRadius: WH_RADIO / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scaleTick: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -9,
-    width: 18,
-    height: 2,
-    backgroundColor: '#6b6b6b',
-    borderRadius: 1,
-  },
-  scaleTickLabel: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: 14,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#4a4a4a',
-  },
-  // Shorter and lighter than scaleTick/scaleTickLabel above, on purpose —
-  // these are supporting detail, not additional anchors the eye should
-  // land on first.
-  scaleMinorTick: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -5,
-    width: 10,
-    height: 1.5,
-    backgroundColor: '#b7b7bf',
-    borderRadius: 1,
-  },
-  scaleMinorLabel: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: 10,
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#9a9aa2',
-  },
+  // The size and line height come from the card's own width at render
+  // time (see whType); everything else about the words is here.
+  whCardText: { fontWeight: '800', color: COLORS.text, marginTop: WH_TILE_GAP },
+
   unitToggle: { flexDirection: 'row', alignSelf: 'center', backgroundColor: '#fff', borderRadius: 10, borderWidth: 1, borderColor: '#e3e3e8', marginBottom: 8, overflow: 'hidden' },
   unitBtn: { paddingHorizontal: 18, paddingVertical: 8 },
   unitBtnActive: { backgroundColor: '#4f8ef7' },

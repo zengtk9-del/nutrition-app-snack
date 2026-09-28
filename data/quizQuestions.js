@@ -170,27 +170,43 @@ export const QUIZ_STEPS = [
     type: 'single',
     title: 'Where has your weight been?',
     subtitle: 'Select the range that describes your weight history.',
-    // Renders as a vertical weight-range scale (upper/lower threshold line
-    // with color-coded bubbles around it) instead of the usual stacked
-    // list — see the `layout` flag and QuizScreen.js's renderStepBody for
-    // the 'single' step type. heightCm and weightUnit are always kept
-    // resolved on `answers` by QuizScreen as soon as those questions are
-    // answered — see utils/goals.js weightHistoryThresholds() and
-    // formatWeightForUnit()/formatWeightRangeForUnit(). The upper/lower kg
-    // numbers are always this person's own individualized thresholds, not
-    // fixed numbers — that's why getOptions is still needed even though the
-    // question wording itself no longer changes by answer.
+    // Redesigned in v0.5.1: one scale down the middle of a card with the
+    // four answers hung off it and joined to it by lines — see the
+    // 'weightScale' branch in QuizScreen.js's renderStepBody and the
+    // SCALE_/WH_ numbers at the top of that file. The question comes out
+    // of a bubble with him leaning in over the corner, the same pose and
+    // the same header the body-fat page uses; `subtitleBelow` puts the
+    // instruction under the bubble rather than inside it, since the
+    // question already fills two lines in there.
+    //
+    // heightCm and weightUnit are always kept resolved on `answers` by
+    // QuizScreen as soon as those questions are answered — see
+    // utils/goals.js weightHistoryThresholds() and formatWeightForUnit()/
+    // formatWeightRangeForUnit(). The upper/lower kg numbers are always
+    // this person's own individualized thresholds, not fixed numbers —
+    // that's why getOptions is still needed even though the question
+    // wording itself no longer changes by answer.
     layout: 'weightScale',
+    bubble: ['Where has your weight been?'],
+    bubbleLayout: 'solo',
+    bubbleMascot: 'peekRight',
+    subtitleBelow: true,
+    // `icon` and the card's tone are the layout's, but they live here
+    // with the words they belong to: an arrow up for over, one down for
+    // under, both for "both", and a span with a cap at each end for the
+    // one answer that is a range rather than a direction.
     getOptions: (answers, helpers) => {
       const { underweightKg, overweightKg } = helpers.weightHistoryThresholds(answers.heightCm);
       const unit = answers.weightUnit || 'kg';
       return [
         {
           value: 'overweight',
+          icon: 'arrow-up-bold',
           label: `I've been over ${helpers.formatWeightForUnit(overweightKg, unit)}`,
         },
         {
           value: 'neither',
+          icon: 'arrow-expand-vertical',
           label: `I've always been between ${helpers.formatWeightRangeForUnit(
             underweightKg,
             overweightKg,
@@ -199,11 +215,13 @@ export const QUIZ_STEPS = [
         },
         {
           value: 'underweight',
+          icon: 'arrow-down-bold',
           label: `I've been under ${helpers.formatWeightForUnit(underweightKg, unit)}`,
         },
         {
           value: 'both',
-          label: `I've been both\nOver ${helpers.formatWeightForUnit(
+          icon: 'swap-vertical-bold',
+          label: `I've been both over ${helpers.formatWeightForUnit(
             overweightKg,
             unit
           )} & under ${helpers.formatWeightForUnit(underweightKg, unit)}`,
