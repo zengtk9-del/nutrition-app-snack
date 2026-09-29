@@ -292,11 +292,13 @@ export const QUIZ_STEPS = [
     type: 'multi',
     title: 'What training do you do? Select all that applies',
     noneValue: 'none',
-    // Renders as four illustrated horizontal cards (Damon's own supplied
-    // icon in a pale-blue circle on the left, label to the right) instead
-    // of the plain text-only list every other 'multi' step still uses —
-    // see TRAINING_IMAGES below and QuizScreen.js's renderStepBody for the
-    // 'multi' step type. The None/Cardio/Lifting/Sports mutual-exclusivity
+    // Renders as four horizontal cards with him DOING each one -- on the
+    // couch with a controller, running, lifting, dribbling a ball --
+    // instead of the plain text-only list every other 'multi' step still
+    // uses. The animations live in TRAINING_SCENES (data/brandArt.js),
+    // keyed by these same option values, and the card itself is the
+    // activity page's, one size down; see the 'iconCards' branch in
+    // QuizScreen.js. The None/Cardio/Lifting/Sports mutual-exclusivity
     // behavior (selecting None clears everything else, selecting anything
     // else clears None) is unchanged — it already lived in QuizScreen.js's
     // 'multi' handling before this layout existed and didn't need to move.
@@ -405,19 +407,12 @@ export const BODY_FAT_IMAGES = {
 // MASCOT_JOBS (data/brandArt.js) through its `pose`. The activity_*.jpg
 // files are still in the assets repo; nothing points at them any more.
 
-// Illustrated PNG for each training option — same "explicit static
-// require(), fails loudly if out of sync" pattern as the image maps above.
-// These are square (143x143) and each already has its own pale-blue
-// circular backdrop baked in behind the icon, on an opaque white square
-// canvas — so QuizScreen.js's iconCards layout just draws the image
-// directly at a small square size rather than wrapping it in its own
-// circle View; the file already provides that circle.
-export const TRAINING_IMAGES = {
-  none: assetUri('training_none.jpg'),
-  cardio: assetUri('training_cardio.jpg'),
-  lifting: assetUri('training_lifting.jpg'),
-  sports: assetUri('training_sports.jpg'),
-};
+// The four training stills went the way of the activity page's
+// (v0.5.3): each answer is now one of the animations in TRAINING_SCENES
+// (data/brandArt.js), keyed by the same option value. Two of those are
+// new files and two are poses the app already had. The training_*.jpg
+// files are still in the assets repo; nothing points at them any more.
+
 
 // Illustrated PNG for each diet option — same "explicit static require(),
 // fails loudly if out of sync" pattern as the image maps above. Unlike the

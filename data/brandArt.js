@@ -179,6 +179,41 @@ export const JOB_ASPECT = {
   parcel: 253 / 330,
 };
 
+// --- What training you do (v0.5.3) -------------------------------------
+//
+// Two of these are new -- him on the couch with a controller, and him
+// dribbling a ball -- and two are poses the app has had since v0.3.0:
+// the curl and the run, which is what Damon meant by "we already have
+// weightlifting and running". The run was drawn facing left, so it is
+// mirrored here, the same way the goal page mirrors it.
+//
+// WHY EACH ONE CARRIES AN `art` BOX. The two new files are cropped to
+// their own drawing, so the file IS the figure. The two borrowed poses
+// are not: all seven poses share one 236x262 canvas (see
+// MASCOT_POSE_FILES above) and each sits somewhere inside it with a
+// different amount of air around it. Drawn at the same height as the
+// new ones they would come out visibly smaller and a few points low.
+// `art` is where the drawing actually is, as fractions of the file, so
+// a tile can size and centre the FIGURE rather than the file. Measured
+// off the union of every frame's alpha, which is also why the numbers
+// are not round.
+const WHOLE_FILE = { x: 0, y: 0, w: 1, h: 1 };
+export const TRAINING_SCENES = {
+  none: { uri: assetUri('mascot_train_couch.webp'), aspect: 281 / 330, art: WHOLE_FILE },
+  cardio: {
+    uri: MASCOT_POSES.run,
+    aspect: 236 / 262,
+    art: { x: 25 / 236, y: 19 / 262, w: 184 / 236, h: 243 / 262 },
+    flip: true,
+  },
+  lifting: {
+    uri: MASCOT_POSES.curl,
+    aspect: 236 / 262,
+    art: { x: 25 / 236, y: 24 / 262, w: 183 / 236, h: 230 / 262 },
+  },
+  sports: { uri: assetUri('mascot_train_sport.webp'), aspect: 289 / 330, art: WHOLE_FILE },
+};
+
 // --- The corner pose's one rule (v0.4.8) -------------------------------
 //
 // mascot_peek_right.webp is drawn as a figure CUT OFF flush with the

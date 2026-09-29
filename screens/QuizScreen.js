@@ -28,6 +28,7 @@ import {
   MASCOT_WAVE_BIG,
   PEEK_GEOMETRY,
   TARGET_GEOMETRY,
+  TRAINING_SCENES,
   WEIGHT_GEOMETRY,
 } from '../data/brandArt';
 import { COLORS, RADIUS, SPACE } from '../utils/theme';
@@ -35,7 +36,6 @@ import {
   QUIZ_STEPS,
   BODY_FAT_OPTIONS,
   BODY_FAT_IMAGES,
-  TRAINING_IMAGES,
   DIET_IMAGES,
   DIET_DETAILS,
 } from '../data/quizQuestions';
@@ -568,9 +568,15 @@ const HC_GROUND_H = 22; // the shadow under him, top to bottom
 // buttons on a 393x852 phone, and at the drawing's own size the fourth
 // card's bottom edge lands under the fold.
 const ACT_TILE = 102;
-const ACT_ART_INSET = 3; // tile edge -> the drawing, top and bottom
+// The training page's answers are two words rather than three lines, so
+// its cards are shorter and its tile smaller -- the proportions Damon
+// drew, scaled to this screen.
+const TRAIN_TILE = 79;
+const ACT_ART_SHARE = 0.92; // how much of the tile's height the FIGURE takes
 const ACT_PAD = 8; // card edge -> tile
 const ACT_GAP = 13; // tile -> the words
+
+const WHOLE_ART = { x: 0, y: 0, w: 1, h: 1 };
 
 const clampTo = (v, range) => Math.max(range.min, Math.min(range.max, v));
 const formatFeetInches = (totalInches) => {
@@ -645,6 +651,80 @@ function dotsAlongCurve(from, to, sag, spacing) {
     dots.push(at((i - 1 + (d - lens[i - 1]) / span) / steps));
   }
   return dots;
+}
+
+// --- The picture card, shared by two pages (v0.5.3) ---------------------
+//
+// The activity page and the training page are the same card at two
+// sizes: a square tile with the mascot living inside it, the page's own
+// words beside it, and an accent border with a tick when it is chosen.
+//
+// The tile SIZES THE FIGURE, not the file. `art` says where the drawing
+// sits inside its file, as fractions of it (see TRAINING_SCENES in
+// brandArt): for a file cropped to its own art that is the whole thing,
+// and for one of the seven shared-canvas poses it is a box with a
+// different amount of air on each side. Working from that box is what
+// keeps four figures the same height in four tiles when their files are
+// not -- drawn file-to-file, the two borrowed poses come out visibly
+// smaller than the two new ones, and sit low.
+function ArtCard({
+  testID,
+  source,
+  aspect,
+  art = WHOLE_ART,
+  flip = false,
+  tile,
+  selected,
+  onPress,
+  accessibilityRole,
+  accessibilityLabel,
+  children,
+}) {
+  const fileH = (tile * ACT_ART_SHARE) / art.h;
+  const fileW = fileH * aspect;
+  return (
+    <TouchableOpacity
+      testID={testID}
+      style={[styles.artCard, selected && styles.artCardOn]}
+      onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole={accessibilityRole}
+      accessibilityState={accessibilityRole === 'checkbox' ? { checked: selected } : { selected }}
+      accessibilityLabel={accessibilityLabel}
+    >
+      <View style={[styles.artTile, { width: tile, height: tile }]}>
+        {/* The same pale texture the other pages use, so the tile reads
+            as part of the page rather than as a photograph's border. */}
+        <View pointerEvents="none" style={[styles.artTileDot, { width: tile * 0.25, height: tile * 0.25, top: tile * 0.11, left: tile * 0.1 }]} />
+        <View pointerEvents="none" style={[styles.artTileDot, { width: tile * 0.13, height: tile * 0.13, top: tile * 0.6, right: tile * 0.11 }]} />
+        <View pointerEvents="none" style={[styles.artTileDot, { width: tile * 0.33, height: tile * 0.33, bottom: -tile * 0.08, right: -tile * 0.06 }]} />
+        <Mascot
+          source={source}
+          style={[
+            styles.artArt,
+            {
+              width: fileW,
+              height: fileH,
+              // Put the FIGURE in the middle of the tile: the file's own
+              // box, shifted by where the figure sits inside it.
+              left: (tile - fileW * art.w) / 2 - fileW * art.x,
+              top: (tile - fileH * art.h) / 2 - fileH * art.y,
+            },
+            flip && styles.artArtFlipped,
+          ]}
+        />
+      </View>
+      <View style={styles.artWords}>{children}</View>
+      {selected ? (
+        <>
+          <View pointerEvents="none" style={styles.artBorder} />
+          <View style={styles.artCheck}>
+            <MaterialCommunityIcons name="check-bold" size={16} color="#fff" />
+          </View>
+        </>
+      ) : null}
+    </TouchableOpacity>
+  );
 }
 
 // --- The card itself ----------------------------------------------------
@@ -1878,54 +1958,30 @@ export default function QuizScreen({
         return (
           <View>
             {options.map((opt) => {
-              const selected = answers[step.key] === opt.value;
               const source = MASCOT_JOBS[opt.pose];
               if (!source) {
                 throw new Error(
                   `No animation for activityLevel option "${opt.value}" — its \`pose\` must name one in MASCOT_JOBS (data/brandArt.js)`
                 );
               }
-              // Each of the four is drawn to its own width -- his arms
-              // and the parcels reach different distances -- so the tile
-              // scales by that one's ratio rather than a common box.
-              const artH = ACT_TILE - 2 * ACT_ART_INSET;
-              const artW = artH * (JOB_ASPECT[opt.pose] || 0.75);
               return (
-                <TouchableOpacity
+                <ArtCard
                   key={opt.value}
                   testID={`act-card-${opt.value}`}
-                  style={[styles.actCard, selected && styles.actCardOn]}
+                  source={source}
+                  aspect={JOB_ASPECT[opt.pose]}
+                  tile={ACT_TILE}
+                  selected={answers[step.key] === opt.value}
                   onPress={() => update({ [step.key]: opt.value })}
-                  activeOpacity={0.85}
                   accessibilityRole="radio"
-                  accessibilityState={{ selected }}
                   accessibilityLabel={`${opt.label}. ${opt.description}. ${opt.badge}`}
                 >
-                  <View style={styles.actTile}>
-                    {/* The same pale texture the other pages use, so the
-                        tile reads as part of the page rather than as a
-                        photograph's white border. */}
-                    <View pointerEvents="none" style={[styles.actTileDot, { width: 26, height: 26, top: 12, left: 10 }]} />
-                    <View pointerEvents="none" style={[styles.actTileDot, { width: 14, height: 14, top: 62, right: 12 }]} />
-                    <View pointerEvents="none" style={[styles.actTileDot, { width: 34, height: 34, bottom: -8, right: -6 }]} />
-                    <Mascot source={source} style={[styles.actArt, { width: artW, height: artH }]} />
+                  <Text style={styles.actTitle}>{opt.label}</Text>
+                  <Text style={styles.actDesc}>{opt.description}</Text>
+                  <View style={styles.actBadge}>
+                    <Text style={styles.actBadgeText}>{opt.badge}</Text>
                   </View>
-                  <View style={styles.actTextCol}>
-                    <Text style={styles.actTitle}>{opt.label}</Text>
-                    <Text style={styles.actDesc}>{opt.description}</Text>
-                    <View style={styles.actBadge}>
-                      <Text style={styles.actBadgeText}>{opt.badge}</Text>
-                    </View>
-                  </View>
-                  {selected ? (
-                    <>
-                      <View pointerEvents="none" style={styles.actBorder} />
-                      <View style={styles.actCheck}>
-                        <MaterialCommunityIcons name="check-bold" size={16} color="#fff" />
-                      </View>
-                    </>
-                  ) : null}
-                </TouchableOpacity>
+                </ArtCard>
               );
             })}
           </View>
@@ -2042,47 +2098,38 @@ export default function QuizScreen({
       // plain text-only OptionCard every other 'multi' step still uses —
       // see the `layout` flag in data/quizQuestions.js and TRAINING_IMAGES
       // there for the actual pictures.
+      // What training you do (v0.5.3). The same card as the activity
+      // page one size down -- these answers are two words, not three
+      // lines -- with him doing each one: on the couch with a
+      // controller, running, lifting, dribbling a ball. Two of the four
+      // are poses the app already had, which is why the card works from
+      // the figure's box rather than the file's; see TRAINING_SCENES.
       if (step.layout === 'iconCards') {
         return (
           <View>
             {step.options.map((opt) => {
-              const isSelected = isSelectedValue(opt);
-              const source = TRAINING_IMAGES[opt.value];
-              if (!source) {
+              const scene = TRAINING_SCENES[opt.value];
+              if (!scene) {
                 throw new Error(
-                  `No image for training option "${opt.value}" — add it to TRAINING_IMAGES in data/quizQuestions.js`
+                  `No animation for training option "${opt.value}" — add it to TRAINING_SCENES in data/brandArt.js`
                 );
               }
               return (
-                <TouchableOpacity
+                <ArtCard
                   key={opt.value}
-                  style={[styles.trainingCard, isSelected && styles.trainingCardSelected]}
+                  testID={`train-card-${opt.value}`}
+                  source={scene.uri}
+                  aspect={scene.aspect}
+                  art={scene.art}
+                  flip={scene.flip}
+                  tile={TRAIN_TILE}
+                  selected={isSelectedValue(opt)}
                   onPress={() => toggle(opt)}
-                  activeOpacity={0.8}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: isSelected }}
                   accessibilityLabel={opt.label}
                 >
-                  <View style={styles.trainingIconWrap}>
-                    <Image
-                      source={source}
-                      style={styles.trainingIconImage}
-                      resizeMode="contain"
-                      accessibilityElementsHidden
-                      importantForAccessibility="no"
-                    />
-                  </View>
-                  <Text
-                    style={[styles.trainingLabel, isSelected && styles.trainingLabelSelected]}
-                  >
-                    {opt.label}
-                  </Text>
-                  {isSelected ? (
-                    <View style={styles.trainingCheck}>
-                      <Text style={styles.trainingCheckText}>✓</Text>
-                    </View>
-                  ) : null}
-                </TouchableOpacity>
+                  <Text style={styles.trainLabel}>{opt.label}</Text>
+                </ArtCard>
               );
             })}
           </View>
@@ -3335,19 +3382,19 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     borderColor: COLORS.accent,
   },
-  // --- the activity-level page's four cards (v0.5.2) -------------------
+  // --- the picture card, shared by the activity and training pages ----
   //
-  // One row: the animation on its tile, then the words. No red/green
-  // here -- see the branch in renderStepBody for why -- so choosing a
-  // card is the app's own accent blue, drawn as a border over the top of
-  // the card rather than as a wider border on it, which would nudge the
-  // contents by a point as it appeared.
-  actCard: {
+  // One row: the animation on its tile, then the words. No red/green on
+  // either page -- none of these answers is a better or worse way to
+  // spend a day -- so choosing one is the app's own accent blue, drawn
+  // as a border OVER the card rather than as a wider border ON it,
+  // which would nudge the contents by a point as it appeared.
+  artCard: {
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     padding: ACT_PAD,
-    marginBottom: 14,
+    marginBottom: 12,
     borderRadius: 22,
     borderWidth: 1,
     borderColor: '#eef2f8',
@@ -3358,26 +3405,32 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     elevation: 2,
   },
-  actCardOn: { backgroundColor: '#f5f9ff' },
-  actBorder: {
+  artCardOn: { backgroundColor: '#f5f9ff' },
+  artBorder: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 22,
     borderWidth: 2.5,
     borderColor: COLORS.accent,
   },
-  actTile: {
-    width: ACT_TILE,
-    height: ACT_TILE,
-    borderRadius: 20,
-    backgroundColor: '#e6f0fd',
+  artTile: { borderRadius: 20, backgroundColor: '#e6f0fd', overflow: 'hidden' },
+  artTileDot: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#d9e7fa' },
+  // Placed by the card, from the figure's own box; the rest overrides
+  // every number components/Mascot.js sets for the corner mascot.
+  artArt: { position: 'absolute', alignSelf: 'auto', marginTop: 0, marginRight: 0 },
+  artArtFlipped: { transform: [{ scaleX: -1 }] },
+  artWords: { flex: 1, minWidth: 0, marginLeft: ACT_GAP, paddingRight: 8 },
+  artCheck: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.accent,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
   },
-  actTileDot: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#d9e7fa' },
-  // Overrides every number components/Mascot.js sets for the corner.
-  actArt: { alignSelf: 'center', marginTop: 0, marginRight: 0 },
-  actTextCol: { flex: 1, minWidth: 0, marginLeft: ACT_GAP, paddingRight: 8 },
+  // ...then the activity page's three lines of words,
   actTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
   actDesc: { fontSize: 15, lineHeight: 20, color: COLORS.textSoft, marginTop: 2 },
   actBadge: {
@@ -3389,57 +3442,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#e2edfc',
   },
   actBadgeText: { fontSize: 14, fontWeight: '800', color: COLORS.accent },
-  actCheck: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // ...and the training page's one.
+  trainLabel: { fontSize: 20, fontWeight: '800', color: COLORS.text },
 
-  // --- training step's illustrated horizontal cards — see the 'iconCards'
-  // branch in the 'multi' step-type handling above and TRAINING_IMAGES in
-  // data/quizQuestions.js for the actual pictures. Simpler than
-  // activityCard above (no description/badge — just an icon and a label,
-  // matching Damon's reference preview exactly) and reuses the same
-  // touch-target-friendly padding and selected-state treatment. ---
-  trainingCard: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e3e3e8',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 12,
-  },
-  trainingCardSelected: { backgroundColor: '#4f8ef7', borderColor: '#4f8ef7' },
-  // The image itself already contains a pale-blue circular backdrop (see
-  // TRAINING_IMAGES' own comment in data/quizQuestions.js), so this is
-  // just a fixed-size square slot for it — no extra circle View needed.
-  trainingIconWrap: { width: 64, height: 64, marginRight: 16 },
-  trainingIconImage: { width: '100%', height: '100%' },
-  trainingLabel: { flex: 1, fontSize: 17, fontWeight: '600', color: '#1a1a1a' },
-  trainingLabelSelected: { color: '#fff' },
-  trainingCheck: {
-    position: 'absolute',
-    top: -8,
-    right: -8,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#4f8ef7',
-    borderWidth: 2,
-    borderColor: '#fff',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trainingCheckText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   // --- diet step's illustrated cards — see the 'illustratedCards' layout
   // branch in renderStepBody. Icon sits at a fixed size on the left
   // (~25-30% of a typical card's width), title + short description +
