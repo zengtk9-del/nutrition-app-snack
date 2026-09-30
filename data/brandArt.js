@@ -73,18 +73,28 @@ export const MASCOT = assetUri('mascot_broccoli.png');
 export const USE_ANIMATED_MASCOT = true;
 export const MASCOT_ANIMATED = assetUri('mascot_broccoli_anim.webp');
 
-// --- The seven poses (v0.3.0) -------------------------------------------
+// --- The eleven poses (v0.3.0; four more in v0.5.6) ---------------------
 //
 // One animation per thing the mascot can be doing. utils/mascotState.js
 // decides which; this only says where each file lives.
 //
-// ALL SEVEN SHARE ONE CANVAS, 236x262, which is the union of all seven
-// alpha bounding boxes. That is not tidiness -- it is the only way the
-// broccoli stays the same size and sits in the same spot when the pose
-// changes. Cropping each file to its own art would make him jump and
-// resize on every switch, which is the v0.2.3 bug all over again. The
-// canvas is as tight as it can be while still holding the jump (which
-// reaches the top edge) and the sleep (which lies down and is wide).
+// ALL ELEVEN SHARE ONE CANVAS, 236x262, which is the union of the
+// original seven's alpha bounding boxes. That is not tidiness -- it is
+// the only way the broccoli stays the same size and sits in the same
+// spot when the pose changes. Cropping each file to its own art would
+// make him jump and resize on every switch, which is the v0.2.3 bug all
+// over again. The canvas is as tight as it can be while still holding
+// the jump (which reaches the top edge) and the sleep (which lies down
+// and is wide).
+//
+// THE FOUR FROM THE QUIZ (v0.5.6) had to be MADE to fit it. They were
+// drawn for cards and a full page, cropped to their own art at three
+// times the size, so they were re-cut rather than resized: each one is
+// scaled until the deep green of his crown is 168px wide -- the width
+// it is in the original seven -- then stood with its feet on y=254 and
+// its middle on x=118, which is where the others' are. That is what
+// makes eleven drawings from three different sessions read as one
+// character standing in one place.
 //
 // THE FILENAMES ARE A CONTRACT, same as the static art: lowercase, in
 // the icon repo's assets/ folder, because jsDelivr is case-sensitive and
@@ -99,6 +109,14 @@ export const MASCOT_POSE_FILES = {
   curl: 'mascot_curl.webp',
   meditate: 'mascot_meditate.webp',
   sleep: 'mascot_sleep.webp',
+  // Four scenes the quiz introduced, re-cut for the corner (v0.5.6):
+  // walking with his pack (10 frames, 1.0s), at a desk with a laptop
+  // (12, 1.2s), on the couch with a controller (16, 1.6s) and
+  // dribbling a ball (18, 1.8s). 107-189 KB each.
+  hike: 'mascot_hike.webp',
+  desk: 'mascot_desk.webp',
+  game: 'mascot_game.webp',
+  hoops: 'mascot_hoops.webp',
 };
 
 export const MASCOT_POSES = Object.keys(MASCOT_POSE_FILES).reduce((acc, pose) => {

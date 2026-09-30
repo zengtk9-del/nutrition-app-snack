@@ -32,11 +32,17 @@
 // exactly rather than approximately.
 // ---------------------------------------------------------------------
 
-// The four that rotate. Order here is only the pool; the pick is random.
-export const ROTATION = ['run', 'idle', 'meditate', 'curl'];
+// The ones that rotate. Order here is only the pool; the pick is random.
+// Damon's spec named four; v0.5.6 added the four scenes the quiz's
+// redesign produced, so the corner now has eight things to be doing and
+// you can watch it for four minutes without seeing a repeat.
+export const ROTATION = ['run', 'idle', 'meditate', 'curl', 'hike', 'desk', 'game', 'hoops'];
 
 // Every pose the app knows, rotation and one-shots together.
-export const ALL_POSES = ['wave', 'run', 'idle', 'jump', 'curl', 'meditate', 'sleep'];
+export const ALL_POSES = [
+  'wave', 'run', 'idle', 'jump', 'curl', 'meditate', 'sleep',
+  'hike', 'desk', 'game', 'hoops',
+];
 
 export const SLOT_MS = 30000;
 
