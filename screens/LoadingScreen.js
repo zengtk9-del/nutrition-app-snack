@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing, TouchableOpacity } from 'react-native';
 
 import Mascot from '../components/Mascot';
 import { MASCOT_SCENES } from '../data/brandArt';
@@ -20,6 +20,13 @@ import { COLORS, RADIUS } from '../utils/theme';
 // obviously fake, perfectly even animation. It lands on 100% after roughly
 // five seconds on average, though the exact time (and the pace along the
 // way) varies a bit each time it runs, for that same reason.
+//
+// IT WAITS FOR YOU AT THE END (v0.5.5). It used to hand off by itself a
+// beat after 100%, which meant the one moment the screen has something
+// to say -- your plan is ready -- went by in 400ms. Now the bar lands,
+// the line above changes, a button appears under it, and nothing happens
+// until it is pressed. The button's space is held from the first frame,
+// invisible, so its arrival does not shove the page upwards.
 //
 // The JUMPS ARE EASED rather than applied instantly: each one glides over
 // a fraction of the gap before the next, which keeps the randomness
@@ -45,12 +52,21 @@ const BAR_H = 22;
 const FIGURE_H = 300;
 const LAB_ASPECT = 549 / 720; // the file's own ratio, so he is never stretched
 const JUMP_MS = 300;
+const BTN_H = 56;
+const BTN_GAP = 22;
+const REVEAL_MS = 260;
 
-export default function LoadingScreen({ onDone, message = 'Creating your personal nutrition plan' }) {
+export default function LoadingScreen({
+  onDone,
+  message = 'Creating your personal nutrition plan',
+  doneMessage = 'Your personal nutrition plan is ready!',
+}) {
   const [progress, setProgress] = useState(0);
+  const [ready, setReady] = useState(false);
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
   const grow = useRef(new Animated.Value(0)).current;
+  const reveal = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let cancelled = false;
@@ -72,10 +88,18 @@ export default function LoadingScreen({ onDone, message = 'Creating your persona
         const delay = 250 + Math.random() * 200; // 250-450ms between jumps
         timer = setTimeout(tick, delay);
       } else {
-        // Hold on a full bar for a beat before handing off, so it doesn't
-        // flash past 100% too quickly to actually notice.
+        // Hold on a full bar for a beat before saying so: the fill is
+        // still gliding to the end for JUMP_MS after the number lands,
+        // and a button that appears while it is moving looks early.
         timer = setTimeout(() => {
-          if (!cancelled && onDoneRef.current) onDoneRef.current();
+          if (cancelled) return;
+          setReady(true);
+          Animated.timing(reveal, {
+            toValue: 1,
+            duration: REVEAL_MS,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true, // opacity and a transform, so it can
+          }).start();
         }, 400);
       }
     };
@@ -86,7 +110,7 @@ export default function LoadingScreen({ onDone, message = 'Creating your persona
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [grow]);
+  }, [grow, reveal]);
 
   return (
     <View style={styles.container} testID="loading-screen">
@@ -100,7 +124,7 @@ export default function LoadingScreen({ onDone, message = 'Creating your persona
       </View>
 
       <Text style={styles.title} testID="loading-title">
-        {message}…
+        {ready ? doneMessage : `${message}…`}
       </Text>
 
       <Mascot
@@ -122,6 +146,33 @@ export default function LoadingScreen({ onDone, message = 'Creating your persona
         </Animated.View>
       </View>
       <Text style={styles.percent} testID="loading-percent">{`${Math.round(progress)}%`}</Text>
+
+      {/* The slot is here from the first frame and only its contents
+          fade in, so the page does not jump when they do. */}
+      <View style={styles.buttonSlot} pointerEvents={ready ? 'auto' : 'none'}>
+        <Animated.View
+          style={{
+            opacity: reveal,
+            transform: [{ translateY: reveal.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+          }}
+        >
+          <TouchableOpacity
+            testID="loading-button"
+            style={styles.button}
+            onPress={() => {
+              if (ready && onDoneRef.current) onDoneRef.current();
+            }}
+            activeOpacity={0.85}
+            disabled={!ready}
+            accessibilityRole="button"
+            accessibilityLabel="View it now"
+            accessibilityElementsHidden={!ready}
+            importantForAccessibility={ready ? 'yes' : 'no-hide-descendants'}
+          >
+            <Text style={styles.buttonText}>View it now</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
     </View>
   );
 }
@@ -160,4 +211,18 @@ const styles = StyleSheet.create({
   fill: { height: BAR_H, borderRadius: BAR_H / 2, flexDirection: 'row', overflow: 'hidden' },
   fillSlice: { flex: 1 },
   percent: { fontSize: 28, fontWeight: '800', color: COLORS.accent, marginTop: 14 },
+  buttonSlot: { alignSelf: 'stretch', marginHorizontal: 11, height: BTN_H, marginTop: BTN_GAP },
+  button: {
+    height: BTN_H,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.accent,
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 3,
+  },
+  buttonText: { fontSize: 18, fontWeight: '800', color: '#fff' },
 });
