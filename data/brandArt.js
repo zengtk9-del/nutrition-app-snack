@@ -145,6 +145,13 @@ export const MASCOT_SCENES = {
   // cycle, 1.008s, 534 KB. Cut from Damon's 30fps HEVC-with-alpha export
   // at every other frame, on the seam where the cycle closes cleanest.
   target: assetUri('mascot_backpack.webp'),
+  // In a lab coat and glasses, writing on a notepad, for the few seconds
+  // between the last question and the report (v0.5.4). That screen's job
+  // is to say someone is working on your numbers, so he is the one doing
+  // it. ANIMATED: 549x720, 12 frames at 100ms -- 1.2s, 461 KB. The
+  // biggest of these after the intro wave, because it is drawn 300pt
+  // tall with nothing else on the screen.
+  lab: assetUri('mascot_lab.webp'),
 };
 
 // --- The four jobs (v0.5.2) --------------------------------------------
