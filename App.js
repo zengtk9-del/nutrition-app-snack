@@ -48,6 +48,9 @@ import DietPickerScreen from './screens/DietPickerScreen';
 import FollowGoalScreen from './screens/FollowGoalScreen';
 import { makeEntryFromFood, entriesForToday } from './utils/nutrition';
 import { buildProfile, generateGoalsReport } from './utils/goals';
+// DEV SCAFFOLDING (v0.5.7) — see utils/lastIntake.js. Goes when the
+// "Open Last Report" button on the Goals tab goes.
+import { saveLastIntake, loadLastIntake } from './utils/lastIntake';
 
 const DEFAULT_GOALS = { calories: 2000, protein: 150, carbs: 200, fat: 65, tdee: null };
 
@@ -579,6 +582,44 @@ export default function App() {
   // states/screens.
   const [macroGoalsOpen, setMacroGoalsOpen] = useState(false);
 
+  // --- DEV SCAFFOLDING (v0.5.7) ---------------------------------------
+  // The last intake's answers, read off the device once on mount, so the
+  // report can be opened straight from the Goals tab while it is being
+  // redesigned. Everything in this block and the button it feeds comes
+  // out again when the redesign is done.
+  const [lastIntake, setLastIntake] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    loadLastIntake().then((stored) => {
+      if (alive && stored) setLastIntake(stored);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleOpenLastReport = () => {
+    const answers = (lastIntake && lastIntake.answers) || quizAnswers;
+    if (!answers) return;
+    try {
+      const profile = buildProfile(answers);
+      const report = generateGoalsReport(profile);
+      setQuizAnswers(answers);
+      setQuizProfile(profile);
+      setQuizReport(report);
+      setReportView(
+        report.calorieTarget.capped === 'needs_professional_guidance' ? 'summary' : 'pages'
+      );
+      setQuizStage('report'); // straight in, no loading screen: this is a shortcut
+    } catch (err) {
+      // An intake saved by an older build of the quiz might not have
+      // everything buildProfile wants. Say so rather than white-screen.
+      console.warn('Could not rebuild the last report', err);
+      Alert.alert('No usable intake', 'The stored answers could not be turned into a report. Retake the quiz once.');
+    }
+  };
+  // --- end dev scaffolding ---------------------------------------------
+
   const handleStartQuiz = () => setQuizStage('quiz');
 
   // Changing diet from the Goals tab. Reorders Log Food and nothing else —
@@ -622,6 +663,10 @@ export default function App() {
     const profile = buildProfile(answers);
     const report = generateGoalsReport(profile);
     setQuizAnswers(answers);
+    // DEV SCAFFOLDING (v0.5.7): keep the answers on the device so the
+    // Goals tab can reopen this report without the quiz being retaken.
+    setLastIntake({ at: Date.now(), answers });
+    saveLastIntake(answers);
     setQuizProfile(profile);
     setQuizReport(report);
     setReportView(report.calorieTarget.capped === 'needs_professional_guidance' ? 'summary' : 'pages');
@@ -888,6 +933,9 @@ export default function App() {
             onDeleteSavedGoal={handleDeleteSavedGoal}
             diet={diet}
             onChangeDiet={() => setDietPickerOpen(true)}
+            /* DEV SCAFFOLDING (v0.5.7) — remove with the button. */
+            onOpenLastReport={handleOpenLastReport}
+            lastIntakeAt={lastIntake ? lastIntake.at : null}
           />
         )}
       </View>

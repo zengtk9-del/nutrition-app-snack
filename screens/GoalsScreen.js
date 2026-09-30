@@ -189,6 +189,11 @@ export default function GoalsScreen({
   onDeleteSavedGoal,
   diet = DEFAULT_DIET,
   onChangeDiet,
+  // DEV SCAFFOLDING (v0.5.7) — see utils/lastIntake.js. Both of these,
+  // and the block that renders them further down, come out when the
+  // report's redesign is finished.
+  onOpenLastReport,
+  lastIntakeAt = null,
 }) {
   // Whatever you're following goes first (v0.0.82). The list arrives in
   // save order, which means the one goal you're actually tracking against
@@ -296,6 +301,29 @@ export default function GoalsScreen({
         />
       )}
 
+      {/* DEV SCAFFOLDING (v0.5.7). Deliberately plain: it is a door into
+          the report while that report is being redesigned, not a feature.
+          Disabled until an intake has been taken on this device, since
+          there would be nothing to build a report from. */}
+      {onOpenLastReport && (
+        <TouchableOpacity
+          testID="dev-open-last-report"
+          style={[s.devButton, !lastIntakeAt && s.devButtonOff]}
+          activeOpacity={0.7}
+          onPress={onOpenLastReport}
+          disabled={!lastIntakeAt}
+        >
+          <Text style={s.devButtonText}>
+            {lastIntakeAt ? 'DEV · Open Last Report' : 'DEV · No intake saved yet'}
+          </Text>
+          <Text style={s.devButtonSub}>
+            {lastIntakeAt
+              ? `Rebuilt from the quiz taken ${new Date(lastIntakeAt).toLocaleString()}`
+              : 'Take the quiz once and this opens its report again'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {userEmail ? <Text style={s.account}>Logged in as {userEmail}</Text> : null}
 
       <TouchableOpacity style={s.logout} activeOpacity={0.7} onPress={onLogout}>
@@ -307,6 +335,20 @@ export default function GoalsScreen({
 }
 
 const s = StyleSheet.create({
+  // DEV SCAFFOLDING (v0.5.7) — these two go with the button above.
+  devButton: {
+    marginTop: 18,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.textMuted,
+    backgroundColor: '#fff',
+  },
+  devButtonOff: { opacity: 0.45 },
+  devButtonText: { fontSize: 15, fontWeight: '800', color: COLORS.text },
+  devButtonSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACE.screen, paddingBottom: 40 },
 
