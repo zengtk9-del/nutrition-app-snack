@@ -135,24 +135,38 @@ let lastChooseAt = 0;
 
 // --- Why nothing happened ---------------------------------------------
 //
-// v0.6.1 shipped haptics that did not fire on Damon's phone, and the
-// reason it took a round-trip to work out is that EVERY way this can
-// fail was built to fail silently. The app never breaks, which was the
-// point -- but "no buzz" could equally have been a missing module, a
-// native side that is not in the runtime, a rejected call, Low Power
-// Mode, or the phone's own System Haptics switch, and none of them said
-// so anywhere.
+// v0.6.1 shipped haptics that did not fire, and finding out why cost
+// three rounds. It was not the code -- the phone had all vibration
+// switched off under Settings > Accessibility > Touch -- and the only
+// reason that took so long is that EVERY way this can fail was built
+// to fail silently. The app never breaks, which was the point; but "no
+// buzz" could equally have been a missing module, a native side absent
+// from the runtime, a rejected call, Low Power Mode, iOS's System
+// Haptics switch, or that one, and not one of them said so anywhere.
 //
-// So failures are still swallowed, and now also WRITTEN DOWN. `fire`
-// records what became of the last call of each verb; hapticsReport()
-// hands that back. Silent to the user, legible to anyone asking why.
+// The diagnostic panel that settled it is gone (v0.6.4). This stayed,
+// because it is the part that stops the next one costing three rounds:
+// failures are still swallowed at the call site, and now also written
+// down, and the FIRST real one is logged once. A phone that cannot
+// buzz leaves a trace in the console instead of leaving a mystery.
+//
+// On Damon's own phone, for the record, every call returns 'ok'. iOS
+// accepts the request and discards it when the user has turned
+// vibration off; there is no error to catch and nothing to fix.
 const outcomes = {};
 let firstError = null;
+let loggedFirst = false;
 
 function record(verb, what) {
   outcomes[verb] = what;
-  if (!firstError && what && what.indexOf('ok') !== 0 && what.indexOf('skipped') !== 0) {
-    firstError = verb + ': ' + what;
+  const bad = what && what.indexOf('ok') !== 0 && what.indexOf('skipped') !== 0;
+  if (bad && !firstError) firstError = verb + ': ' + what;
+  // Once, ever. These fire on every tap and a log per tap would bury
+  // the thing it is trying to show.
+  if (bad && !loggedFirst) {
+    loggedFirst = true;
+    console.warn('[haptics] ' + verb + ' did not go through — ' + what
+      + '. Everything still works; the phone just will not buzz.');
   }
 }
 
@@ -163,7 +177,7 @@ function record(verb, what) {
 // about, and all of which would otherwise surface as a warning box over
 // the UI.
 //
-// Returns a promise anyway, so the diagnostic can await one.
+// Returns a promise anyway, so a test can await one.
 function fire(verb, run) {
   if (!enabled) {
     record(verb, 'skipped: haptics switched off');
@@ -189,7 +203,9 @@ function fire(verb, run) {
   }
 }
 
-// Everything known about why the phone is or is not buzzing.
+// Everything known about why the phone is or is not buzzing. Nothing in
+// the app reads this; it is for a console during the next "no haptics"
+// conversation, which is a cheap thing to keep after the last one.
 export function hapticsReport() {
   return {
     platform: Platform.OS,
