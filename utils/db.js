@@ -129,7 +129,7 @@ export function describeDietSaveError(err) {
 // row; it's purely informational for the "My Saved Goals" list (e.g. to
 // show a badge on the one you're using) and is never read by anything
 // that actually affects your tracked numbers — hand-editing the numbers
-// directly on the Goals tab, for instance, doesn't update it, so it can
+// directly on the Home tab, for instance, doesn't update it, so it can
 // go a little stale. That's an accepted simplification, not a bug.
 const MAX_SAVED_GOALS = 5;
 

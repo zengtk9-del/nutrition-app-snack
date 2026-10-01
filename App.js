@@ -49,7 +49,7 @@ import FollowGoalScreen from './screens/FollowGoalScreen';
 import { makeEntryFromFood, entriesForToday } from './utils/nutrition';
 import { buildProfile, generateGoalsReport } from './utils/goals';
 // DEV SCAFFOLDING (v0.5.7) — see utils/lastIntake.js. Goes when the
-// "Open Last Report" button on the Goals tab goes.
+// "Open Last Report" button on the Home tab goes.
 import { saveLastIntake, loadLastIntake } from './utils/lastIntake';
 
 const DEFAULT_GOALS = { calories: 2000, protein: 150, carbs: 200, fat: 65, tdee: null };
@@ -60,7 +60,13 @@ const TABS = [
   { key: 'dashboard', label: 'Today', icon: 'calendar-star' },
   { key: 'log', label: 'Log Food', icon: 'silverware-fork-knife' },
   { key: 'history', label: 'History', icon: 'chart-bar' },
-  { key: 'goals', label: 'Goals', icon: 'target' },
+  // Named Home rather than Goals as of v0.5.9, with the house to match.
+  // `key` stays 'goals': it is what `activeTab` is compared against in a
+  // dozen places and it names the screen file, none of which the user
+  // ever sees. Outline rather than solid because the other three glyphs
+  // are outlines, and a filled house next to a stroked calendar reads as
+  // a mistake.
+  { key: 'goals', label: 'Home', icon: 'home-outline' },
 ];
 
 export default function App() {
@@ -134,13 +140,13 @@ export default function App() {
   // and none of them should carry a diet along with them.
   const [diet, setDiet] = useState(DEFAULT_DIET);
   // Open state for the "My Diet" picker, a full-screen takeover from the
-  // Goals tab in the same style as the macro-goals screen.
+  // Home tab in the same style as the macro-goals screen.
   const [dietPickerOpen, setDietPickerOpen] = useState(false);
   // The up-to-5 named goals from utils/db.js's saved_goals table — a
   // separate, parallel list from the single `goals` row above. `goals`
   // itself is still the only thing Dashboard/History actually read from
   // for the progress bars; this is just the named history you can save a
-  // new one into or switch back to, shown on the Goals tab.
+  // new one into or switch back to, shown on the Home tab.
   const [savedGoals, setSavedGoals] = useState([]);
   // Every favorite this user has saved on the Log Food tab's "My
   // Favorites" chip — as of the My Favorites overhaul, this is a list of
@@ -584,7 +590,7 @@ export default function App() {
 
   // --- DEV SCAFFOLDING (v0.5.7) ---------------------------------------
   // The last intake's answers, read off the device once on mount, so the
-  // report can be opened straight from the Goals tab while it is being
+  // report can be opened straight from the Home tab while it is being
   // redesigned. Everything in this block and the button it feeds comes
   // out again when the redesign is done.
   const [lastIntake, setLastIntake] = useState(null);
@@ -622,7 +628,7 @@ export default function App() {
 
   const handleStartQuiz = () => setQuizStage('quiz');
 
-  // Changing diet from the Goals tab. Reorders Log Food and nothing else —
+  // Changing diet from the Home tab. Reorders Log Food and nothing else —
   // it deliberately does NOT recalculate calories or macros, even though
   // diet feeds those too (see utils/goals.js). Rewriting someone's targets
   // because they tapped a button labelled "My Diet" would be a surprise;
@@ -664,7 +670,7 @@ export default function App() {
     const report = generateGoalsReport(profile);
     setQuizAnswers(answers);
     // DEV SCAFFOLDING (v0.5.7): keep the answers on the device so the
-    // Goals tab can reopen this report without the quiz being retaken.
+    // Home tab can reopen this report without the quiz being retaken.
     setLastIntake({ at: Date.now(), answers });
     saveLastIntake(answers);
     setQuizProfile(profile);

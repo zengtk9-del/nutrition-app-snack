@@ -76,7 +76,7 @@ export default function SaveGoalModal({ visible, defaultName = '', atCap, onCanc
             <>
               <Text style={styles.title}>You've saved 5 goals</Text>
               <Text style={styles.body}>
-                That's the most you can keep at once. Delete one from the Goals tab, then come back
+                That's the most you can keep at once. Delete one from the Home tab, then come back
                 and save this one.
               </Text>
               <TouchableOpacity

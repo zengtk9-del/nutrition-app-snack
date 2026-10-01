@@ -1,6 +1,6 @@
 // "My Diet" — changing your diet without retaking the whole quiz.
 //
-// Reached from the button at the top of the Goals tab. Same full-screen
+// Reached from the button at the top of the Home tab. Same full-screen
 // takeover pattern as MacroGoalsScreen (no tab bar while it's open), and
 // deliberately the SAME illustrated cards as the quiz's diet step rather
 // than a second, plainer list: the options, the illustrations, the short
@@ -27,7 +27,7 @@ import { DEFAULT_DIET } from '../data/dietOrder';
 export const DIET_OPTIONS = QUIZ_STEPS.find((s) => s.key === 'diet').options;
 
 // Label for a stored diet value, e.g. 'low_carb' -> 'Low-carb'. Used by
-// the Goals tab's button as well as this screen. Falls back to the
+// the Home tab's button as well as this screen. Falls back to the
 // balanced label rather than rendering a raw key if the stored value is
 // somehow unrecognised.
 export function dietLabel(value) {

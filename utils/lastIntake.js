@@ -1,7 +1,7 @@
 // The answers from the last intake quiz, kept on the device.
 //
 // DEV SCAFFOLDING (v0.5.7). This exists for the "Open Last Report" button
-// on the Goals tab, which is there so the report can be redesigned
+// on the Home tab, which is there so the report can be redesigned
 // without answering eleven questions before every look at it. Damon
 // asked for the button and said it will not be kept; when it goes, this
 // file and its two call sites in App.js go with it.

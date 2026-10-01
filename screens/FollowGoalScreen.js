@@ -6,7 +6,7 @@ import { buildFollowSummary } from '../utils/goals';
 // One goal, full screen: its wheel, its numbers, and what following it
 // would do to your weight. Reused in three places, switched with `mode`:
 //
-//   mode="view" — tapping a saved-goal card on the Goals tab (see
+//   mode="view" — tapping a saved-goal card on the Home tab (see
 //   GoalsScreen.js's onOpen / App.js's viewedGoal). Added in v0.0.82. This
 //   is now the ONLY way this screen is reached from the list, and it is a
 //   readout rather than a question: Close beside "Follow this goal", the

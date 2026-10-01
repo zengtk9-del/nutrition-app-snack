@@ -32,7 +32,7 @@ import { CATEGORIES } from './foods';
 // user takes the intake quiz, so in principle everyone has a diet -- but
 // the quiz answer wasn't persisted until v0.0.69, so every account created
 // before then has a null one until they retake the quiz or use the "My
-// Diet" button on the Goals tab. Defaulting to balanced means those users
+// Diet" button on the Home tab. Defaulting to balanced means those users
 // see no change at all rather than a surprise reshuffle.
 export const DEFAULT_DIET = 'balanced';
 

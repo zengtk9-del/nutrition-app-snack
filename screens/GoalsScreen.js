@@ -1,4 +1,4 @@
-// The Goals tab -- what you're tracking against, and every way to change it.
+// The Home tab -- what you're tracking against, and every way to change it.
 //
 // Rebuilt in v0.0.77 against Damon's mockup, onto utils/theme.js. The last
 // of the four screens to move over, and the longest: with five saved goals
