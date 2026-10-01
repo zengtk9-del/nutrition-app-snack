@@ -170,6 +170,131 @@ export const MASCOT_SCENES = {
   // biggest of these after the intro wave, because it is drawn 300pt
   // tall with nothing else on the screen.
   lab: assetUri('mascot_lab.webp'),
+  // The same lab coat, now teaching: a pointer raised at the whiteboard,
+  // for all six report pages (v0.5.8). A STILL, cut from the report
+  // pack's own mascot-pointer-positioned layer -- 369x452 of it, scaled
+  // 1.4x to 517x633 so it survives a 3x screen, 80 KB.
+  //
+  // STILL, ON PURPOSE, and the one place in this app where that is a
+  // decision rather than a limitation. Everything else the mascot does
+  // moves; this pose exists to aim a pointer at a specific spot on the
+  // board behind him, and REPORT_BOARD.pointer below is that spot to the
+  // pixel. An animated loop would move the tip, and the whole point of
+  // the composition is that it does not. If a loop of this pose ever
+  // arrives, it is this one line plus a new tip position.
+  teacher: assetUri('mascot_teacher.webp'),
+};
+
+// --- The whiteboard the report is taught on (v0.5.8) -------------------
+//
+// The report pack is six flattened 853x1844 mockups plus the board and
+// the teacher as transparent layers. The board here is NOT one of those
+// layers -- it is drawn from plain Views, the way the donut and the
+// scale and the dial are -- and this block is the bridge: every number
+// Damon's layers fix, measured off them once, in one unit.
+//
+// THE UNIT IS THE BOARD'S OWN WIDTH. Every value below is a multiple of
+// it, so one number at the call site (`w`) sets the entire composition
+// and the phone's width is the only thing that decides scale. Measuring
+// against the 853px canvas instead would have made the page depend on a
+// canvas that no longer exists once the design leaves the mockup.
+//
+// WHY NOT JUST SHIP THE PNG. Three reasons, in order of how much they
+// cost: the board has to hold real text at real sizes and a picture of
+// a board cannot; a real profile's answers run longer than the sample's
+// ("Cardio, Lifting, Sports & Other Activities" is already two lines in
+// the mockup), so the board has to be able to GROW, and a picture would
+// stretch its frame doing it; and the pack's own README asks for "one
+// shared reusable template in the finished app for pixel-perfect
+// consistency", which is this file plus components/ReportBoard.js.
+//
+// Measured off empty-whiteboard-positioned.png and
+// mascot-pointer-positioned.png, both 853x1844, with the board's frame
+// spanning x=128..835 (708px, the unit) and y=377..1307.
+export const REPORT_BOARD = {
+  // The frame: outer box, corner, and the pale band between it and the
+  // white surface. Top and bottom differ by 3px in the artwork; kept
+  // apart rather than averaged because the marker tray hangs off the
+  // bottom one and a 3px error there shows.
+  //
+  // 985, WHERE THE PACK'S BOARD IS 930. The one number here that is not
+  // Damon's, and the reason is arithmetic rather than taste: his canvas
+  // is 426pt wide and a phone is 393, so the same board is 8% narrower
+  // here and every sentence on it takes more lines. Measured off the
+  // mockups, the Calorie Breakdown page's own content needs 234pt of
+  // board above the teacher; at 930 there are 210. The alternative was
+  // to shrink the type below what the mockups set it at, which costs
+  // legibility on the page with the most to read.
+  //
+  // 6% taller, then, and every page pays it equally so they still match
+  // each other -- which is the constraint that actually matters. The
+  // board still ends well above the button, with about as much air
+  // under it as the mockups leave.
+  frameH: 985 / 708,
+  radius: 44 / 708,
+  padX: 36 / 708,
+  padTop: 38 / 708,
+  padBottom: 35 / 708,
+  surfaceRadius: 26 / 708,
+  // Where the writing starts inside the white surface. Measured the
+  // same way as the rest (the pack's text runs x=195..770 on a surface
+  // that spans 164..799), and a share of the board rather than a fixed
+  // number so the margin holds on a narrow phone.
+  textPad: 31 / 708,
+
+  // The ledge under it, and the two things resting on the ledge. In the
+  // artwork both stand in the frame's own bottom band with their feet
+  // exactly on the shelf line where the tray begins, so they are placed
+  // from the frame's bottom edge and carry no y of their own.
+  trayH: 37 / 708,
+  marker: { x: 420 / 708, w: 88 / 708, h: 26 / 708 },
+  eraser: { x: 520 / 708, w: 87 / 708, h: 25 / 708 },
+
+  // The teacher, as a box hung off the board: he starts a sixth of a
+  // board-width PAST its left edge and his feet land just below the
+  // tray, which is what makes him read as standing in front of it
+  // rather than pasted onto it.
+  //
+  // `below` is how far past the tray's bottom edge his feet go, and it
+  // is what anchors him -- NOT a distance measured down from the top of
+  // the board. The two were the same number while the board was the
+  // pack's exact 930 tall; they stopped being the same the moment
+  // frameH went to 985, and anchoring from the top would have left him
+  // hovering 25 units above the floor.
+  mascot: { x: -112 / 708, w: 369 / 708, h: 452 / 708, below: 35 / 708 },
+
+  // Where his pointer ends up on the board, for anything that wants to
+  // aim at it. Nothing does yet -- it is here because it is the number
+  // the whole pose is built around and it would be guessed otherwise.
+  pointer: { x: 247 / 708, y: 551 / 708 },
+
+  // THE ONE RULE EVERY PAGE OBEYS: a box in the board's bottom-left
+  // corner that nothing may be written in, because his crown, his coat,
+  // his feet and the whole raised pointer are in it.
+  //
+  // The pack states the rule as "full-width content only above y=48% of
+  // the canvas; anything lower must sit right of x=46%". The width is
+  // exactly that: x=46% of the canvas is 392, which is his own bounding
+  // box's right edge (384) plus 8px of daylight.
+  //
+  // The HEIGHT is not. y=48% is 885, and the highest thing he has is
+  // his pointer's tip at 928 -- the pack's own page 2 writes down to
+  // 945 and reads fine, because 885 was a safe round number rather than
+  // a measurement. This is the measurement: the tip, plus the same 8px.
+  // Worth the 43px it gives back, on a board that has to hold real
+  // sentences at a real phone's width.
+  //
+  // Bottom-anchored, not top-anchored, so the rule still holds if a
+  // long answer ever pushes the board taller -- he is anchored to the
+  // bottom too, and the two move together.
+  keepW: 264 / 708,
+  keepH: 387 / 708,
+
+  // The board inside the page: the stage runs from the teacher's left
+  // edge to the board's right edge, and the board takes the right
+  // 86% of it. The strip to its left is his.
+  stageBoardX: 112 / 820,
+  stageBoardW: 708 / 820,
 };
 
 // --- The four jobs (v0.5.2) --------------------------------------------

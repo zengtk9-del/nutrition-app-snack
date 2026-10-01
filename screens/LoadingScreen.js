@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, TouchableOpacity } from 'react-native';
 
-import Mascot from '../components/Mascot';
+import Mascot, { warmArt } from '../components/Mascot';
 import { MASCOT_SCENES } from '../data/brandArt';
 import { COLORS, RADIUS } from '../utils/theme';
 
@@ -67,6 +67,16 @@ export default function LoadingScreen({
   onDoneRef.current = onDone;
   const grow = useRef(new Animated.Value(0)).current;
   const reveal = useRef(new Animated.Value(0)).current;
+
+  // The screen after this one is the report, and the report's board has
+  // the teacher standing at it (v0.5.8). He is a separate 80 KB file on
+  // the CDN, so without this the first page of the report draws its
+  // board and then, a beat later, the broccoli in front of it. This
+  // screen sits here for several seconds doing nothing else with the
+  // network — exactly the right moment to fetch him.
+  useEffect(() => {
+    warmArt(MASCOT_SCENES.teacher);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

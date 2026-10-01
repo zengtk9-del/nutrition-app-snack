@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { Card, SummaryRow, optionLabel, GOAL_NOTE, DEFAULT_GOAL_NAME } from '../components/ReportPieces';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { SummaryRow, optionLabel, GOAL_NOTE, DEFAULT_GOAL_NAME } from '../components/ReportPieces';
 import MacroDonutChart from '../components/MacroDonutChart';
 import SaveGoalModal from '../components/SaveGoalModal';
+import { ReportChrome } from '../components/ReportBoard';
+import { COLORS, RADIUS, SHADOW } from '../utils/theme';
 
 // This is the one-page summary — a compact recap of everything the report
 // covers, with the "Save These Goals" button. It's reached either by
 // finishing the multi-page walkthrough (screens/ReportPagesScreen.js) or
-// by tapping "Skip to Summary" partway through it; Card/SummaryRow/
+// by tapping "Skip to Summary" partway through it; SummaryRow/
 // optionLabel/GOAL_NOTE live in components/ReportPieces.js so both screens
 // share the exact same building blocks.
 //
@@ -19,6 +22,31 @@ import SaveGoalModal from '../components/SaveGoalModal';
 // straight away; `onSaveGoal(name)` (called once that modal's own Save is
 // confirmed) is what actually persists this as one of up to 5 named saved
 // goals and finishes the quiz flow — see handleSaveQuizGoal in App.js.
+//
+// ---------------------------------------------------------------------
+// WHY THIS SCREEN HAS NO WHITEBOARD (v0.5.8)
+//
+// The report's six pages were redesigned onto one: a board with the
+// broccoli teaching from it. Damon's design pack covers those six and
+// stops — this seventh screen, the one you actually land on and save
+// from, has no mockup.
+//
+// So it takes the pack's page (background, discs, title, the one
+// full-width button) and keeps plain cards inside it. Six boards stacked
+// down a scroll would be six teachers pointing at six things, and the
+// board's whole premise is that it is the thing you are looking at.
+// The summary's premise is the opposite: everything at once, briefly.
+// If a mockup for it ever turns up, the chrome is already shared and
+// only what is inside these cards has to change.
+function Section({ title, children }) {
+  return (
+    <View style={styles.card}>
+      {title ? <Text style={styles.cardTitle}>{title}</Text> : null}
+      {children}
+    </View>
+  );
+}
+
 export default function ReportScreen({ profile, answers, report, onDone, onSaveGoal, atCap }) {
   const { bmr, tdee, calorieTarget, macros, timeline } = report;
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -26,44 +54,66 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
   // --- Cases where there's no normal deficit/surplus report to show ---
   if (calorieTarget.capped === 'needs_professional_guidance') {
     return (
-      <View style={styles.container}>
-        <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-          <Text style={styles.title}>Let's hold off on a number here</Text>
-          <Card>
+      <ReportChrome
+        title="Let's hold off on a number here"
+        nextLabel="Done"
+        nextIcon={null}
+        onNext={onDone}
+        testID="report-summary"
+      >
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollBody}>
+          <View style={styles.cautionCard}>
+            <MaterialCommunityIcons
+              name="shield-alert-outline"
+              size={26}
+              color={COLORS.warnInk}
+              style={styles.cautionIcon}
+            />
             <Text style={styles.cautionText}>
               You told us you've been underweight before and that your goal is to lose more
               weight. That's not something we're comfortable turning into an automatic
               calorie target — please talk to a doctor or registered dietitian before pursuing
               further weight loss. They can look at your full history in a way this app can't.
             </Text>
-          </Card>
+          </View>
         </ScrollView>
-        <TouchableOpacity style={styles.doneBtn} onPress={onDone}>
-          <Text style={styles.doneBtnText}>Done</Text>
-        </TouchableOpacity>
-      </View>
+      </ReportChrome>
     );
   }
 
   const isMinor = calorieTarget.capped === 'minor';
 
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
-        <Text style={styles.title}>Your Plan</Text>
-
+    <ReportChrome
+      title="Your Plan"
+      nextLabel="Save These Goals"
+      nextIcon="content-save-outline"
+      onNext={() => setShowSaveModal(true)}
+      testID="report-summary"
+    >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollBody}
+        showsVerticalScrollIndicator={false}
+      >
         {isMinor && (
-          <Card>
+          <View style={styles.cautionCard}>
+            <MaterialCommunityIcons
+              name="information-outline"
+              size={24}
+              color={COLORS.warnInk}
+              style={styles.cautionIcon}
+            />
             <Text style={styles.cautionText}>
               Since you're under 18, we're only showing a maintenance target for now, not a
               weight-loss or weight-gain plan — that's something to work out with a parent or
               doctor rather than an app.
             </Text>
-          </Card>
+          </View>
         )}
 
         {/* --- 1. Daily Target --- */}
-        <Card title="Daily Target">
+        <Section title="Daily Target">
           {macros ? (
             <MacroDonutChart
               calories={calorieTarget.calories}
@@ -83,10 +133,10 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
               keep it at a safe minimum — it'll just take a little longer to reach your goal.
             </Text>
           )}
-        </Card>
+        </Section>
 
         {/* --- 2. Calorie Breakdown --- */}
-        <Card title="Calorie Breakdown">
+        <Section title="Calorie Breakdown">
           <SummaryRow
             label="Calories your body burns at complete rest (BMR)"
             value={`${bmr.toLocaleString()} kcal/day`}
@@ -110,11 +160,11 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
               `We recommend eating ${calorieTarget.delta.toLocaleString()} more calories than you burn each day.`}
             {(profile.goal === 'maintain' || isMinor) && 'This matches the calories you burn each day.'}
           </Text>
-        </Card>
+        </Section>
 
         {/* --- 3. Estimated Timeline --- */}
         {timeline && (
-          <Card title="Estimated Timeline">
+          <Section title="Estimated Timeline">
             <Text style={styles.timelineText}>
               {profile.goal === 'lose' ? 'Lose' : 'Gain'} about {timeline.weeklyRateKg} kg/week
             </Text>
@@ -125,11 +175,11 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
               This is a starting estimate, not a promise — it automatically recalculates every
               time you log a new weight, since your numbers change as your weight does.
             </Text>
-          </Card>
+          </Section>
         )}
 
         {/* --- 4. Your Profile --- */}
-        <Card title="Your Profile">
+        <Section title="Your Profile">
           <SummaryRow label="Age" value={`${profile.age}`} />
           <SummaryRow label="Sex" value={optionLabel('sex', profile.sex)} />
           <SummaryRow
@@ -159,31 +209,34 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
             }
           />
           <SummaryRow label="Diet" value={optionLabel('diet', profile.diet)} />
-        </Card>
+        </Section>
 
         {/* --- 5. How We Built Your Plan --- */}
-        <Card title="How We Built Your Plan">
+        <Section title="How We Built Your Plan">
           <Text style={styles.explainText}>
             We estimated your metabolism using your age, sex, height, weight, body fat, activity
             level and training. As you log meals and your weight, we'll automatically adjust your
             calorie target.
           </Text>
-        </Card>
+        </Section>
 
         {/* --- 6. Next Steps --- */}
         {macros && (
-          <Card title="Next Steps">
-            <Text style={styles.checklistItem}>✅ Eat {calorieTarget.calories.toLocaleString()} kcal/day</Text>
-            <Text style={styles.checklistItem}>✅ Reach {macros.proteinG}g protein</Text>
-            <Text style={styles.checklistItem}>✅ Log meals</Text>
-            <Text style={styles.checklistItem}>✅ Weigh yourself 3–7 times/week</Text>
-          </Card>
+          <Section title="Next Steps">
+            {[
+              `Eat ${calorieTarget.calories.toLocaleString()} kcal/day`,
+              `Reach ${macros.proteinG}g protein`,
+              'Log meals',
+              'Weigh yourself 3–7 times/week',
+            ].map((item) => (
+              <View key={item} style={styles.checkRow}>
+                <MaterialCommunityIcons name="check-circle" size={18} color={COLORS.good} />
+                <Text style={styles.checkText}>{item}</Text>
+              </View>
+            ))}
+          </Section>
         )}
       </ScrollView>
-
-      <TouchableOpacity style={styles.doneBtn} onPress={() => setShowSaveModal(true)}>
-        <Text style={styles.doneBtnText}>Save These Goals</Text>
-      </TouchableOpacity>
 
       <SaveGoalModal
         visible={showSaveModal}
@@ -192,20 +245,46 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
         onCancel={() => setShowSaveModal(false)}
         onConfirm={onSaveGoal}
       />
-    </View>
+    </ReportChrome>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f7fa', padding: 16 },
-  title: { fontSize: 28, fontWeight: '700', color: '#1a1a1a', marginBottom: 12, marginTop: 8 },
-  cautionText: { fontSize: 16, color: '#333', lineHeight: 22 },
-  calorieNumber: { fontSize: 34, fontWeight: '800', color: '#4f8ef7', textAlign: 'center', marginBottom: 14 },
-  smallNote: { fontSize: 14, color: '#777', fontStyle: 'italic', marginTop: 8, textAlign: 'center' },
-  breakdownExplain: { fontSize: 14, color: '#888', marginBottom: 12 },
-  timelineText: { fontSize: 17, fontWeight: '600', color: '#1a1a1a', marginBottom: 4 },
-  explainText: { fontSize: 16, color: '#333', lineHeight: 22 },
-  checklistItem: { fontSize: 16, color: '#1a1a1a', marginBottom: 8 },
-  doneBtn: { backgroundColor: '#4f8ef7', paddingVertical: 14, borderRadius: 10, alignItems: 'center', marginTop: 8 },
-  doneBtnText: { color: '#fff', fontWeight: '700', fontSize: 17 },
+  scroll: { flex: 1, marginTop: 12, marginBottom: 12 },
+  scrollBody: { paddingBottom: 16 },
+
+  card: {
+    backgroundColor: COLORS.card,
+    borderRadius: RADIUS.card,
+    padding: 16,
+    marginBottom: 12,
+    ...SHADOW.card,
+  },
+  cardTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text, marginBottom: 10 },
+
+  cautionCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 11,
+    backgroundColor: COLORS.warnSoft,
+    borderRadius: RADIUS.card,
+    padding: 15,
+    marginBottom: 12,
+  },
+  cautionIcon: { marginTop: 1 },
+  cautionText: { flex: 1, minWidth: 0, fontSize: 14.5, color: COLORS.text, lineHeight: 21 },
+
+  calorieNumber: {
+    fontSize: 32,
+    fontWeight: '900',
+    color: COLORS.accent,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  smallNote: { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', marginTop: 8, textAlign: 'center' },
+  breakdownExplain: { fontSize: 13, color: COLORS.textSoft, marginBottom: 12, lineHeight: 18 },
+  timelineText: { fontSize: 16, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
+  explainText: { fontSize: 15, color: COLORS.textSoft, lineHeight: 21 },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 9 },
+  checkText: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: '600', color: COLORS.text },
 });

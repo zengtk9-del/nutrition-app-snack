@@ -179,6 +179,27 @@ function warmPoses() {
   });
 }
 
+// Fetch one piece of artwork before the screen that needs it appears
+// (v0.5.8). warmPoses above does this for the corner poses, which are a
+// set on a timer; this is for a single file a screen knows is coming --
+// the report's teacher, asked for while the plan-building screen is
+// still counting up, so the board he stands at is not briefly empty.
+//
+// Same renderer this file already picked, so the file lands in the
+// cache the <Image> below will actually look in. Silent on failure: a
+// warm-up that does not happen costs a moment of blank, which is never
+// worth an error.
+export function warmArt(source) {
+  const uri = source && source.uri;
+  if (!uri || !ART_READY) return;
+  const Renderer = ExpoImage || RNImage;
+  try {
+    if (typeof Renderer.prefetch === 'function') Renderer.prefetch(uri);
+  } catch (err) {
+    /* see above */
+  }
+}
+
 // The mascot as drawn. Split out from the default export because an
 // error boundary cannot catch errors thrown by its own render -- only by
 // a child's.

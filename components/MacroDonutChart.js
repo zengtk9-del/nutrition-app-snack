@@ -415,8 +415,33 @@ const NUMBER_FADE_MS = 400;
 // this is what every normal, non-guided drag anywhere in the app should
 // do, exactly as before. Only MacroGoalsScreen's guided walkthrough ever
 // passes `animate={true}`, and only while it's actually running.
-export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size = 180, thickness, animate = false }) {
-  const stageSize = maxOuterSizeFor(size);
+// `legend`: false draws the ring alone. The report's Daily Target page
+// (v0.5.8) needs the three macro rows somewhere else on its whiteboard,
+// so it draws its own three rows from MACRO_COLORS at the board's type
+// size; every other caller wants both and gets both, unchanged.
+//
+// `tightStage`: the stage this ring sits in is normally sized for the
+// LARGEST ring a 5,000 kcal target could produce, so the hole cannot
+// drift while MacroGoalsScreen's guide animates between two values (see
+// RingShape's note). That reservation is dead space for anything that
+// never animates -- on the report's board it was costing a third of the
+// ring's possible diameter -- so a caller that only ever draws one
+// still ring can ask for a stage that fits the ring it actually has.
+// Never pass this together with animate.
+export default function MacroDonutChart({
+  calories,
+  proteinG,
+  carbsG,
+  fatG,
+  size = 180,
+  thickness,
+  animate = false,
+  legend = true,
+  tightStage = false,
+}) {
+  const stageSize = tightStage
+    ? ringGeometryForCalories(calories, size, thickness).outerSize
+    : maxOuterSizeFor(size);
   const holeSize = size * HOLE_RATIO;
 
   // ---- Ring shape: steadily tweens from the last real values to the new
@@ -510,7 +535,7 @@ export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size
   }, [calories, animate]);
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, !legend && styles.wrapBare]}>
       <View style={[styles.stage, { width: stageSize, height: stageSize }]}>
         <RingShape
           calories={ringNumbers.calories}
@@ -538,7 +563,7 @@ export default function MacroDonutChart({ calories, proteinG, carbsG, fatG, size
         </View>
       </View>
 
-      <Legend proteinG={proteinG} carbsG={carbsG} fatG={fatG} />
+      {legend ? <Legend proteinG={proteinG} carbsG={carbsG} fatG={fatG} /> : null}
     </View>
   );
 }
@@ -560,6 +585,9 @@ const styles = StyleSheet.create({
   // circle and legend still end up visually centered underneath it via
   // `alignItems: 'center'` exactly as before.
   wrap: { alignItems: 'center', marginBottom: 14, width: '100%' },
+  // The gap above belongs to the legend that normally follows the ring.
+  // With no legend (the report's board, v0.5.8) it is just a gap.
+  wrapBare: { marginBottom: 0 },
   // `position: 'relative'` is what makes holeNumberOverlay's absolute
   // positioning below resolve against THIS box (the fixed-size ring
   // stage) instead of drifting up to some more distant positioned

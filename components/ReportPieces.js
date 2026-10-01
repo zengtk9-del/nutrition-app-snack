@@ -5,8 +5,13 @@ import { QUIZ_STEPS } from '../data/quizQuestions';
 // Small building blocks shared between the report's one-page summary
 // (screens/ReportScreen.js) and the multi-page walkthrough
 // (screens/ReportPagesScreen.js) — kept in one place so a visual tweak to
-// what a "Card" or a stat row looks like only ever needs to happen here,
-// not in two files that could quietly drift apart from each other.
+// what a stat row looks like only ever needs to happen here, not in two
+// files that could quietly drift apart from each other.
+//
+// `Card` used to live here too. The v0.5.8 redesign gave the walkthrough
+// a whiteboard and the summary its own themed card, neither of which is
+// the plain white box it drew, so it went rather than sitting here as a
+// third opinion about what a card looks like.
 
 // Looks a chosen option's display label back up from the same QUIZ_STEPS
 // data the quiz itself used to ask the question — so any report screen's
@@ -24,15 +29,6 @@ export function SummaryRow({ label, value }) {
     <View style={styles.summaryRow}>
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={styles.summaryValue}>{value}</Text>
-    </View>
-  );
-}
-
-export function Card({ title, children }) {
-  return (
-    <View style={styles.card}>
-      {title ? <Text style={styles.cardTitle}>{title}</Text> : null}
-      {children}
     </View>
   );
 }
@@ -56,8 +52,6 @@ export const DEFAULT_GOAL_NAME = {
 };
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 14 },
-  cardTitle: { fontSize: 18, fontWeight: '700', color: '#1a1a1a', marginBottom: 10 },
   // alignItems: 'flex-start' (rather than the default 'stretch'/'center') plus
   // flex: 1 on the label below lets a long label (e.g. "Calories your body
   // burns at complete rest (BMR)") wrap onto multiple lines without pushing
