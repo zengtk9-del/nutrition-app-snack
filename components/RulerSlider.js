@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, PanResponder, StyleSheet } from 'react-native';
+import { choose, createTicker } from '../utils/haptics';
 import { COLORS } from '../utils/theme';
 
 // A HORIZONTAL ruler control (v0.1.1): a tape of tick marks slides left and
@@ -120,6 +121,9 @@ export default function RulerSlider({
   // per gram of whatever amount the user typed above this control -- so a
   // frozen copy would clamp to the wrong ceiling for the rest of the
   // session. Same fix DragSlider and MacroSlider both use.
+  // One per slider: four of these can be on screen at once and each
+  // crosses its own marks. See createTicker in utils/haptics.js.
+  const ticker = useRef(createTicker());
   const propsRef = useRef();
   propsRef.current = {
     value,
@@ -185,6 +189,7 @@ export default function RulerSlider({
         isDraggingRef.current = true;
         dragStartValueRef.current = v;
         lastRawValueRef.current = v;
+        ticker.current.start(v);
         setLiveValue(v);
         if (onStart) onStart();
       },
@@ -198,7 +203,9 @@ export default function RulerSlider({
         const rawValue = dragStartValueRef.current - (g.dx / PX_PER_TICK) * s;
         lastRawValueRef.current = rawValue;
         setLiveValue(clamp(rawValue));
-        if (onChange) onChange(snapForDrag(rawValue));
+        const snapped = snapForDrag(rawValue);
+        ticker.current.at(snapped); // one tick per mark passed (v0.6.1)
+        if (onChange) onChange(snapped);
       },
       onPanResponderRelease: () => {
         isDraggingRef.current = false;
@@ -222,6 +229,7 @@ export default function RulerSlider({
       propsRef.current;
     const next = Math.max(lo, Math.min(hi, v + direction * (fineStep > 0 ? fineStep : 1)));
     if (next === v) return;
+    choose(); // same event a drag's tick is, from a tap (v0.6.1)
     if (onStart) onStart();
     setLiveValue(next);
     if (onChange) onChange(next);

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { fail } from '../utils/haptics';
 import { supabase } from '../utils/supabaseClient';
 import { APP_VERSION } from '../utils/appVersion';
 
@@ -37,6 +38,10 @@ export default function AuthScreen() {
         // switches to the main app — nothing else to do here.
       }
     } catch (err) {
+      // The one screen where a failure is routine rather than a bug —
+      // a mistyped password — and the one where the phone is usually
+      // being looked at anyway. Still worth feeling.
+      fail();
       setErrorMsg(err.message || 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);

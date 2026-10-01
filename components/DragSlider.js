@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, PanResponder, StyleSheet } from 'react-native';
+import { createTicker } from '../utils/haptics';
 
 // A vertical ruler control: numbers scroll up/down past a fixed pointer as
 // you drag, and whichever number lines up with the pointer is the selected
@@ -165,6 +166,9 @@ export default function DragSlider({
   // next time you dragged. Routing through this ref (refreshed on every
   // render) instead of closing over the props directly means the frozen
   // PanResponder callbacks below always read the current values.
+  // One per slider: four of these can be on screen at once and each
+  // crosses its own marks. See createTicker in utils/haptics.js.
+  const ticker = useRef(createTicker());
   const propsRef = useRef();
   propsRef.current = {
     value,
@@ -219,6 +223,7 @@ export default function DragSlider({
         isDraggingRef.current = true;
         dragStartValueRef.current = v;
         lastRawValueRef.current = v;
+        ticker.current.start(v);
         setLiveValue(v);
         if (onStart) onStart();
       },
@@ -233,7 +238,13 @@ export default function DragSlider({
         const rawValue = dragStartValueRef.current + (gestureState.dy / px) * s;
         lastRawValueRef.current = rawValue;
         setLiveValue(clamp(rawValue));
-        if (onChange) onChange(clampToStep(rawValue));
+        const snapped = clampToStep(rawValue);
+        // One tick of feedback per mark the ruler passes (v0.6.1). This
+        // is the haptic that does most of the work in the app: a dial
+        // you can feel counting is the difference between dragging a
+        // number and turning a dial.
+        ticker.current.at(snapped);
+        if (onChange) onChange(snapped);
       },
       onPanResponderRelease: () => {
         isDraggingRef.current = false;

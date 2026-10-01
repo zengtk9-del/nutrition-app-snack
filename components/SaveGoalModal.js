@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import { commit, fail } from '../utils/haptics';
 
 // The naming prompt that appears when "Save These Goals" is tapped — both
 // at the end of a quiz report (screens/ReportScreen.js) and at the end of
@@ -55,7 +56,11 @@ export default function SaveGoalModal({ visible, defaultName = '', atCap, onCanc
     setSubmitError(null);
     try {
       await onConfirm(trimmedName);
+      // After the write, not on the press: a buzz the moment a finger
+      // lands says "sent", and what the user wants to know is "kept".
+      commit();
     } catch (err) {
+      fail();
       setSubmitError((err && err.message) || 'Something went wrong saving this goal. Please try again.');
       setSubmitting(false);
     }

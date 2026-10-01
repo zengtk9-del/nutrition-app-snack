@@ -51,6 +51,11 @@ import { buildProfile, generateGoalsReport } from './utils/goals';
 // Where "See my personal report" on the Home tab gets its answers from —
 // see utils/lastIntake.js.
 import { saveLastIntake, loadLastIntake } from './utils/lastIntake';
+// What the app feels like under a thumb. The three events that live at
+// THIS level rather than in a screen — a meal logged, a thing deleted, a
+// goal followed — each have exactly one handler here, however many
+// buttons around the app reach them. See utils/haptics.js.
+import { commit, nudge, warn, fail } from './utils/haptics';
 
 const DEFAULT_GOALS = { calories: 2000, protein: 150, carbs: 200, fat: 65, tdee: null };
 
@@ -375,11 +380,13 @@ export default function App() {
   const handleDeleteComboGroup = async (comboGroup) => {
     const previousEntries = entries;
     setEntries((prev) => prev.filter((e) => e.comboGroup !== comboGroup));
+    nudge(); // same gesture, same row, same feel as removing one entry
     try {
       await deleteEntriesByComboGroup(comboGroup);
     } catch (err) {
       console.warn('Failed to remove combo entries, restoring them', err);
       setEntries(previousEntries);
+      fail();
     }
   };
 
@@ -433,6 +440,9 @@ export default function App() {
     // disappearing and taking screens/FollowGoalScreen.js's calorie-math
     // paragraph down with it next time this screen opens.
     setGoals((prev) => ({ ...prev, calories: goal.calories, protein: goal.protein, carbs: goal.carbs, fat: goal.fat }));
+    // Both callers' error paths are their own (see the note above), so
+    // this only ever runs on a switch that went through.
+    commit();
   };
 
   // Follow straight from a row in the list (v0.0.82). Nothing navigates,
@@ -468,6 +478,7 @@ export default function App() {
   const handleSaveGoalOnly = async (name, newGoals) => {
     const created = await saveNewGoal(session.user.id, { name, ...newGoals }, { follow: false });
     setSavedGoals((prev) => [...prev, created]);
+    commit();
     setMacroGoalsOpen(false);
   };
 
@@ -487,6 +498,9 @@ export default function App() {
     const created = await saveNewGoal(session.user.id, { name, ...newGoals }, { follow: true });
     setSavedGoals((prev) => [...prev.map((g) => ({ ...g, is_active: false })), created]);
     handleChangeGoals(newGoals);
+    // Not via followGoal — this one saves and follows in a single write
+    // — so the buzz that path provides has to be said here too.
+    commit();
     setMacroGoalsOpen(false);
   };
 
@@ -494,8 +508,10 @@ export default function App() {
     try {
       await deleteSavedGoal(session.user.id, goalId);
       setSavedGoals((prev) => prev.filter((g) => g.id !== goalId));
+      warn();
     } catch (err) {
       console.warn('Failed to delete saved goal', err);
+      fail();
       Alert.alert("Couldn't delete this goal", 'Something went wrong. Please try again.');
     }
   };
@@ -515,9 +531,16 @@ export default function App() {
       // trigger because it can only happen on a log, and this is that
       // log; see utils/mascotState.js.
       mascotCelebrate();
+      // Beside the jump, and for the same reason it is here rather than
+      // on the button: only a save that actually landed.
+      commit();
       return saved;
     } catch (err) {
       console.warn('Failed to save entry', err);
+      // The one failure in the app with no screen of its own to report
+      // on — the caller just gets null — so this is the only thing that
+      // tells you the log did not take.
+      fail();
       return null;
     }
   };
@@ -528,11 +551,18 @@ export default function App() {
   const handleDeleteEntry = async (id) => {
     const previousEntries = entries;
     setEntries((prev) => prev.filter((e) => e.id !== id));
+    // Up front, unlike the others: this one is optimistic, the row is
+    // already gone from the screen, and the feedback should match what
+    // the screen is saying rather than arrive after the round trip.
+    // A nudge rather than a warning — Remove here has no confirmation
+    // behind it and costs two taps to undo.
+    nudge();
     try {
       await deleteEntry(id);
     } catch (err) {
       console.warn('Failed to delete entry, restoring it', err);
       setEntries(previousEntries);
+      fail();
     }
   };
 

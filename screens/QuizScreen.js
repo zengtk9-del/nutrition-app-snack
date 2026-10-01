@@ -31,6 +31,7 @@ import {
   TRAINING_SCENES,
   WEIGHT_GEOMETRY,
 } from '../data/brandArt';
+import { choose } from '../utils/haptics';
 import { COLORS, RADIUS, SPACE } from '../utils/theme';
 import {
   QUIZ_STEPS,
@@ -1035,6 +1036,7 @@ function HeightCard({ answers, update, scene, onSlidingStart, onSlidingComplete 
   // drifts: 184 cm shows as 6'0", but 6'0" converted back would be 183.
   const switchUnit = (next) => {
     if ((next === 'cm') === isCm) return;
+    choose();
     if (next === 'cm') {
       update({ heightUnit: 'cm' });
       return;
@@ -1417,6 +1419,17 @@ export default function QuizScreen({
 
   const update = (patch) => setAnswers((prev) => ({ ...prev, ...patch }));
 
+  // An answer that was TAPPED, as opposed to dragged (v0.6.1).
+  //
+  // Deliberately not folded into `update` above: the dials call that one
+  // on every frame of a drag, and they tick for themselves inside the
+  // slider (see createTicker in utils/haptics.js). A buzz in `update`
+  // would fire per frame and double up with the slider's own.
+  const pick = (patch) => {
+    choose();
+    update(patch);
+  };
+
   // The "weight" step type is always shown with a value on screen — even
   // before the user drags anything — via the display fallback below. But a
   // fallback used only for *display* doesn't put a real number into
@@ -1562,7 +1575,7 @@ export default function QuizScreen({
             step={step}
             options={options}
             value={answers[step.key]}
-            onChoose={(v) => update({ [step.key]: v })}
+            onChoose={(v) => pick({ [step.key]: v })}
           />
         );
       }
@@ -1576,7 +1589,7 @@ export default function QuizScreen({
                 <TouchableOpacity
                   key={opt.value}
                   style={[styles.squareOption, selected && styles.optionSelected]}
-                  onPress={() => update({ [step.key]: opt.value })}
+                  onPress={() => pick({ [step.key]: opt.value })}
                   activeOpacity={0.7}
                 >
                   {opt.symbol ? (
@@ -1745,7 +1758,7 @@ export default function QuizScreen({
                 box,
                 isSelected && styles[`whCardOn${tone}`],
               ]}
-              onPress={() => update({ [step.key]: value })}
+              onPress={() => pick({ [step.key]: value })}
               activeOpacity={0.85}
               accessibilityRole="radio"
               accessibilityState={{ selected: isSelected }}
@@ -1934,7 +1947,7 @@ export default function QuizScreen({
                   key={opt.value}
                   option={opt}
                   selected={answers[step.key] === opt.value}
-                  onPress={() => update({ [step.key]: opt.value })}
+                  onPress={() => pick({ [step.key]: opt.value })}
                 />
               );
             })}
@@ -1972,7 +1985,7 @@ export default function QuizScreen({
                   aspect={JOB_ASPECT[opt.pose]}
                   tile={ACT_TILE}
                   selected={answers[step.key] === opt.value}
-                  onPress={() => update({ [step.key]: opt.value })}
+                  onPress={() => pick({ [step.key]: opt.value })}
                   accessibilityRole="radio"
                   accessibilityLabel={`${opt.label}. ${opt.description}. ${opt.badge}`}
                 >
@@ -2003,7 +2016,7 @@ export default function QuizScreen({
                 <TouchableOpacity
                   key={opt.value}
                   style={[styles.dietCard, selected && styles.dietCardSelected]}
-                  onPress={() => update({ [step.key]: opt.value })}
+                  onPress={() => pick({ [step.key]: opt.value })}
                   activeOpacity={0.8}
                   accessibilityRole="radio"
                   accessibilityState={{ selected }}
@@ -2059,7 +2072,7 @@ export default function QuizScreen({
           label={opt.label}
           sub={opt.sub}
           selected={answers[step.key] === opt.value}
-          onPress={() => update({ [step.key]: opt.value })}
+          onPress={() => pick({ [step.key]: opt.value })}
         />
       ));
     }
@@ -2083,13 +2096,13 @@ export default function QuizScreen({
           // above), which is also what makes selecting any real option
           // implicitly clear "None" for free, with no extra code needed
           // here.
-          update({ [step.key]: [] });
+          pick({ [step.key]: [] });
           return;
         }
         const next = selected.includes(opt.value)
           ? selected.filter((v) => v !== opt.value)
           : [...selected, opt.value];
-        update({ [step.key]: next });
+        pick({ [step.key]: next });
       };
 
       // The training step shows four illustrated horizontal cards (Damon's
@@ -2169,7 +2182,7 @@ export default function QuizScreen({
                 rangeKey={rangeKey}
                 image={images[rangeKey]}
                 selected={answers.bodyFatRange === rangeKey}
-                onPress={() => update({ bodyFatRange: rangeKey })}
+                onPress={() => pick({ bodyFatRange: rangeKey })}
               />
             );
           })}
@@ -2266,7 +2279,7 @@ export default function QuizScreen({
             patch.goalWeightValue = Math.round(lbToKg(answers.goalWeightValue));
           }
         }
-        update(patch);
+        pick(patch);
       };
 
       // v0.4.6: the main weight question is the height page's card with
@@ -2633,7 +2646,7 @@ export default function QuizScreen({
           }}
           onClose={() => setLearnMoreDietValue(null)}
           onChoose={() => {
-            update({ diet: learnMoreDietValue });
+            pick({ diet: learnMoreDietValue });
             setLearnMoreDietValue(null);
           }}
         />

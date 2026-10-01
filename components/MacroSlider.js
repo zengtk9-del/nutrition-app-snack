@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, PanResponder, StyleSheet } from 'react-native';
+import { choose, createTicker } from '../utils/haptics';
 
 // A compact HORIZONTAL drag slider — label + current value + (optionally) a
 // lock toggle above a draggable track, with +/- stepper buttons flanking
@@ -98,6 +99,9 @@ export default function MacroSlider({
     liveValueRef.current = liveValue;
   }, [liveValue]);
 
+  // One per slider: four of these can be on screen at once and each
+  // crosses its own marks. See createTicker in utils/haptics.js.
+  const ticker = useRef(createTicker());
   const propsRef = useRef();
   propsRef.current = {
     value,
@@ -170,6 +174,7 @@ export default function MacroSlider({
         isDraggingRef.current = true;
         dragStartValueRef.current = v;
         lastRawValueRef.current = v;
+        ticker.current.start(v);
         setLiveValue(v);
         if (onStart) onStart();
       },
@@ -183,7 +188,9 @@ export default function MacroSlider({
         const rawValue = dragStartValueRef.current + gestureState.dx / pxPerUnit;
         lastRawValueRef.current = rawValue;
         setLiveValue(clamp(rawValue));
-        if (onChange) onChange(clampToStep(rawValue));
+        const snapped = clampToStep(rawValue);
+        ticker.current.at(snapped); // one tick per mark passed (v0.6.1)
+        if (onChange) onChange(snapped);
       },
       onPanResponderRelease: () => {
         if (propsRef.current.disabled) {
@@ -226,6 +233,9 @@ export default function MacroSlider({
     if (isDisabled) return;
     const next = Math.max(min, Math.min(propsRef.current.valueMax, v + direction * s));
     if (next === v) return;
+    // A stepper tap moves exactly one mark and only gets here when it
+    // really moved, so it is the same event a drag's tick is.
+    choose();
     if (onStart) onStart();
     setLiveValue(next);
     if (onChange) onChange(next);

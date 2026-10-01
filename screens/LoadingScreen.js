@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Easing, TouchableOpacity } from 'react-native';
 
 import Mascot, { warmArt } from '../components/Mascot';
+import { commit } from '../utils/haptics';
 import { MASCOT_SCENES } from '../data/brandArt';
 import { COLORS, RADIUS } from '../utils/theme';
 
@@ -104,6 +105,11 @@ export default function LoadingScreen({
         timer = setTimeout(() => {
           if (cancelled) return;
           setReady(true);
+          // The one moment in the app worth announcing. Eleven questions
+          // and five seconds of a bar filling, and this is the end of
+          // both — so it lands with the words, not with the button that
+          // follows them.
+          commit();
           Animated.timing(reveal, {
             toValue: 1,
             duration: REVEAL_MS,
