@@ -1,27 +1,35 @@
 // The answers from the last intake quiz, kept on the device.
 //
-// DEV SCAFFOLDING (v0.5.7). This exists for the "Open Last Report" button
-// on the Home tab, which is there so the report can be redesigned
-// without answering eleven questions before every look at it. Damon
-// asked for the button and said it will not be kept; when it goes, this
-// file and its two call sites in App.js go with it.
+// What "See my personal report" on the Home tab reads (v0.6.0). It
+// arrived in v0.5.7 as scaffolding -- a door into the report while the
+// report was being redesigned -- and Damon kept it, on the grounds that
+// re-reading your own plan without sitting through eleven questions is
+// a real thing to want.
 //
-// The quiz's answers have never been stored anywhere: App.js keeps them
-// in component state, computes the report, persists the two numbers that
-// outlive the flow (TDEE and diet) and throws the rest away when the
-// report closes. So there is nothing to rebuild a report from after a
-// reload -- hence this.
+// THE ANSWERS, NOT THE REPORT. App.js rebuilds the report from these
+// every time (buildProfile + generateGoalsReport, both pure), so a
+// reopened report can never be a stale copy of one the current code
+// would no longer produce. It also means this file stores the smallest
+// thing that works: eleven answers, not a computed report.
 //
-// AsyncStorage rather than Supabase: it is already a dependency (the
-// auth session lives in it), it is device-local, and it needs no table
-// and no migration for something that is going to be deleted.
+// Before this, the quiz's answers were never stored anywhere. App.js
+// kept them in component state, computed the report, persisted the two
+// numbers that outlive the flow (TDEE and diet) and threw the rest away
+// when the report closed.
+//
+// ASYNCSTORAGE, SO DEVICE-LOCAL, and that is the honest limit of it:
+// saved goals follow the account to a second phone and this does not.
+// Supabase would fix that and needs a table this app cannot create for
+// itself. Worth doing if people turn out to use two devices; not worth
+// blocking the feature on.
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY = 'nutrition.lastIntake.v1';
 
-// Neither of these ever throws. A dev convenience that can break the app
-// it is meant to help develop is worse than one that quietly does
-// nothing, so both ends swallow their errors and log.
+// Neither of these ever throws. A convenience that can take the app down
+// is worse than one that quietly does nothing, so both ends swallow
+// their errors and log -- the cost of a failure here is one row missing
+// from the Home tab.
 export async function saveLastIntake(answers) {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify({ at: Date.now(), answers }));

@@ -155,11 +155,17 @@ function SavedGoalRow({ goal, onFollow, onOpen, onDelete }) {
   );
 }
 
-// The three navigation rows under the goal list. Same shape each time: an
-// icon tile, a title with a line of explanation, and a chevron.
-function ActionRow({ icon, iconBg, iconColor, image, eyebrow, title, sub, onPress }) {
+// The four navigation rows under the goal list. Same shape each time: an
+// icon tile, a title, and a chevron.
+//
+// THE LINE OF EXPLANATION UNDER EACH TITLE IS GONE (v0.6.0), at Damon's
+// call. "Answer a few questions and we'll calculate these numbers for
+// you" is two lines of grey saying what "Retake the Goals Quiz" already
+// says; with four rows stacked, the descriptions were most of the
+// screen's height and none of its meaning.
+function ActionRow({ icon, iconBg, iconColor, image, eyebrow, title, onPress, testID }) {
   return (
-    <TouchableOpacity style={s.actionRow} activeOpacity={0.7} onPress={onPress}>
+    <TouchableOpacity style={s.actionRow} activeOpacity={0.7} onPress={onPress} testID={testID}>
       {image ? (
         <Image source={image} style={s.actionArt} resizeMode="contain" />
       ) : (
@@ -170,7 +176,6 @@ function ActionRow({ icon, iconBg, iconColor, image, eyebrow, title, sub, onPres
       <View style={s.actionText}>
         {eyebrow ? <Text style={s.actionEyebrow}>{eyebrow}</Text> : null}
         <Text style={s.actionTitle}>{title}</Text>
-        {sub ? <Text style={s.actionSub}>{sub}</Text> : null}
       </View>
       <MaterialCommunityIcons name="chevron-right" size={22} color={COLORS.textMuted} />
     </TouchableOpacity>
@@ -189,11 +194,10 @@ export default function GoalsScreen({
   onDeleteSavedGoal,
   diet = DEFAULT_DIET,
   onChangeDiet,
-  // DEV SCAFFOLDING (v0.5.7) — see utils/lastIntake.js. Both of these,
-  // and the block that renders them further down, come out when the
-  // report's redesign is finished.
-  onOpenLastReport,
-  lastIntakeAt = null,
+  // Opens the report built from the last intake this device took (see
+  // utils/lastIntake.js). Null when there is no such intake, and the
+  // row is then not drawn at all.
+  onOpenReport,
 }) {
   // Whatever you're following goes first (v0.0.82). The list arrives in
   // save order, which means the one goal you're actually tracking against
@@ -285,7 +289,6 @@ export default function GoalsScreen({
           iconBg={COLORS.caloriesSoft}
           iconColor={COLORS.calories}
           title="Retake the Goals Quiz"
-          sub="Answer a few questions and we'll calculate these numbers for you."
           onPress={onRetakeQuiz}
         />
       )}
@@ -296,32 +299,27 @@ export default function GoalsScreen({
           iconBg={COLORS.fatSoft}
           iconColor={COLORS.fat}
           title="Set My Own Macro Goals"
-          sub="Drag calories, protein, carbs, and fat yourself instead of using the quiz."
           onPress={onSetMacroGoals}
         />
       )}
 
-      {/* DEV SCAFFOLDING (v0.5.7). Deliberately plain: it is a door into
-          the report while that report is being redesigned, not a feature.
-          Disabled until an intake has been taken on this device, since
-          there would be nothing to build a report from. */}
-      {onOpenLastReport && (
-        <TouchableOpacity
-          testID="dev-open-last-report"
-          style={[s.devButton, !lastIntakeAt && s.devButtonOff]}
-          activeOpacity={0.7}
-          onPress={onOpenLastReport}
-          disabled={!lastIntakeAt}
-        >
-          <Text style={s.devButtonText}>
-            {lastIntakeAt ? 'DEV · Open Last Report' : 'DEV · No intake saved yet'}
-          </Text>
-          <Text style={s.devButtonSub}>
-            {lastIntakeAt
-              ? `Rebuilt from the quiz taken ${new Date(lastIntakeAt).toLocaleString()}`
-              : 'Take the quiz once and this opens its report again'}
-          </Text>
-        </TouchableOpacity>
+      {/* Your own report, reopened (v0.6.0). The quiz already works
+          every number on it out and stores what it was asked; this is
+          the door back to it, so "what did it say about me" does not
+          mean sitting through eleven questions again.
+
+          Absent rather than disabled when there is nothing to open —
+          which is the case until this device has taken the quiz once.
+          The row directly above it is the quiz. */}
+      {onOpenReport && (
+        <ActionRow
+          testID="open-my-report"
+          icon="file-chart-outline"
+          iconBg={COLORS.caloriesSoft}
+          iconColor={COLORS.calories}
+          title="See my personal report"
+          onPress={onOpenReport}
+        />
       )}
 
       {userEmail ? <Text style={s.account}>Logged in as {userEmail}</Text> : null}
@@ -335,20 +333,6 @@ export default function GoalsScreen({
 }
 
 const s = StyleSheet.create({
-  // DEV SCAFFOLDING (v0.5.7) — these two go with the button above.
-  devButton: {
-    marginTop: 18,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: COLORS.textMuted,
-    backgroundColor: '#fff',
-  },
-  devButtonOff: { opacity: 0.45 },
-  devButtonText: { fontSize: 15, fontWeight: '800', color: COLORS.text },
-  devButtonSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-
   container: { flex: 1, backgroundColor: COLORS.bg },
   content: { padding: SPACE.screen, paddingBottom: 40 },
 
@@ -462,7 +446,6 @@ const s = StyleSheet.create({
   actionText: { flex: 1, marginRight: 8 },
   actionEyebrow: { ...TYPE.eyebrow, fontSize: 10, color: COLORS.textMuted, marginBottom: 2 },
   actionTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text },
-  actionSub: { fontSize: 13.5, color: COLORS.textSoft, marginTop: 3, lineHeight: 18 },
 
   account: { textAlign: 'center', color: COLORS.textMuted, fontSize: 13, marginTop: 14, marginBottom: 10 },
 

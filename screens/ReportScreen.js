@@ -47,7 +47,14 @@ function Section({ title, children }) {
   );
 }
 
-export default function ReportScreen({ profile, answers, report, onDone, onSaveGoal, atCap }) {
+// `viewOnly` (v0.6.0): this report was reopened from the Home tab's "See
+// my personal report" rather than produced by the quiz just now. The
+// numbers are identical; what changes is the way out. Saving again would
+// add a second copy of a plan already saved, against a cap of five, and
+// would switch what you are following back to it — which is wrong for
+// someone who came to re-read their plan and may well be following a
+// different goal on purpose. So the button closes instead.
+export default function ReportScreen({ profile, answers, report, onDone, onSaveGoal, atCap, viewOnly = false }) {
   const { bmr, tdee, calorieTarget, macros, timeline } = report;
   const [showSaveModal, setShowSaveModal] = useState(false);
 
@@ -86,9 +93,9 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
   return (
     <ReportChrome
       title="Your Plan"
-      nextLabel="Save These Goals"
-      nextIcon="content-save-outline"
-      onNext={() => setShowSaveModal(true)}
+      nextLabel={viewOnly ? 'Done' : 'Save These Goals'}
+      nextIcon={viewOnly ? null : 'content-save-outline'}
+      onNext={viewOnly ? onDone : () => setShowSaveModal(true)}
       testID="report-summary"
     >
       <ScrollView

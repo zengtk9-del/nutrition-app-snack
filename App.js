@@ -48,8 +48,8 @@ import DietPickerScreen from './screens/DietPickerScreen';
 import FollowGoalScreen from './screens/FollowGoalScreen';
 import { makeEntryFromFood, entriesForToday } from './utils/nutrition';
 import { buildProfile, generateGoalsReport } from './utils/goals';
-// DEV SCAFFOLDING (v0.5.7) — see utils/lastIntake.js. Goes when the
-// "Open Last Report" button on the Home tab goes.
+// Where "See my personal report" on the Home tab gets its answers from —
+// see utils/lastIntake.js.
 import { saveLastIntake, loadLastIntake } from './utils/lastIntake';
 
 const DEFAULT_GOALS = { calories: 2000, protein: 150, carbs: 200, fat: 65, tdee: null };
@@ -580,6 +580,11 @@ export default function App() {
   // number to walk through page by page, so it goes straight to 'summary'.
   const [reportView, setReportView] = useState('pages');
 
+  // How the report was reached: 'quiz' straight off the back of the
+  // intake (the summary offers to save it), or 'view' from the Home tab
+  // (it offers to close). Reset by finishQuiz with the rest.
+  const [reportMode, setReportMode] = useState('quiz');
+
   // --- "Set My Own Macro Goals" (GoalsScreen's second button) — a much
   // simpler full-screen takeover than the quiz above: no multi-step flow,
   // just one screen the user can Save from or Cancel out of. Kept as its
@@ -588,11 +593,18 @@ export default function App() {
   // states/screens.
   const [macroGoalsOpen, setMacroGoalsOpen] = useState(false);
 
-  // --- DEV SCAFFOLDING (v0.5.7) ---------------------------------------
+  // --- "See my personal report" ---------------------------------------
   // The last intake's answers, read off the device once on mount, so the
-  // report can be opened straight from the Home tab while it is being
-  // redesigned. Everything in this block and the button it feeds comes
-  // out again when the redesign is done.
+  // report can be reopened from the Home tab without the eleven
+  // questions being answered again. Null until that read comes back, and
+  // null forever for anyone who has not taken the quiz on this device —
+  // in which case the Home tab simply does not draw the row.
+  //
+  // DEVICE-LOCAL, which is the one thing to know about it: the answers
+  // live in AsyncStorage, not in Supabase, so the report does not follow
+  // the account to a second phone. Saved goals do. Moving the intake to
+  // Supabase would make it follow, and needs a table this app cannot
+  // create for itself.
   const [lastIntake, setLastIntake] = useState(null);
   useEffect(() => {
     let alive = true;
@@ -604,8 +616,12 @@ export default function App() {
     };
   }, []);
 
-  const handleOpenLastReport = () => {
-    const answers = (lastIntake && lastIntake.answers) || quizAnswers;
+  // Rebuilt rather than stored: the report is pure arithmetic over the
+  // answers (see utils/goals.js), so keeping the answers and running it
+  // again cannot drift from what the quiz would produce today, which a
+  // stored copy of the finished report could.
+  const handleOpenMyReport = () => {
+    const answers = lastIntake && lastIntake.answers;
     if (!answers) return;
     try {
       const profile = buildProfile(answers);
@@ -616,7 +632,14 @@ export default function App() {
       setReportView(
         report.calorieTarget.capped === 'needs_professional_guidance' ? 'summary' : 'pages'
       );
-      setQuizStage('report'); // straight in, no loading screen: this is a shortcut
+      // VIEWING, not finishing a quiz. The distinction matters at the
+      // other end: the summary's button saves a new goal and applies its
+      // numbers, which is right the first time and wrong every time
+      // after it — the plan is already saved, the goal cap is five, and
+      // the user may since have switched to following a different one.
+      // See handleReportDone and ReportScreen's `viewOnly`.
+      setReportMode('view');
+      setQuizStage('report'); // straight in, no loading screen: nothing to compute
     } catch (err) {
       // An intake saved by an older build of the quiz might not have
       // everything buildProfile wants. Say so rather than white-screen.
@@ -624,7 +647,6 @@ export default function App() {
       Alert.alert('No usable intake', 'The stored answers could not be turned into a report. Retake the quiz once.');
     }
   };
-  // --- end dev scaffolding ---------------------------------------------
 
   const handleStartQuiz = () => setQuizStage('quiz');
 
@@ -669,8 +691,8 @@ export default function App() {
     const profile = buildProfile(answers);
     const report = generateGoalsReport(profile);
     setQuizAnswers(answers);
-    // DEV SCAFFOLDING (v0.5.7): keep the answers on the device so the
-    // Home tab can reopen this report without the quiz being retaken.
+    // Keep the answers on the device so the Home tab's "See my personal
+    // report" can rebuild this exact report later.
     setLastIntake({ at: Date.now(), answers });
     saveLastIntake(answers);
     setQuizProfile(profile);
@@ -725,6 +747,7 @@ export default function App() {
     setQuizProfile(null);
     setQuizReport(null);
     setReportView('pages');
+    setReportMode('quiz');
   };
 
   // Wired to QuizScreen's onCancel (backing out mid-quiz, quizReport is
@@ -734,6 +757,17 @@ export default function App() {
   // computeCalorieTarget in utils/goals.js — so there's still nothing to
   // apply). The normal case's "Save These Goals" button no longer calls
   // this directly — see handleSaveQuizGoal just below.
+  // The report's one exit. Reopened from the Home tab it changes
+  // nothing — you came to look at it — so it only closes. Reached from
+  // the quiz it behaves as it always has.
+  const handleReportDone = () => {
+    if (reportMode === 'view') {
+      finishQuiz();
+      return;
+    }
+    handleQuizDone();
+  };
+
   const handleQuizDone = () => {
     if (quizReport && quizReport.calorieTarget.calories != null && quizReport.macros) {
       handleChangeGoals({
@@ -830,9 +864,10 @@ export default function App() {
             profile={quizProfile}
             answers={quizAnswers}
             report={quizReport}
-            onDone={handleQuizDone}
+            onDone={handleReportDone}
             onSaveGoal={handleSaveQuizGoal}
             atCap={atSavedGoalsCap}
+            viewOnly={reportMode === 'view'}
           />
         )}
       </SafeAreaView>
@@ -939,9 +974,7 @@ export default function App() {
             onDeleteSavedGoal={handleDeleteSavedGoal}
             diet={diet}
             onChangeDiet={() => setDietPickerOpen(true)}
-            /* DEV SCAFFOLDING (v0.5.7) — remove with the button. */
-            onOpenLastReport={handleOpenLastReport}
-            lastIntakeAt={lastIntake ? lastIntake.at : null}
+            onOpenReport={lastIntake ? handleOpenMyReport : null}
           />
         )}
       </View>
