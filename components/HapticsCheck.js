@@ -13,11 +13,22 @@ import { COLORS, RADIUS } from '../utils/theme';
 //   2. expo-haptics did not load at all
 //   3. it loaded, but the native side is not in this runtime, so every
 //      call rejects with an UnavailabilityError
-//   4. the calls go through fine and the PHONE is refusing — iOS's
-//      Settings > Sounds & Haptics > System Haptics is off, or Low
-//      Power Mode is on, both of which kill haptics stone dead with no
-//      error anywhere
+//   4. the calls go through fine and the PHONE is refusing
 //   5. something about the way this app calls them
+//
+// v0.6.2 ANSWERED IT: ios, loaded, all three functions, every verb
+// resolving ok, and no buzz. That is case 4, and Expo's own
+// documentation lists exactly when the Taptic Engine does nothing and
+// says nothing about it — Low Power Mode on, the user having turned
+// the Taptic Engine off in Settings, the Camera active, or dictation
+// active. Low Power Mode was ruled out from the screenshot (the
+// battery glyph was not yellow).
+//
+// So this revision is about the last fork: is the phone's vibration
+// hardware working at all? The three-pulse test below goes through
+// AudioServices rather than UIFeedbackGenerator, which is a different
+// path that the System Haptics switch does NOT silence — so it buzzing
+// while the verbs do not is the signature of that switch being off.
 //
 // This panel separates them in about thirty seconds. The top half is
 // what the module says about itself; the buttons fire one verb each and
@@ -35,6 +46,15 @@ const VERBS = [
   ['warn', warn],
   ['fail', fail],
 ];
+
+// iOS ignores how long each pulse should be and always buzzes for about
+// 400ms, but it does honour the GAPS — so on both platforms this is
+// three separate buzzes over a second and a half, which is not
+// something anyone holding the phone can be unsure about. One short
+// buzz was, which is why "did the phone move?" went unanswered.
+const SHAKE = Platform.OS === 'android'
+  ? [0, 300, 200, 300, 200, 300]
+  : [0, 1, 400, 1, 400, 1];
 
 export default function HapticsCheck() {
   const [report, setReport] = useState(() => hapticsReport());
@@ -56,8 +76,8 @@ export default function HapticsCheck() {
       // Native since before haptics existed and needs no extra module.
       // iOS ignores the duration and gives a full alert buzz; Android
       // honours it, so 20ms there is a tick.
-      Vibration.vibrate(Platform.OS === 'android' ? 20 : undefined);
-      setRaw('called Vibration.vibrate — did the phone move?');
+      Vibration.vibrate(SHAKE);
+      setRaw('three long buzzes should be happening now, over about 1.5 seconds');
     } catch (err) {
       setRaw('Vibration.vibrate threw: ' + ((err && err.message) || err));
     }
@@ -87,13 +107,18 @@ export default function HapticsCheck() {
       ))}
 
       <TouchableOpacity style={[s.btn, s.rawBtn]} onPress={shake}>
-        <Text style={s.btnText}>plain RN Vibration (bypasses expo-haptics)</Text>
+        <Text style={s.btnText}>BUZZ x3 — the motor, not the Taptic Engine</Text>
       </TouchableOpacity>
       {raw ? <Text style={s.line}>{raw}</Text> : null}
 
       <Text style={s.foot}>
-        If every verb says ok and nothing moved: check iOS Settings → Sounds &amp; Haptics → System
-        Haptics, and turn Low Power Mode off. Both silence haptics with no error.
+        Every verb says ok and nothing is felt → iOS is accepting the requests and discarding
+        them. Settings → Sounds &amp; Haptics → System Haptics. Also: haptics are suppressed while
+        the Camera or dictation is active.
+      </Text>
+      <Text style={s.foot}>
+        If BUZZ x3 shakes the phone but the verbs do not, that switch is the answer. If BUZZ x3
+        does nothing either, it is the phone rather than anything in here.
       </Text>
     </View>
   );
