@@ -22,6 +22,9 @@ import { DEFAULT_DIET } from '../data/dietOrder';
 import { dietLabel } from './DietPickerScreen';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
 import Mascot from '../components/Mascot';
+// DIAGNOSTIC SCAFFOLDING (v0.6.2) — goes when we know why the phone is
+// not buzzing. See components/HapticsCheck.js.
+import HapticsCheck from '../components/HapticsCheck';
 
 const MAX_SAVED_GOALS = 5;
 
@@ -321,6 +324,9 @@ export default function GoalsScreen({
           onPress={onOpenReport}
         />
       )}
+
+      {/* DIAGNOSTIC SCAFFOLDING (v0.6.2) — remove with the component. */}
+      <HapticsCheck />
 
       {userEmail ? <Text style={s.account}>Logged in as {userEmail}</Text> : null}
 

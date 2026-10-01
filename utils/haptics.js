@@ -91,6 +91,24 @@ if (!Haptics && note && Platform.OS !== 'web') {
   console.warn('[haptics] silent — ' + note);
 }
 
+// --- The values the native side actually receives ---------------------
+//
+// expo-haptics' enums are plain lowercase strings: Success is 'success',
+// Light is 'light'. Read off the module when the import brought them,
+// and otherwise written out -- because `Haptics.NotificationFeedbackType
+// .Success` on a module whose enums did not come through is a
+// TypeError inside a try/catch, which is to say another silent nothing.
+// The enum stays the source of truth where it exists; the literal is
+// what it equals.
+function level(enumName, key, literal) {
+  const table = Haptics && Haptics[enumName];
+  return (table && table[key]) || literal;
+}
+const SUCCESS = level('NotificationFeedbackType', 'Success', 'success');
+const WARNING = level('NotificationFeedbackType', 'Warning', 'warning');
+const ERROR = level('NotificationFeedbackType', 'Error', 'error');
+const LIGHT = level('ImpactFeedbackStyle', 'Light', 'light');
+
 // The one switch. Nothing reads it yet; it is here so "turn these off"
 // is a line rather than a refactor, and so a probe can prove silence.
 let enabled = true;
@@ -115,18 +133,79 @@ export function hapticsEnabled() {
 const CHOOSE_GAP_MS = 40;
 let lastChooseAt = 0;
 
-// Fire and forget. expo-haptics returns a promise that rejects on a
-// device with no haptic hardware, in a simulator, or when the OS is in
-// a state that refuses it -- none of which the caller can do anything
-// about, and all of which would otherwise surface as a warning box.
-function fire(run) {
-  if (!enabled || !Haptics) return;
+// --- Why nothing happened ---------------------------------------------
+//
+// v0.6.1 shipped haptics that did not fire on Damon's phone, and the
+// reason it took a round-trip to work out is that EVERY way this can
+// fail was built to fail silently. The app never breaks, which was the
+// point -- but "no buzz" could equally have been a missing module, a
+// native side that is not in the runtime, a rejected call, Low Power
+// Mode, or the phone's own System Haptics switch, and none of them said
+// so anywhere.
+//
+// So failures are still swallowed, and now also WRITTEN DOWN. `fire`
+// records what became of the last call of each verb; hapticsReport()
+// hands that back. Silent to the user, legible to anyone asking why.
+const outcomes = {};
+let firstError = null;
+
+function record(verb, what) {
+  outcomes[verb] = what;
+  if (!firstError && what && what.indexOf('ok') !== 0 && what.indexOf('skipped') !== 0) {
+    firstError = verb + ': ' + what;
+  }
+}
+
+// Fire and forget, from the caller's side. expo-haptics rejects on a
+// device with no haptic hardware, in a simulator, when the native
+// module is not in the runtime (it throws UnavailabilityError), or when
+// the OS simply refuses -- none of which a call site can do anything
+// about, and all of which would otherwise surface as a warning box over
+// the UI.
+//
+// Returns a promise anyway, so the diagnostic can await one.
+function fire(verb, run) {
+  if (!enabled) {
+    record(verb, 'skipped: haptics switched off');
+    return Promise.resolve();
+  }
+  if (!Haptics) {
+    record(verb, 'skipped: ' + (note || 'no expo-haptics'));
+    return Promise.resolve();
+  }
   try {
     const p = run();
-    if (p && typeof p.catch === 'function') p.catch(() => {});
+    if (p && typeof p.then === 'function') {
+      return p.then(
+        () => { record(verb, 'ok'); },
+        (err) => { record(verb, 'rejected: ' + ((err && err.message) || err)); }
+      );
+    }
+    record(verb, 'ok (returned nothing to wait on)');
+    return Promise.resolve();
   } catch (err) {
-    /* see above */
+    record(verb, 'threw: ' + ((err && err.message) || err));
+    return Promise.resolve();
   }
+}
+
+// Everything known about why the phone is or is not buzzing.
+export function hapticsReport() {
+  return {
+    platform: Platform.OS,
+    available: !!Haptics,
+    note,
+    // What the module actually handed back, which is the one thing that
+    // separates "not installed" from "installed, no native side".
+    exports: Haptics
+      ? ['selectionAsync', 'impactAsync', 'notificationAsync']
+          .filter((k) => typeof Haptics[k] === 'function')
+          .join(', ') || 'none of the three functions'
+      : '—',
+    enums: Haptics ? `${SUCCESS}/${WARNING}/${ERROR}/${LIGHT}` : '—',
+    firstError,
+    outcomes: { ...outcomes },
+  };
 }
 
 // A choice registered. Selection feedback is the lightest thing the
@@ -134,14 +213,17 @@ function fire(run) {
 // picker wheel uses, which is exactly what the dials are.
 export function choose() {
   const now = Date.now();
-  if (now - lastChooseAt < CHOOSE_GAP_MS) return;
+  if (now - lastChooseAt < CHOOSE_GAP_MS) {
+    record('choose', 'skipped: throttled, within ' + CHOOSE_GAP_MS + 'ms of the last one');
+    return Promise.resolve();
+  }
   lastChooseAt = now;
-  fire(() => Haptics.selectionAsync());
+  return fire('choose', () => Haptics.selectionAsync());
 }
 
 // Saved, applied, arrived.
 export function commit() {
-  fire(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+  return fire('commit', () => Haptics.notificationAsync(SUCCESS));
 }
 
 // Small, done, nothing lost. A Remove button with no confirmation
@@ -150,7 +232,7 @@ export function commit() {
 // banana back out of today's log. This is one soft tap that says the
 // button worked.
 export function nudge() {
-  fire(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+  return fire('nudge', () => Haptics.impactAsync(LIGHT));
 }
 
 // Destroyed, and not easily undone. Not an error -- the user meant it,
@@ -158,12 +240,12 @@ export function nudge() {
 // of five named plans is worth more than a logged banana, and should
 // not feel the same going.
 export function warn() {
-  fire(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
+  return fire('warn', () => Haptics.notificationAsync(WARNING));
 }
 
 // Went wrong.
 export function fail() {
-  fire(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+  return fire('fail', () => Haptics.notificationAsync(ERROR));
 }
 
 // --- A dial crossing its marks ----------------------------------------
@@ -193,4 +275,14 @@ export function createTicker() {
   };
 }
 
-export default { choose, commit, nudge, warn, fail, createTicker, setHapticsEnabled, hapticsEnabled };
+export default {
+  choose,
+  commit,
+  nudge,
+  warn,
+  fail,
+  createTicker,
+  hapticsReport,
+  setHapticsEnabled,
+  hapticsEnabled,
+};
