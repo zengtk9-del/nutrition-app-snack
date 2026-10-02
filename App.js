@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppState, View, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert, Animated } from 'react-native';
 import { supabase } from './utils/supabaseClient';
 import {
   fetchGoals,
@@ -32,7 +31,7 @@ import {
 } from './utils/db';
 import { DEFAULT_DIET } from './data/dietOrder';
 import { celebrate as mascotCelebrate, open as mascotOpen } from './utils/mascotState';
-import { COLORS, TYPE, RADIUS } from './utils/theme';
+import { COLORS } from './utils/theme';
 
 import AuthScreen from './screens/AuthScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -40,7 +39,10 @@ import LogFoodScreen from './screens/LogFoodScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import GoalsScreen from './screens/GoalsScreen';
 // The four tabs side by side, draggable — see components/TabPager.js.
-import TabPager from './components/TabPager';
+import TabPager, { pageWidthGuess } from './components/TabPager';
+// And the bar at the bottom, whose pill follows the drag — see
+// components/TabBar.js.
+import TabBar from './components/TabBar';
 import QuizScreen from './screens/QuizScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import ReportScreen from './screens/ReportScreen';
@@ -138,6 +140,26 @@ export default function App() {
 
   // --- App data state (now backed by Supabase instead of the phone) ---
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // --- Where the pager is, for the bar underneath it (v0.7.1) ---------
+  //
+  // One Animated.Value, written by TabPager on every frame of a scroll
+  // and read by TabBar's pill. It lives here because App.js is what
+  // owns both of them; neither is inside the other.
+  //
+  // This is NOT the plumbing v0.6.5 had and v0.7.0 deleted. That one
+  // asked the four screens how far they had each scrolled VERTICALLY and
+  // funnelled it up here for an overlay to use — information that
+  // belonged to the screens and had no business passing through App.js.
+  // This is the pager's own horizontal position going to its own tab
+  // bar, between two siblings, and App.js is the only place it can meet.
+  //
+  // Pixels, not pages: the native driver cannot divide on the way in, so
+  // the bar is given the page width and converts. Starting from the same
+  // guess the pager starts from (and correcting both from its onLayout)
+  // is what stops the two disagreeing about where page 2 begins.
+  const tabScrollX = useRef(new Animated.Value(0)).current;
+  const [pageWidth, setPageWidth] = useState(pageWidthGuess);
 
   const [entries, setEntries] = useState([]);
   const [goals, setGoals] = useState(DEFAULT_GOALS);
@@ -973,6 +995,8 @@ export default function App() {
         testID="tab-pager"
         index={TABS.findIndex((t) => t.key === activeTab)}
         onIndexChange={(i) => setActiveTab(TABS[i].key)}
+        scrollX={tabScrollX}
+        onWidth={setPageWidth}
       >
         <DashboardScreen
           entries={todayEntries}
@@ -1018,33 +1042,16 @@ export default function App() {
         />
       </TabPager>
 
-      <View style={styles.tabBar}>
-        {TABS.map((tab) => {
-          const on = activeTab === tab.key;
-          return (
-            <TouchableOpacity
-              key={tab.key}
-              style={styles.tabButton}
-              onPress={() => setActiveTab(tab.key)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: on }}
-            >
-              {/* The selected tab sits on a filled pill rather than just
-                  changing colour -- at 12pt a colour change alone is easy
-                  to miss, and the pill also gives the icon somewhere to
-                  sit. */}
-              <View style={[styles.tabInner, on && styles.tabInnerActive]}>
-                <MaterialCommunityIcons
-                  name={tab.icon}
-                  size={22}
-                  color={on ? COLORS.tabActive : COLORS.tabInactive}
-                />
-                <Text style={[styles.tabLabel, on && styles.tabLabelActive]}>{tab.label}</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {/* The pill under the icons slides with the pager rather than
+          waiting for it to land — see components/TabBar.js for why that
+          needs the scroll offset and not just the active tab. */}
+      <TabBar
+        tabs={TABS}
+        activeKey={activeTab}
+        onPress={setActiveTab}
+        scrollX={tabScrollX}
+        pageWidth={pageWidth}
+      />
     </SafeAreaView>
   );
 }
@@ -1052,35 +1059,4 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   loadingContainer: { flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' },
-  // Floats clear of the screen edge rather than sitting flush against it
-  // (v0.0.76, from the History mockup). Shared by every tab, so this moves
-  // Today, Log Food and Goals too -- a bar that only detached on one screen
-  // would read as a bug.
-  tabBar: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.line,
-    marginHorizontal: 12,
-    marginBottom: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 6,
-    shadowColor: '#152a4a',
-    shadowOpacity: 0.07,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 3,
-  },
-  tabButton: { flex: 1, alignItems: 'center' },
-  tabInner: {
-    alignItems: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: RADIUS.tile,
-    alignSelf: 'stretch',
-  },
-  tabInnerActive: { backgroundColor: COLORS.tabActiveBg },
-  tabLabel: { ...TYPE.tab, color: COLORS.tabInactive, marginTop: 3 },
-  tabLabelActive: { color: COLORS.tabActive, fontWeight: '700' },
 });
