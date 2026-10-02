@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { commit, fail } from '../utils/haptics';
+import { FILL } from '../utils/theme';
 
 // The naming prompt that appears when "Save These Goals" is tapped — both
 // at the end of a quiz report (screens/ReportScreen.js) and at the end of
@@ -70,7 +71,7 @@ export default function SaveGoalModal({ visible, defaultName = '', atCap, onCanc
     <Modal visible transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
       <View style={styles.backdrop}>
         <TouchableOpacity
-          style={StyleSheet.absoluteFill}
+          style={FILL}
           activeOpacity={1}
           onPress={submitting ? undefined : onCancel}
           accessibilityLabel="Close"

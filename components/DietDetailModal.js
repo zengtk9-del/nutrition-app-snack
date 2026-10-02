@@ -9,6 +9,7 @@ import {
   Modal,
   SafeAreaView,
 } from 'react-native';
+import { FILL } from '../utils/theme';
 import RichText from './RichText';
 
 // The diet step's "Learn more" bottom sheet — shows a larger version of the
@@ -43,7 +44,7 @@ export default function DietDetailModal({ diet, onClose, onChoose }) {
     >
       <View style={styles.backdrop}>
         <TouchableOpacity
-          style={StyleSheet.absoluteFill}
+          style={FILL}
           activeOpacity={1}
           onPress={onClose}
           accessibilityLabel="Close diet details"

@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, Animated, Easing, TouchableOpacity } from 'reac
 import Mascot, { warmArt } from '../components/Mascot';
 import { commit } from '../utils/haptics';
 import { MASCOT_SCENES } from '../data/brandArt';
-import { COLORS, RADIUS } from '../utils/theme';
+import { COLORS, RADIUS, FILL} from '../utils/theme';
 
 // Shown for a few seconds between finishing the quiz and seeing the report.
 // There's no real computation happening here — the numbers are already
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
     // Damon drew it; the bar takes the wider inset below.
     paddingHorizontal: 16,
   },
-  decor: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  decor: { ...FILL, overflow: 'hidden' },
   blob: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#e6eefb' },
   blobSoft: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#edf3fc' },
   title: {

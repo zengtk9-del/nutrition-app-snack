@@ -192,6 +192,37 @@ export const SPACE = {
   rowGap: 10,
 };
 
+// Cover the parent exactly (v0.7.2).
+//
+// This is `StyleSheet.absoluteFill` written out, and it replaced every use
+// of that in this app for one reason: on Damon's phone, in v0.7.1, a view
+// that got its `position: 'absolute'` from `...StyleSheet.absoluteFillObject`
+// did not get it, while a view in the SAME component with the word written
+// out did. The overlay fell back into the layout flow and the tab bar came
+// out two rows tall with both copies of every tab showing at once.
+//
+// What makes that worth a constant rather than a shrug is the failure mode.
+// `{ ...undefined }` is `{}` — not an error, not a warning, just a style
+// that quietly is not there. A view that should have covered its parent
+// becomes a zero-height strip instead, and most of this app's uses are
+// decorative (a 6% tint, a blob, a modal backdrop) where that is subtle
+// enough to live undetected. Only the tab bar's was load-bearing enough to
+// be obvious.
+//
+// Why RN's own constant did not arrive is not something that can be worked
+// out from here — it is defined in React Native 0.81, and the same spread
+// is used all over this file's neighbours. So this does not try to explain
+// it; it stops depending on it. Five literal values cannot fail to resolve,
+// and assetgate refuses `StyleSheet.absoluteFill` anywhere in app code so
+// the pattern cannot creep back.
+export const FILL = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+};
+
 // --- Depth ----------------------------------------------------------------
 // iOS reads the shadow* properties; Android only reads elevation and ignores
 // the colour and offset entirely, so the two will never match exactly. Kept

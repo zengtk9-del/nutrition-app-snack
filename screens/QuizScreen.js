@@ -32,7 +32,7 @@ import {
   WEIGHT_GEOMETRY,
 } from '../data/brandArt';
 import { choose } from '../utils/haptics';
-import { COLORS, RADIUS, SPACE } from '../utils/theme';
+import { COLORS, RADIUS, SPACE, FILL} from '../utils/theme';
 import {
   QUIZ_STEPS,
   BODY_FAT_OPTIONS,
@@ -830,7 +830,7 @@ function DialCard({
       >
         {/* Bottom layer: the disc behind his crown, two loose dots, the
             marks off his crown and the shadow under him. */}
-        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+        <View pointerEvents="none" style={FILL}>
           <View
             style={[styles.hcHalo, { left: haloLeft, top: haloTop, width: haloD, height: haloD, borderRadius: haloD / 2 }]}
           />
@@ -869,7 +869,7 @@ function DialCard({
           {/* The walk: the dots and the flag are drawn here, under him,
               so the path passes BEHIND him rather than over his legs. */}
           {walk ? (
-            <View testID={`${testPrefix}-walk`} style={StyleSheet.absoluteFill}>
+            <View testID={`${testPrefix}-walk`} style={FILL}>
               {walk.map((p, i) => (
                 <View key={`walk${i}`} style={[styles.hcWalkDot, { left: p.x - HC_WALK_DOT / 2, top: p.y - HC_WALK_DOT / 2 }]} />
               ))}
@@ -2668,7 +2668,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACE.screen,
     paddingBottom: 24,
   },
-  introBlobs: { ...StyleSheet.absoluteFillObject },
+  introBlobs: { ...FILL },
   introBlob: { position: 'absolute', backgroundColor: COLORS.blob, borderRadius: RADIUS.pill },
   // The big sweep down the right-hand side. Far larger than the frame and
   // pushed mostly off it, so what shows is one long curve rather than a
@@ -2804,7 +2804,7 @@ const styles = StyleSheet.create({
   // read as a hand-drawn blob, which is what the mockup has, and cost
   // nothing next to shipping an SVG for it.
   askBlob: {
-    ...StyleSheet.absoluteFillObject,
+    ...FILL,
     backgroundColor: COLORS.blob,
     borderTopLeftRadius: 110,
     borderTopRightRadius: 84,
@@ -2953,7 +2953,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     overflow: 'hidden',
   },
-  peekInnerTint: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(47,128,240,0.06)' },
+  peekInnerTint: { ...FILL, backgroundColor: 'rgba(47,128,240,0.06)' },
   // Empty ring and filled check share a spot; the check fades in over it.
   peekRadio: {
     position: 'absolute',
@@ -2996,7 +2996,7 @@ const styles = StyleSheet.create({
   // so his crown clears its top edge instead of being cut off by the top
   // of the scroll area.
   soloHeadTall: { marginTop: 34 },
-  soloDecor: { ...StyleSheet.absoluteFillObject },
+  soloDecor: { ...FILL },
   // Far bigger than the space it shows in: only its top rises between
   // the bubble and the card, and the card is drawn over the rest.
   soloDome: {
@@ -3256,7 +3256,7 @@ const styles = StyleSheet.create({
   // nothing of its own to the pages that still use the plain one.
   titleWrap: {},
   titleWrapBig: { marginTop: 4, marginBottom: 16 },
-  titleDecor: { ...StyleSheet.absoluteFillObject },
+  titleDecor: { ...FILL },
   // Paler than the dots that go with a bubble: these sit under type,
   // where anything stronger reads as a box behind the words.
   titleBlob: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#eaf1fb' },
@@ -3388,9 +3388,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  goalTint: { ...StyleSheet.absoluteFillObject, borderRadius: 24, backgroundColor: 'rgba(47,128,240,0.06)' },
+  goalTint: { ...FILL, borderRadius: 24, backgroundColor: 'rgba(47,128,240,0.06)' },
   goalBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...FILL,
     borderRadius: 24,
     borderWidth: 2.5,
     borderColor: COLORS.accent,
@@ -3420,7 +3420,7 @@ const styles = StyleSheet.create({
   },
   artCardOn: { backgroundColor: '#f5f9ff' },
   artBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...FILL,
     borderRadius: 22,
     borderWidth: 2.5,
     borderColor: COLORS.accent,
@@ -3525,7 +3525,7 @@ const styles = StyleSheet.create({
     elevation: 2,
     overflow: 'hidden',
   },
-  whDecor: { ...StyleSheet.absoluteFillObject },
+  whDecor: { ...FILL },
   whBlob: { position: 'absolute', borderRadius: RADIUS.pill, backgroundColor: '#e9f0fb' },
   whBody: { position: 'relative' },
   whZone: { position: 'absolute', width: WH_BAR_W, borderRadius: WH_BAR_W / 2 },
@@ -3684,9 +3684,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bfTint: { ...StyleSheet.absoluteFillObject, borderRadius: 20, backgroundColor: 'rgba(47,128,240,0.06)' },
+  bfTint: { ...FILL, borderRadius: 20, backgroundColor: 'rgba(47,128,240,0.06)' },
   bfBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...FILL,
     borderRadius: 20,
     borderWidth: 2.5,
     borderColor: COLORS.accent,

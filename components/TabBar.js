@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { COLORS, TYPE, RADIUS } from '../utils/theme';
+import { COLORS, TYPE, RADIUS, FILL } from '../utils/theme';
 
 // The bar at the bottom, and the pill that follows your thumb (v0.7.1).
 //
@@ -132,7 +132,7 @@ export default function TabBar({ tabs, activeKey, onPress, scrollX, pageWidth })
     : (tabs[i].key === activeKey ? 1 : 0));
 
   return (
-    <View style={styles.tabBar}>
+    <View testID="tab-bar" style={styles.tabBar}>
       {ready && (
         <Animated.View
           testID="tab-pill"
@@ -167,7 +167,7 @@ export default function TabBar({ tabs, activeKey, onPress, scrollX, pageWidth })
           {/* The inactive copy, which is what gives the button its size
               -- the active copy is absolutely positioned over it and so
               measures nothing. */}
-          <View style={styles.tabInner}>
+          <View testID={`tab-rest-${i}`} style={styles.tabInner}>
             <MaterialCommunityIcons name={tab.icon} size={22} color={COLORS.tabInactive} />
             <Text style={styles.tabLabel}>{tab.label}</Text>
           </View>
@@ -175,6 +175,7 @@ export default function TabBar({ tabs, activeKey, onPress, scrollX, pageWidth })
               the same centring put the glyph on the same pixel; only the
               colours differ. */}
           <Animated.View
+            testID={`tab-over-${i}`}
             pointerEvents="none"
             style={[styles.tabInner, styles.tabOver, { opacity: activeness(i) }]}
           >
@@ -226,10 +227,24 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.tile,
     backgroundColor: COLORS.tabActiveBg,
   },
-  // The active copy, laid over the inactive one. absoluteFillObject
-  // against the button, so it inherits the box the inactive copy
-  // established instead of having its own idea of it.
-  tabOver: { ...StyleSheet.absoluteFillObject },
+  // The active copy, laid over the inactive one: it fills the button, so
+  // it inherits the box the inactive copy established instead of having
+  // its own idea of it.
+  //
+  // FILL, not RN's own absoluteFillObject, and that is the whole bug
+  // v0.7.2 fixes. v0.7.1 spread `StyleSheet.absoluteFillObject` here and
+  // on Damon's phone the position did not arrive — while the pill, four
+  // lines down, got its `position: 'absolute'` from a literal in the
+  // same stylesheet and was placed perfectly. The overlay fell back into
+  // the layout flow, every tab became two rows tall, and both copies
+  // showed at once.
+  //
+  // `{ ...undefined }` is `{}`: no error, no warning, a style that
+  // quietly is not there. It looked right in Snack's web preview, which
+  // is the worst version of this — the one place that was easy to check
+  // was the one place it worked. See utils/theme.js for why every use of
+  // it in this app went the same way.
+  tabOver: { ...FILL },
   tabLabel: { ...TYPE.tab, color: COLORS.tabInactive, marginTop: 3 },
   tabLabelActive: { color: COLORS.tabActive, fontWeight: '700' },
 });

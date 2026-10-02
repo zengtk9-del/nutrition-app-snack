@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-nati
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Mascot from './Mascot';
 import { MASCOT_SCENES, REPORT_BOARD } from '../data/brandArt';
-import { COLORS, RADIUS, SPACE } from '../utils/theme';
+import { COLORS, RADIUS, SPACE, FILL } from '../utils/theme';
 
 // The report, as one template (v0.5.8).
 //
@@ -266,7 +266,7 @@ export function ReportChrome({
     <View testID={testID} style={styles.page}>
       {/* Texture, the same family as the quiz pages': a few pale discs
           well clear of anything you have to read. */}
-      <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <View pointerEvents="none" style={FILL}>
         <View style={[styles.blob, { width: 150, height: 150, left: -46, top: 18 }]} />
         <View style={[styles.blob, { width: 128, height: 128, right: -28, top: 96 }]} />
         <View style={[styles.blob, { width: 96, height: 96, left: -34, bottom: 118 }]} />
