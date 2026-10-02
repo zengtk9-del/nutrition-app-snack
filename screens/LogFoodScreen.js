@@ -57,7 +57,10 @@ import {
 } from '../utils/units';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, LOG_CHIP, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-import Mascot from '../components/Mascot';
+// He is drawn by App.js now, pinned above every tab so changing
+// tab cannot restart him (v0.6.5). This is the box he used to
+// take up in this header — see components/CornerMascot.js.
+import { CornerMascotSlot } from '../components/CornerMascot';
 import CustomFoodForm from '../components/CustomFoodForm';
 import ComboForm from '../components/ComboForm';
 import { customFoodToFood } from '../utils/customFoods';
@@ -5898,7 +5901,7 @@ export default function LogFoodScreen({
             rule: one mascot, one size, one position, so changing tab
             never moves it. A per-screen pose would have to be argued for
             against that. */}
-        <Mascot />
+        <CornerMascotSlot />
       </View>
 
       {/* The magnifier is a sibling of the input rather than something the

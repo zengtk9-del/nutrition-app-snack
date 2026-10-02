@@ -14,14 +14,17 @@
 // instead of by reading the whole string.
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Alert, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import MacroDonutChart from '../components/MacroDonutChart';
 import { DIET_IMAGES } from '../data/quizQuestions';
 import { DEFAULT_DIET } from '../data/dietOrder';
 import { dietLabel } from './DietPickerScreen';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-import Mascot from '../components/Mascot';
+// He is drawn by App.js now, pinned above every tab so changing
+// tab cannot restart him (v0.6.5). This is the box he used to
+// take up in this header — see components/CornerMascot.js.
+import { CornerMascotSlot } from '../components/CornerMascot';
 
 const MAX_SAVED_GOALS = 5;
 
@@ -198,6 +201,9 @@ export default function GoalsScreen({
   // utils/lastIntake.js). Null when there is no such intake, and the
   // row is then not drawn at all.
   onOpenReport,
+  // See the ScrollView below — this is what slides the corner mascot
+  // away with the header.
+  onScroll,
 }) {
   // Whatever you're following goes first (v0.0.82). The list arrives in
   // save order, which means the one goal you're actually tracking against
@@ -213,7 +219,14 @@ export default function GoalsScreen({
   );
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+    <Animated.ScrollView
+      style={s.container}
+      contentContainerStyle={s.content}
+      showsVerticalScrollIndicator={false}
+      // See DashboardScreen: this is what slides the corner mascot away.
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+    >
       <View pointerEvents="none" style={s.blobs}>
         <View style={[s.blob, s.blobA]} />
         <View style={[s.blob, s.blobB]} />
@@ -227,7 +240,7 @@ export default function GoalsScreen({
             These are used to fill the progress bars on the Today screen.
           </Text>
         </View>
-        <Mascot />
+        <CornerMascotSlot />
       </View>
 
       {/* A read-only readout of whatever goal is active. The same component
@@ -328,7 +341,7 @@ export default function GoalsScreen({
         <MaterialCommunityIcons name="logout" size={18} color={COLORS.destructive} />
         <Text style={s.logoutText}>Log Out</Text>
       </TouchableOpacity>
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 

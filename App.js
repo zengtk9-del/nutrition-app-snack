@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { AppState, Animated, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from './utils/supabaseClient';
 import {
@@ -39,6 +39,9 @@ import DashboardScreen from './screens/DashboardScreen';
 import LogFoodScreen from './screens/LogFoodScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import GoalsScreen from './screens/GoalsScreen';
+// One mascot for all four tabs, above them rather than inside any of
+// them — see components/CornerMascot.js for what that fixes.
+import CornerMascot from './components/CornerMascot';
 import QuizScreen from './screens/QuizScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import ReportScreen from './screens/ReportScreen';
@@ -136,6 +139,27 @@ export default function App() {
 
   // --- App data state (now backed by Supabase instead of the phone) ---
   const [activeTab, setActiveTab] = useState('dashboard');
+
+  // How far the tab you are looking at has been scrolled, so the corner
+  // mascot can slide away with the header he used to live inside — see
+  // components/CornerMascot.js for why he no longer lives there.
+  //
+  // One value shared by all four tabs, reset to zero whenever you change
+  // tab: a freshly-mounted screen is at the top and fires no scroll
+  // event of its own, so without the reset he would start the new tab
+  // hidden at whatever offset the last one was left at.
+  //
+  // Native driver: this runs on every frame of every scroll in the app,
+  // and the JS thread should not be in that loop. It is the reason the
+  // three scrolling tabs use Animated.ScrollView.
+  const tabScrollY = useRef(new Animated.Value(0)).current;
+  const onTabScroll = useMemo(
+    () => Animated.event([{ nativeEvent: { contentOffset: { y: tabScrollY } } }], { useNativeDriver: true }),
+    [tabScrollY]
+  );
+  useEffect(() => {
+    tabScrollY.setValue(0);
+  }, [activeTab, tabScrollY]);
   const [entries, setEntries] = useState([]);
   const [goals, setGoals] = useState(DEFAULT_GOALS);
   // The user's diet, which reorders the Log Food tab (data/dietOrder.js).
@@ -965,6 +989,7 @@ export default function App() {
             onDeleteComboGroup={handleDeleteComboGroup}
             customFoods={customFoods}
             userName={userName}
+            onScroll={onTabScroll}
           />
         )}
         {activeTab === 'log' && (
@@ -989,7 +1014,7 @@ export default function App() {
           />
         )}
         {activeTab === 'history' && (
-          <HistoryScreen entries={entries} goals={goals} customFoods={customFoods} />
+          <HistoryScreen entries={entries} goals={goals} customFoods={customFoods} onScroll={onTabScroll} />
         )}
         {activeTab === 'goals' && (
           <GoalsScreen
@@ -1005,8 +1030,18 @@ export default function App() {
             diet={diet}
             onChangeDiet={() => setDietPickerOpen(true)}
             onOpenReport={lastIntake ? handleOpenMyReport : null}
+            onScroll={onTabScroll}
           />
         )}
+
+        {/* Last child of the tab area, so he paints over whichever
+            screen is showing — and outside the four conditionals, so
+            changing tab never takes him down. Every screen above him
+            keeps an empty CornerMascotSlot where he used to be, and
+            tells him how far it has scrolled so he still slides away
+            with its header. Log Food's header does not scroll, so it
+            reports nothing and he stays put there, as he always has. */}
+        <CornerMascot scrollY={tabScrollY} />
       </View>
 
       <View style={styles.tabBar}>

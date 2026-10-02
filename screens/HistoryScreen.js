@@ -21,7 +21,7 @@
 //    agrees with both the title and the number above it.
 
 import React, { useMemo } from 'react';
-import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, Image, ScrollView, StyleSheet, Animated } from 'react-native';
 import foods from '../data/foods';
 import { groupEntriesByDate, formatDateKey } from '../utils/nutrition';
 import { scoreDay, scoreWeek } from '../utils/score';
@@ -29,7 +29,10 @@ import { customFoodToFood } from '../utils/customFoods';
 import { scoreTone } from '../utils/scoreTone';
 import ScoreArc from '../components/ScoreArc';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-import Mascot from '../components/Mascot';
+// He is drawn by App.js now, pinned above every tab so changing
+// tab cannot restart him (v0.6.5). This is the box he used to
+// take up in this header — see components/CornerMascot.js.
+import { CornerMascotSlot } from '../components/CornerMascot';
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -45,7 +48,7 @@ function lastSevenDays() {
   return out;
 }
 
-export default function HistoryScreen({ entries, goals, customFoods = [] }) {
+export default function HistoryScreen({ entries, goals, customFoods = [], onScroll }) {
   // Same reason as the Today tab: the scorer works out what is junk by
   // resolving an entry back to a food's category, so a food the user
   // invented has to be in the list it searches or a logged takeaway
@@ -67,7 +70,14 @@ export default function HistoryScreen({ entries, goals, customFoods = [] }) {
   const weekTone = scoreTone(week.average);
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+    <Animated.ScrollView
+      style={s.container}
+      contentContainerStyle={s.content}
+      showsVerticalScrollIndicator={false}
+      // See DashboardScreen: this is what slides the corner mascot away.
+      onScroll={onScroll}
+      scrollEventThrottle={16}
+    >
       <View pointerEvents="none" style={s.blobs}>
         <View style={[s.blob, s.blobA]} />
         <View style={[s.blob, s.blobB]} />
@@ -103,7 +113,7 @@ export default function HistoryScreen({ entries, goals, customFoods = [] }) {
           </View>
         </View>
 
-        <Mascot />
+        <CornerMascotSlot />
       </View>
 
       {days.length === 0 ? (
@@ -161,7 +171,7 @@ export default function HistoryScreen({ entries, goals, customFoods = [] }) {
           })}
         </>
       )}
-    </ScrollView>
+    </Animated.ScrollView>
   );
 }
 
