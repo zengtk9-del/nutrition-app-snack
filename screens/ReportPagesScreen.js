@@ -5,6 +5,7 @@ import { optionLabel, GOAL_NOTE } from '../components/ReportPieces';
 import MacroDonutChart, { MACRO_COLORS, thicknessForCalories } from '../components/MacroDonutChart';
 import { ReportBoard, ReportChrome, boardText as T } from '../components/ReportBoard';
 import { REPORT_BOARD } from '../data/brandArt';
+import { commit } from '../utils/haptics';
 import { COLORS } from '../utils/theme';
 
 // The default landing spot right after finishing the quiz: the same
@@ -179,7 +180,23 @@ export default function ReportPagesScreen({
   const pageIndex = Math.max(0, Math.min(rawIndex, pages.length - 1));
   const page = pages[pageIndex];
 
+  // THE ONE PLACE NAVIGATION BUZZES (v0.6.6), at Damon's call.
+  //
+  // utils/haptics.js argues at length that moving around an app should
+  // be silent, and everywhere else it is. The report is the exception
+  // he asked for, and the reason it holds up is that these six pages
+  // are not navigation — they are a presentation being delivered one
+  // beat at a time, by a broccoli with a pointer. A press here is "and
+  // now this", not "take me somewhere".
+  //
+  // On the last page the button says See Summary and finishes the
+  // walkthrough instead of turning a page. Same button, same press, so
+  // the same beat; stopping one short of the end would read as the
+  // feature breaking rather than as a distinction.
+  //
+  // Back stays silent: going back is correcting, not arriving.
   const goNext = () => {
+    commit();
     if (pageIndex < pages.length - 1) {
       setPageIndex(pageIndex + 1);
     } else {

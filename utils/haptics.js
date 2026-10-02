@@ -32,6 +32,12 @@
 // destruction, a failure. iOS does not buzz when you push a navigation
 // controller either.
 //
+// ONE EXCEPTION, added in v0.6.6: Next on the report's six pages. Those
+// are not navigation in the sense this rule is about -- they are a
+// presentation being delivered a beat at a time -- so each press
+// commits. It is the only button in the app that buzzes for moving
+// forward, and it being the only one is the point.
+//
 // ---------------------------------------------------------------------
 // NATIVE ONLY, DELIBERATELY
 //
