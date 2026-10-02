@@ -21,7 +21,7 @@
 //    agrees with both the title and the number above it.
 
 import React, { useMemo } from 'react';
-import { View, Text, Image, ScrollView, StyleSheet, Animated } from 'react-native';
+import { View, Text, Image, ScrollView, StyleSheet } from 'react-native';
 import foods from '../data/foods';
 import { groupEntriesByDate, formatDateKey } from '../utils/nutrition';
 import { scoreDay, scoreWeek } from '../utils/score';
@@ -29,10 +29,13 @@ import { customFoodToFood } from '../utils/customFoods';
 import { scoreTone } from '../utils/scoreTone';
 import ScoreArc from '../components/ScoreArc';
 import { COLORS, TYPE, RADIUS, SPACE, SHADOW } from '../utils/theme';
-// He is drawn by App.js now, pinned above every tab so changing
-// tab cannot restart him (v0.6.5). This is the box he used to
-// take up in this header — see components/CornerMascot.js.
-import { CornerMascotSlot } from '../components/CornerMascot';
+// Back in the header as of v0.7.0, where he has always belonged. He
+// was lifted into an overlay in v0.6.5 to stop him restarting every
+// time this screen was unmounted and rebuilt on a tab change; the
+// pager (components/TabPager.js) keeps every screen mounted, so that
+// cannot happen any more — and the header is the only place he
+// slides with his own page when you drag between tabs.
+import Mascot from '../components/Mascot';
 
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -48,7 +51,7 @@ function lastSevenDays() {
   return out;
 }
 
-export default function HistoryScreen({ entries, goals, customFoods = [], onScroll }) {
+export default function HistoryScreen({ entries, goals, customFoods = [] }) {
   // Same reason as the Today tab: the scorer works out what is junk by
   // resolving an entry back to a food's category, so a food the user
   // invented has to be in the list it searches or a logged takeaway
@@ -70,13 +73,10 @@ export default function HistoryScreen({ entries, goals, customFoods = [], onScro
   const weekTone = scoreTone(week.average);
 
   return (
-    <Animated.ScrollView
+    <ScrollView
       style={s.container}
       contentContainerStyle={s.content}
       showsVerticalScrollIndicator={false}
-      // See DashboardScreen: this is what slides the corner mascot away.
-      onScroll={onScroll}
-      scrollEventThrottle={16}
     >
       <View pointerEvents="none" style={s.blobs}>
         <View style={[s.blob, s.blobA]} />
@@ -113,7 +113,7 @@ export default function HistoryScreen({ entries, goals, customFoods = [], onScro
           </View>
         </View>
 
-        <CornerMascotSlot />
+        <Mascot />
       </View>
 
       {days.length === 0 ? (
@@ -171,7 +171,7 @@ export default function HistoryScreen({ entries, goals, customFoods = [], onScro
           })}
         </>
       )}
-    </Animated.ScrollView>
+    </ScrollView>
   );
 }
 

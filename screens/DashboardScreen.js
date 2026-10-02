@@ -18,7 +18,7 @@
 //     likely thing to get "improved" into a bug later.
 
 import React, { useMemo } from 'react';
-import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, Animated } from 'react-native';
+import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import foods from '../data/foods';
 import { sumEntries, progressPercent } from '../utils/nutrition';
@@ -31,10 +31,13 @@ import { customFoodToFood } from '../utils/customFoods';
 import { TARGETS } from '../data/scoreConfig';
 import { scoreTone } from '../utils/scoreTone';
 import { ART_READY, MACRO_ART, MACRO_FALLBACK_ICONS } from '../data/brandArt';
-// He is drawn by App.js now, pinned above every tab so changing
-// tab cannot restart him (v0.6.5). This is the box he used to
-// take up in this header — see components/CornerMascot.js.
-import { CornerMascotSlot } from '../components/CornerMascot';
+// Back in the header as of v0.7.0, where he has always belonged. He
+// was lifted into an overlay in v0.6.5 to stop him restarting every
+// time this screen was unmounted and rebuilt on a tab change; the
+// pager (components/TabPager.js) keeps every screen mounted, so that
+// cannot happen any more — and the header is the only place he
+// slides with his own page when you drag between tabs.
+import Mascot from '../components/Mascot';
 
 const FOOD_ICON_SIZE = 72;
 
@@ -182,7 +185,7 @@ export function groupEntries(entries) {
   return rows;
 }
 
-export default function DashboardScreen({ entries, goals, onDeleteEntry, onDeleteComboGroup, customFoods = [], userName = '', onScroll }) {
+export default function DashboardScreen({ entries, goals, onDeleteEntry, onDeleteComboGroup, customFoods = [], userName = '' }) {
   const totals = sumEntries(entries);
   // Grouped once, not once per read: the heading counts rows and the list
   // renders them, and calling it twice would rebuild the whole thing for
@@ -202,16 +205,10 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry, onDelet
   const score = scoreDay({ entries, totals, goals, foods: scorableFoods });
 
   return (
-    <Animated.ScrollView
+    <ScrollView
       style={s.container}
       contentContainerStyle={s.content}
       showsVerticalScrollIndicator={false}
-      // Reports where this page is, so the corner mascot can slide away
-      // with the header he used to sit in — see
-      // components/CornerMascot.js. 16ms so he tracks the scroll rather
-      // than stepping after it.
-      onScroll={onScroll}
-      scrollEventThrottle={16}
     >
       {/* Texture behind the title. Inside the scroll content rather than
           fixed behind it, so it scrolls away with the header instead of
@@ -232,7 +229,7 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry, onDelet
           {userName ? <Text style={s.hello}>Hi, {userName}</Text> : null}
           <Text style={s.title}>Today</Text>
         </View>
-        <CornerMascotSlot />
+        <Mascot />
       </View>
 
       <View style={s.card}>
@@ -339,7 +336,7 @@ export default function DashboardScreen({ entries, goals, onDeleteEntry, onDelet
       {/* A build marker so Damon can tell at a glance whether the code he
           just pasted in took effect -- see utils/appVersion.js. */}
       <Text style={s.version}>v{APP_VERSION}</Text>
-    </Animated.ScrollView>
+    </ScrollView>
   );
 }
 

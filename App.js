@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { AppState, Animated, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { AppState, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { supabase } from './utils/supabaseClient';
 import {
@@ -39,9 +39,8 @@ import DashboardScreen from './screens/DashboardScreen';
 import LogFoodScreen from './screens/LogFoodScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import GoalsScreen from './screens/GoalsScreen';
-// One mascot for all four tabs, above them rather than inside any of
-// them — see components/CornerMascot.js for what that fixes.
-import CornerMascot from './components/CornerMascot';
+// The four tabs side by side, draggable — see components/TabPager.js.
+import TabPager from './components/TabPager';
 import QuizScreen from './screens/QuizScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import ReportScreen from './screens/ReportScreen';
@@ -140,26 +139,6 @@ export default function App() {
   // --- App data state (now backed by Supabase instead of the phone) ---
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  // How far the tab you are looking at has been scrolled, so the corner
-  // mascot can slide away with the header he used to live inside — see
-  // components/CornerMascot.js for why he no longer lives there.
-  //
-  // One value shared by all four tabs, reset to zero whenever you change
-  // tab: a freshly-mounted screen is at the top and fires no scroll
-  // event of its own, so without the reset he would start the new tab
-  // hidden at whatever offset the last one was left at.
-  //
-  // Native driver: this runs on every frame of every scroll in the app,
-  // and the JS thread should not be in that loop. It is the reason the
-  // three scrolling tabs use Animated.ScrollView.
-  const tabScrollY = useRef(new Animated.Value(0)).current;
-  const onTabScroll = useMemo(
-    () => Animated.event([{ nativeEvent: { contentOffset: { y: tabScrollY } } }], { useNativeDriver: true }),
-    [tabScrollY]
-  );
-  useEffect(() => {
-    tabScrollY.setValue(0);
-  }, [activeTab, tabScrollY]);
   const [entries, setEntries] = useState([]);
   const [goals, setGoals] = useState(DEFAULT_GOALS);
   // The user's diet, which reorders the Log Food tab (data/dietOrder.js).
@@ -980,69 +959,64 @@ export default function App() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
-      <View style={styles.content}>
-        {activeTab === 'dashboard' && (
-          <DashboardScreen
-            entries={todayEntries}
-            goals={goals}
-            onDeleteEntry={handleDeleteEntry}
-            onDeleteComboGroup={handleDeleteComboGroup}
-            customFoods={customFoods}
-            userName={userName}
-            onScroll={onTabScroll}
-          />
-        )}
-        {activeTab === 'log' && (
-          <LogFoodScreen
-            onAddEntry={handleAddEntry}
-            onDeleteEntry={handleDeleteEntry}
-            favorites={favorites}
-            onAddFavorite={handleAddFavorite}
-            onUpdateFavorite={handleUpdateFavorite}
-            onRemoveFavorite={handleRemoveFavorite}
-            diet={diet}
-            dailyCalories={goals.calories}
-            customFoods={customFoods}
-            onCreateCustomFood={handleCreateCustomFood}
-            onUpdateCustomFood={handleUpdateCustomFood}
-            onDeleteCustomFood={handleDeleteCustomFood}
-            combos={combos}
-            onCreateCombo={handleCreateCombo}
-            onUpdateCombo={handleUpdateCombo}
-            onDeleteCombo={handleDeleteCombo}
-            onAddCombo={handleAddCombo}
-          />
-        )}
-        {activeTab === 'history' && (
-          <HistoryScreen entries={entries} goals={goals} customFoods={customFoods} onScroll={onTabScroll} />
-        )}
-        {activeTab === 'goals' && (
-          <GoalsScreen
-            goals={goals}
-            onLogout={handleLogout}
-            userEmail={session.user.email}
-            onRetakeQuiz={handleStartQuiz}
-            onSetMacroGoals={() => setMacroGoalsOpen(true)}
-            savedGoals={savedGoals}
-            onFollowGoal={handleFollowNow}
-            onOpenGoal={setViewedGoal}
-            onDeleteSavedGoal={handleDeleteSavedGoal}
-            diet={diet}
-            onChangeDiet={() => setDietPickerOpen(true)}
-            onOpenReport={lastIntake ? handleOpenMyReport : null}
-            onScroll={onTabScroll}
-          />
-        )}
+      {/* All four at once, side by side, one screen wide each — which is
+          what makes a drag between them possible at all, and what stops
+          every screen (and the mascot in its header) being torn down and
+          rebuilt on each visit. This replaced a `<View style={content}>`
+          holding four `{activeTab === x && ...}` conditionals; the pager
+          is the flex: 1 child now. See components/TabPager.js.
 
-        {/* Last child of the tab area, so he paints over whichever
-            screen is showing — and outside the four conditionals, so
-            changing tab never takes him down. Every screen above him
-            keeps an empty CornerMascotSlot where he used to be, and
-            tells him how far it has scrolled so he still slides away
-            with its header. Log Food's header does not scroll, so it
-            reports nothing and he stays put there, as he always has. */}
-        <CornerMascot scrollY={tabScrollY} />
-      </View>
+          The order here IS the left-to-right order on the glass, and it
+          has to match TABS, because the index that drives the pager and
+          the index a swipe reports are both indexes into TABS. */}
+      <TabPager
+        testID="tab-pager"
+        index={TABS.findIndex((t) => t.key === activeTab)}
+        onIndexChange={(i) => setActiveTab(TABS[i].key)}
+      >
+        <DashboardScreen
+          entries={todayEntries}
+          goals={goals}
+          onDeleteEntry={handleDeleteEntry}
+          onDeleteComboGroup={handleDeleteComboGroup}
+          customFoods={customFoods}
+          userName={userName}
+        />
+        <LogFoodScreen
+          onAddEntry={handleAddEntry}
+          onDeleteEntry={handleDeleteEntry}
+          favorites={favorites}
+          onAddFavorite={handleAddFavorite}
+          onUpdateFavorite={handleUpdateFavorite}
+          onRemoveFavorite={handleRemoveFavorite}
+          diet={diet}
+          dailyCalories={goals.calories}
+          customFoods={customFoods}
+          onCreateCustomFood={handleCreateCustomFood}
+          onUpdateCustomFood={handleUpdateCustomFood}
+          onDeleteCustomFood={handleDeleteCustomFood}
+          combos={combos}
+          onCreateCombo={handleCreateCombo}
+          onUpdateCombo={handleUpdateCombo}
+          onDeleteCombo={handleDeleteCombo}
+          onAddCombo={handleAddCombo}
+        />
+        <HistoryScreen entries={entries} goals={goals} customFoods={customFoods} />
+        <GoalsScreen
+          goals={goals}
+          onLogout={handleLogout}
+          userEmail={session.user.email}
+          onRetakeQuiz={handleStartQuiz}
+          onSetMacroGoals={() => setMacroGoalsOpen(true)}
+          savedGoals={savedGoals}
+          onFollowGoal={handleFollowNow}
+          onOpenGoal={setViewedGoal}
+          onDeleteSavedGoal={handleDeleteSavedGoal}
+          diet={diet}
+          onChangeDiet={() => setDietPickerOpen(true)}
+          onOpenReport={lastIntake ? handleOpenMyReport : null}
+        />
+      </TabPager>
 
       <View style={styles.tabBar}>
         {TABS.map((tab) => {
@@ -1078,7 +1052,6 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   loadingContainer: { flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' },
-  content: { flex: 1 },
   // Floats clear of the screen edge rather than sitting flush against it
   // (v0.0.76, from the History mockup). Shared by every tab, so this moves
   // Today, Log Food and Goals too -- a bar that only detached on one screen
