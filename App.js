@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, View, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert, Animated } from 'react-native';
 import { supabase } from './utils/supabaseClient';
+// Portrait only — see utils/orientation.js for why, and for the half of
+// it that lives in app.json.
+import { lockPortrait } from './utils/orientation';
 import {
   fetchGoals,
   saveGoals,
@@ -102,6 +105,14 @@ export default function App() {
   // Wrapped because AppState's API changed shape (addEventListener used
   // to return nothing and be paired with removeEventListener; now it
   // returns a subscription). A greeting is not worth a crash on either.
+  // Upright, once, before anything is drawn. app.json already tells a
+  // real build not to offer landscape at all; this is what holds inside
+  // Expo Go, where the container allows every orientation. It can fail
+  // and the app does not care — see utils/orientation.js.
+  useEffect(() => {
+    lockPortrait();
+  }, []);
+
   useEffect(() => {
     let sub = null;
     try {

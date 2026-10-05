@@ -1,0 +1,12 @@
+{
+  "_comment": "Portrait only (v0.7.3). The top-level `orientation` is the real lock: it writes the supported orientations into the iOS Info.plist and the Android manifest, so a build is never offered a landscape frame. It only applies to a build, though, which is why utils/orientation.js also locks at runtime for Expo Go. `ios.requireFullScreen` is not optional here — without it iPad keeps Slide Over and Split View, and iOS refuses the orientation lock outright. `userInterfaceStyle` is already Expo's default; it is stated because this app has only a light palette and nothing should be able to put it into dark mode. `name` and `slug` are placeholders to make this file valid: decide them before the first build, along with version, icon, splash, ios.bundleIdentifier and android.package, which a store submission needs and this file does not have yet.",
+  "expo": {
+    "name": "Nutrition",
+    "slug": "nutrition-app-snack",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "requireFullScreen": true
+    }
+  }
+}
