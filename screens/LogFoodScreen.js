@@ -4801,9 +4801,25 @@ export default function LogFoodScreen({
   // tail takes its weight from the diet's category order. Nothing is
   // filtered out at any point — a vegan's list still contains every steak,
   // just further down, and searching for one is unaffected entirely.
+  // Grouped over the WHOLE category, never over what the query matched.
+  //
+  // v0.7.4, and the subtle half of routing search through these cards. A
+  // card's title, its picture and its toggles all come from
+  // `representativeRow(rows)`, so if `rows` is only the rows that matched
+  // the query, all three change depending on what you typed. Searching
+  // "cooked" used to be able to produce a card titled "Lentils, sprouted,
+  // cooked, stir-fried, with salt" with no illustration at all, because
+  // that row happened to be the representative of its group once the
+  // non-cooked rows were filtered out.
+  //
+  // So the cards are built once per category and the query only decides
+  // WHICH of them to show (see visibleCards). A card found by searching
+  // is then the same object, with the same name, picture and toggles, as
+  // the one you would have reached by browsing to it. It is also cheaper:
+  // this used to regroup the whole result set on every keystroke.
   const allCards = useMemo(() => {
     const groups = new Map();
-    for (const f of results) {
+    for (const f of filterByCategory(foods, category)) {
       const k = cardKeyOf(f);
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k).push(f);
@@ -4845,7 +4861,19 @@ export default function LogFoodScreen({
     // dependent on however data/foods.js happens to be ordered.
     out.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
     return out;
-  }, [results, diet]);
+  }, [foods, category, diet]);
+
+  // The cards the query leaves standing, in the same order.
+  //
+  // A card is shown when any row inside it matches, which is what makes
+  // searching "cooked" surface the White Rice card rather than a bare
+  // "White Rice, Cooked" row: the match is on the row, the thing you are
+  // shown is the card that holds it.
+  const visibleCards = useMemo(() => {
+    if (!query.trim()) return allCards;
+    const matched = new Set(results.map((f) => cardKeyOf(f)));
+    return allCards.filter((c) => matched.has(c.id));
+  }, [allCards, results, query]);
 
   // --- Nuts & Seeds ---
   const isBrowsingNut = category === 'nut_seed' && !query.trim();
@@ -4927,6 +4955,14 @@ export default function LogFoodScreen({
   // These two modes are what makes them behave like the rest: the open
   // card becomes the whole list, and the row it came from is gone until
   // you press Back.
+  // --- The card a search (or the All list) has open ---------------------
+  //
+  // v0.7.4. Looked up rather than assumed: if the open card is no longer
+  // among the matches -- the query changed, the category changed -- this
+  // comes back null and the ladder below falls through to the list
+  // instead of showing an empty screen with a Back row.
+  const openCard = expandedCardKey ? allCards.find((c) => c.id === expandedCardKey) : null;
+
   const listMode =
     // The combo builder takes the whole screen from either tab, so it is
     // checked before the tab is.
@@ -4940,7 +4976,7 @@ export default function LogFoodScreen({
         ? customFormFor
           ? 'customForm'
           : 'custom'
-      : category === 'all' && !query.trim() && expandedCardKey
+      : openCard
         ? 'allCard'
       : isBrowsingMeat
         ? !meatSubcategory
@@ -5340,8 +5376,7 @@ export default function LogFoodScreen({
     // The All tab's open card, alone on screen -- the same FoodCardFor the
     // row used to expand into, just no longer sitting under a copy of
     // itself.
-    const openCard = allCards.find((c) => c.id === expandedCardKey);
-    listData = openCard ? [openCard] : [];
+    listData = [openCard];
     listKeyExtractor = (item) => item.id;
     listRenderItem = ({ item }) => (
       <FoodCardFor
@@ -5352,7 +5387,12 @@ export default function LogFoodScreen({
         onAdd={handleAdd}
       />
     );
-    listHeader = <BackRow label="Back to All Foods" onPress={() => setExpandedCardKey(null)} />;
+    listHeader = (
+      <BackRow
+        label={query.trim() ? 'Back to results' : 'Back to All Foods'}
+        onPress={() => setExpandedCardKey(null)}
+      />
+    );
   } else if (listMode === 'meatTypes') {
     listData = availableSubcats;
     listKeyExtractor = (item) => item.key;
@@ -5808,18 +5848,34 @@ export default function LogFoodScreen({
         onPress={() => (legumeTypeMeta?.shape === 'card' ? setLegumeType(null) : setLegumeItem(null))}
       />
     );
-  } else if (category === 'all' && !query.trim()) {
-    listData = allCards;
+  } else {
+    // The All tab AND every search, through the same illustrated row.
+    //
+    // v0.7.4. This used to be two branches. The All tab grouped its foods
+    // into cards and drew them with a picture; a search fell through to
+    // `renderFoodCard`, which is a bare WeightFoodRow -- a per-100g macro
+    // string, a grams box and no illustration at all, because every row
+    // in data/foods.js carries `icon: ''`. So the same tab looked like
+    // the app when you browsed it and looked like a spreadsheet the
+    // moment you typed.
+    //
+    // The old comment here read "search results stay row-per-food: when
+    // you type 'cooked' you want to see the cooked row, not a card that
+    // happens to contain one." That is a real trade and it was decided
+    // the wrong way round: what it bought was one tap saved on a narrow
+    // search, and what it cost was the only screen in the app that shows
+    // raw data. Searching "rice" now gives you the White Rice card and
+    // Dry/Cooked is the toggle inside it, which is where every other
+    // route into that food already puts it.
+    //
+    // `visibleCards` is the full set of cards narrowed to the ones the
+    // query matched, so a searched card is the same object as a browsed
+    // one -- same title, same picture, same toggles inside it.
+    listData = visibleCards;
     listKeyExtractor = (item) => item.id;
     listRenderItem = ({ item }) => (
       <AllFoodRow card={item} onOpen={() => setExpandedCardKey(item.id)} />
     );
-  } else {
-    // Search results stay row-per-food: when you type "cooked" you want to
-    // see the cooked row, not a card that happens to contain one.
-    listData = results;
-    listKeyExtractor = (item) => item.id;
-    listRenderItem = ({ item }) => renderFoodCard(item);
   }
 
   // The two Create buttons ride INSIDE the list (v0.2.2), not above it.
@@ -5918,13 +5974,16 @@ export default function LogFoodScreen({
           placeholder="Search foods (e.g. chicken, rice, apple)"
           placeholderTextColor={COLORS.textMuted}
           value={query}
-          // Typing closes whatever card the All tab had open. Without
-          // this, searching hides the card (the list becomes results) and
-          // clearing the search brings it back instead of the All list,
-          // which is not where you were.
+          // Changing the query closes whatever card is open, in either
+          // direction. Typing, because the card may not be among the new
+          // matches; clearing, because coming back from a search should
+          // land on the list rather than on a card you opened inside it.
+          // (v0.7.4: this used to fire only when the new text was
+          // non-empty, which left a search's card open over the full
+          // list once the box was cleared.)
           onChangeText={(t) => {
             setQuery(t);
-            if (t.trim()) setExpandedCardKey(null);
+            setExpandedCardKey(null);
           }}
           autoCorrect={false}
           returnKeyType="search"
