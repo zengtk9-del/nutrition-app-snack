@@ -145,8 +145,38 @@ export default function App() {
     };
   }, []);
 
+  // Confirmed in GoalsScreen before this runs (v0.7.5). What arrives here
+  // is a decision, not a tap.
+  //
+  // THE ERROR PATH IS THE REASON THIS GREW. It used to be one bare
+  // `await supabase.auth.signOut()` with nothing around it, which made a
+  // failed logout the quietest failure in the app: the tap did nothing,
+  // no spinner, no message, and the user stayed logged in with no idea
+  // why. Adding a confirmation on top of that would have made it worse --
+  // you would answer "Log Out", and then nothing at all would happen.
+  //
+  // supabase-js v2 RETURNS its error rather than throwing it, so a
+  // try/catch alone would not have caught this. It also leaves the local
+  // session in place when the API call fails: _removeSession() runs only
+  // after a successful call, so an error here means the user really is
+  // still signed in and the alert is telling the truth. The catch is for
+  // anything that throws before that point.
+  //
+  // No success haptic. Logging out is navigation -- it ends on the login
+  // screen -- and utils/haptics.js is clear that navigation does not
+  // buzz. A failure does, because that is the app going wrong.
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Sign out failed', err);
+      fail();
+      Alert.alert(
+        "Couldn't log out",
+        'Something went wrong. Please try again.'
+      );
+    }
   };
 
   // --- App data state (now backed by Supabase instead of the phone) ---

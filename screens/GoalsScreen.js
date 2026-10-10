@@ -218,6 +218,34 @@ export default function GoalsScreen({
     [savedGoals]
   );
 
+  // Ask first (v0.7.5).
+  //
+  // Log Out used to fire on the tap. It sits at the very bottom of a long
+  // scrolling screen, a thumb's width under "See my personal report", and
+  // it is the only control in the app that throws the session away -- a
+  // mis-tap put you on the login screen with no way back except your
+  // password, which this app still has no way to reset.
+  //
+  // The same Alert as deleting a saved goal, deliberately: those are the
+  // two destructive things on this screen and they should feel alike.
+  //
+  // The body says what is NOT lost, because that is the question someone
+  // hesitating over this button is actually asking. Nothing on the
+  // account goes -- meals, plans, goals and favourites all live in
+  // Supabase and come back at the next login. The second sentence is the
+  // honest half: with no password reset anywhere in this app, the
+  // password is the only way back in.
+  const confirmLogout = () => {
+    Alert.alert(
+      'Log out?',
+      'Your meals, plans and goals stay on your account. You will need your password to sign back in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log Out', style: 'destructive', onPress: onLogout },
+      ]
+    );
+  };
+
   return (
     <ScrollView
       style={s.container}
@@ -334,7 +362,7 @@ export default function GoalsScreen({
 
       {userEmail ? <Text style={s.account}>Logged in as {userEmail}</Text> : null}
 
-      <TouchableOpacity style={s.logout} activeOpacity={0.7} onPress={onLogout}>
+      <TouchableOpacity style={s.logout} activeOpacity={0.7} onPress={confirmLogout}>
         <MaterialCommunityIcons name="logout" size={18} color={COLORS.destructive} />
         <Text style={s.logoutText}>Log Out</Text>
       </TouchableOpacity>
