@@ -191,6 +191,8 @@ function ActionRow({ icon, iconBg, iconColor, image, eyebrow, title, onPress, te
 export default function GoalsScreen({
   goals,
   onLogout,
+  onDeleteAccount,
+  dataCounts = null,
   userEmail,
   onRetakeQuiz,
   onSetMacroGoals,
@@ -235,6 +237,62 @@ export default function GoalsScreen({
   // Supabase and come back at the next login. The second sentence is the
   // honest half: with no password reset anywhere in this app, the
   // password is the only way back in.
+  // Deleting the account, which is the one thing here that cannot be
+  // undone (v0.7.7).
+  //
+  // TWO STEPS, NOT ONE, and the second one is not decoration. Every
+  // other destructive action in this app is recoverable with work --
+  // a deleted plan can be rebuilt, a logged meal re-logged. This is
+  // not: the account and every row attached to it are gone, there is
+  // no export, and signing up again with the same address gives a new
+  // empty account. One Alert is what the app uses for things you can
+  // redo; this deserves the extra beat.
+  //
+  // The second step NAMES WHAT GOES, with counts, rather than saying
+  // "all your data". Someone with 88 logged meals should see the 88 --
+  // it is the difference between agreeing to a policy and understanding
+  // a consequence.
+  const summarise = () => {
+    if (!dataCounts) return null;
+    const bits = [];
+    const add = (n, one, many) => { if (n > 0) bits.push(`${n} ${n === 1 ? one : many}`); };
+    add(dataCounts.entries, 'logged meal', 'logged meals');
+    add(dataCounts.savedGoals, 'saved plan', 'saved plans');
+    add(dataCounts.favorites, 'favourite', 'favourites');
+    add(dataCounts.customFoods, 'food you created', 'foods you created');
+    add(dataCounts.combos, 'combo', 'combos');
+    if (!bits.length) return null;
+    if (bits.length === 1) return bits[0];
+    return bits.slice(0, -1).join(', ') + ' and ' + bits[bits.length - 1];
+  };
+
+  const confirmDeleteAccount = () => {
+    const what = summarise();
+    Alert.alert(
+      'Delete your account?',
+      'This removes your account and everything in it. It cannot be undone, and signing up again with the same address starts from scratch.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Delete everything?',
+              what
+                ? `You will lose ${what}. There is no way to get any of it back.`
+                : 'There is no way to undo this.',
+              [
+                { text: 'Keep my account', style: 'cancel' },
+                { text: 'Delete for ever', style: 'destructive', onPress: onDeleteAccount },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   const confirmLogout = () => {
     Alert.alert(
       'Log out?',
@@ -366,6 +424,15 @@ export default function GoalsScreen({
         <MaterialCommunityIcons name="logout" size={18} color={COLORS.destructive} />
         <Text style={s.logoutText}>Log Out</Text>
       </TouchableOpacity>
+
+      {/* Quieter than Log Out on purpose: no fill, no weight. It is the
+          most destructive control in the app and the one people reach
+          for least, so it should be findable rather than prominent. */}
+      {onDeleteAccount ? (
+        <TouchableOpacity style={s.deleteAccount} activeOpacity={0.7} onPress={confirmDeleteAccount}>
+          <Text style={s.deleteAccountText}>Delete my account</Text>
+        </TouchableOpacity>
+      ) : null}
     </ScrollView>
   );
 }
@@ -497,4 +564,10 @@ const s = StyleSheet.create({
     paddingVertical: 14,
   },
   logoutText: { color: COLORS.destructive, fontWeight: '700', fontSize: 16 },
+  deleteAccount: { alignItems: 'center', paddingVertical: 16, marginTop: 4 },
+  deleteAccountText: {
+    color: COLORS.destructive,
+    fontSize: 14,
+    textDecorationLine: 'underline',
+  },
 });

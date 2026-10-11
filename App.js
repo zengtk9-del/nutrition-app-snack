@@ -165,6 +165,54 @@ export default function App() {
   // No success haptic. Logging out is navigation -- it ends on the login
   // screen -- and utils/haptics.js is clear that navigation does not
   // buzz. A failure does, because that is the app going wrong.
+  // --- Deleting the account, for good -----------------------------------
+  //
+  // The one thing in this app that cannot be done from the app. Removing
+  // a user is auth.admin.deleteUser(), which needs the project's SECRET
+  // key -- the one that bypasses every row-level-security policy. Both
+  // repos are public and a React Native bundle is readable on any phone
+  // it installs to, so that key can never ship. It lives in a Supabase
+  // Edge Function called `delete-account` instead, which reads who is
+  // asking from their signed token and deletes only them.
+  //
+  // All six tables carry `user_id references auth.users on delete
+  // cascade`, checked against the live schema, so the single delete
+  // takes the meals, goals, saved plans, favourites, custom foods and
+  // combos with it. Nothing here has to tidy up first.
+  //
+  // The sign-out afterwards is local housekeeping: the account is
+  // already gone, so there is no session left to revoke, and
+  // supabase-js ignores the 401/404 that comes back from trying.
+  const handleDeleteAccount = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('delete-account', { body: {} });
+      if (error) throw error;
+    } catch (err) {
+      console.warn('Delete account failed', err);
+      fail();
+      // A function that was never deployed answers 404, which as a raw
+      // string ("Edge Function returned a non-2xx status code") tells
+      // the user nothing. Worth separating, because it is the one
+      // failure that is a setup problem rather than a transient one.
+      const msg = (err && err.message) || '';
+      Alert.alert(
+        "Couldn't delete your account",
+        /not found|404|non-2xx/i.test(msg)
+          ? 'The delete-account function is not available. Nothing was deleted.'
+          : 'Something went wrong and nothing was deleted. Please try again.'
+      );
+      return;
+    }
+    // Clear the now-dead session. Its failure does not matter: the
+    // account is gone either way, and the auth listener puts the login
+    // screen up as soon as the session clears.
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.warn('Sign out after delete failed', err);
+    }
+  };
+
   const handleLogout = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -1070,6 +1118,16 @@ export default function App() {
         <GoalsScreen
           goals={goals}
           onLogout={handleLogout}
+          onDeleteAccount={handleDeleteAccount}
+          // What the confirmation names, so it can say what actually
+          // goes rather than "all your data".
+          dataCounts={{
+            entries: entries.length,
+            savedGoals: savedGoals.length,
+            favorites: favorites.length,
+            customFoods: customFoods.length,
+            combos: combos.length,
+          }}
           userEmail={session.user.email}
           onRetakeQuiz={handleStartQuiz}
           onSetMacroGoals={() => setMacroGoalsOpen(true)}
