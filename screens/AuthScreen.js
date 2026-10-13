@@ -4,7 +4,24 @@ import { commit, fail, nudge } from '../utils/haptics';
 import { supabase } from '../utils/supabaseClient';
 import { APP_VERSION } from '../utils/appVersion';
 
-// Sign in, sign up, and confirm an address (v0.7.6).
+// Sign in, sign up, confirm an address, and reset a forgotten password
+// (v0.7.6, reset added in v0.7.9).
+//
+// ---------------------------------------------------------------------
+// THE RESET FLOW, AND WHY IT IS TWO SCREENS RATHER THAN THREE
+//
+// 'forgot' asks for an address and sends a code. 'reset' then takes the
+// code AND the new password on one screen, submitted together.
+//
+// That pairing is not a shortcut, it is the point. Verifying a recovery
+// code signs the user in -- Supabase creates a real session the moment
+// verifyOtp succeeds. Splitting the code and the password across two
+// taps would leave a window where someone is logged in, believes they
+// have reset their password, and has not: close the app there and the
+// old password is still the live one. Doing both in a single submit
+// closes that window, and App.js's PASSWORD_RECOVERY hold keeps this
+// screen mounted across it so a failed save still has somewhere to say
+// so.
 //
 // ---------------------------------------------------------------------
 // A CODE, NOT A LINK, AND THAT IS THE WHOLE DESIGN
@@ -47,11 +64,16 @@ import { APP_VERSION } from '../utils/appVersion';
 // "Account created! You can log in now." is gone: with confirmations off
 // it was never seen (the app had already opened behind it), and with
 // them on it was a lie.
-export default function AuthScreen() {
+// `recovering` is App.js telling this screen that a reset code has been
+// accepted and a session now exists, but the new password has not been
+// saved yet. `onRecoveryDone` releases that hold.
+export default function AuthScreen({ recovering = false, onRecoveryDone }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [code, setCode] = useState('');
-  const [mode, setMode] = useState('login'); // 'login' | 'signup' | 'verify'
+  // 'login' | 'signup' | 'verify' | 'forgot' | 'reset'
+  const [mode, setMode] = useState('login');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
@@ -79,6 +101,14 @@ export default function AuthScreen() {
     timerRef.current = setTimeout(() => setCooldown((n) => n - 1), 1000);
     return () => clearTimeout(timerRef.current);
   }, [cooldown]);
+
+  // Normally this screen is already sitting in 'reset' when the hold goes
+  // on, because it never unmounted. This is for the case where it did --
+  // a reload mid-reset -- so the user lands back on the password field
+  // instead of a login form that would refuse to do anything useful.
+  useEffect(() => {
+    if (recovering) setMode('reset');
+  }, [recovering]);
 
   // A REJECTED PASSWORD IS NOT A WALL OF PUNCTUATION (v0.7.8).
   //
@@ -164,11 +194,54 @@ export default function AuthScreen() {
     setInfoMsg(message);
   };
 
+  const goForgot = () => {
+    setCode('');
+    setNewPassword('');
+    setErrorMsg('');
+    setInfoMsg('');
+    setMode('forgot');
+  };
+
+  const goReset = (message) => {
+    setCode('');
+    setNewPassword('');
+    setMode('reset');
+    setErrorMsg('');
+    setInfoMsg(message);
+  };
+
+  // Backing out of a reset. If a code was already accepted there is a
+  // live session behind this screen, and simply returning to the login
+  // form would drop the user into the app still on their old password --
+  // the opposite of what "cancel" should mean. Signing out first is the
+  // honest undo. If that call fails the session survives and they land
+  // in the app anyway, which is no worse than closing and reopening,
+  // and is not a hole: that session is legitimately theirs.
+  const leaveFlow = async () => {
+    if (recovering) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        // Nothing to add — the screen returns to login either way.
+      }
+      if (onRecoveryDone) onRecoveryDone();
+    }
+    setCode('');
+    setNewPassword('');
+    setPassword('');
+    setErrorMsg('');
+    setInfoMsg('');
+    setMode('login');
+  };
+
   const handleSubmit = async () => {
     setErrorMsg('');
     setInfoMsg('');
 
-    if (!email.trim() || !password) {
+    // Only the two password-bearing modes need both fields. 'forgot' has
+    // no password box at all and 'reset' uses its own, so the old
+    // unconditional check would have blocked both of them outright.
+    if ((mode === 'login' || mode === 'signup') && (!email.trim() || !password)) {
       setErrorMsg('Please enter both an email and a password.');
       return;
     }
@@ -228,6 +301,65 @@ export default function AuthScreen() {
         return;
       }
 
+      // FORGOT PASSWORD, STEP ONE: ask for a code.
+      //
+      // The message deliberately says "if that address has an account".
+      // Supabase returns success whether or not one exists, so that this
+      // form cannot be used to find out who has registered, and the
+      // wording has to match that or it quietly undoes the protection.
+      if (mode === 'forgot') {
+        if (!email.trim()) {
+          setErrorMsg('Enter the email address for your account.');
+          return;
+        }
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+        if (error) throw error;
+        commit();
+        startCooldown();
+        goReset(`If ${email.trim()} has an account, a ${CODE_LENGTH}-digit code is on its way.`);
+        return;
+      }
+
+      // FORGOT PASSWORD, STEP TWO: code and new password together.
+      //
+      // One screen and one tap, because the gap between them is the
+      // dangerous part: verifying the code already signs the user in, so
+      // any pause there leaves an account half-reset.
+      if (mode === 'reset') {
+        if (!code.trim()) {
+          setErrorMsg('Enter the code from your email.');
+          return;
+        }
+        if (!newPassword) {
+          setErrorMsg('Choose a new password.');
+          return;
+        }
+
+        // Skipped on a retry. A one-time code is spent the moment it is
+        // accepted, so if the first attempt verified but the password
+        // would not save -- too short, say -- running this again would
+        // answer "that code is wrong or has expired" and strand someone
+        // who did nothing wrong. `recovering` is App.js's record that
+        // the code already did its job.
+        if (!recovering) {
+          const { error } = await supabase.auth.verifyOtp({
+            email: email.trim(),
+            token: code.trim(),
+            type: 'recovery',
+          });
+          if (error) throw error;
+        }
+
+        const { error: saveErr } = await supabase.auth.updateUser({ password: newPassword });
+        if (saveErr) throw saveErr;
+
+        commit();
+        // Releases App.js's hold; the session is already in place, so the
+        // app opens straight away.
+        if (onRecoveryDone) onRecoveryDone();
+        return;
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
@@ -269,7 +401,12 @@ export default function AuthScreen() {
     setInfoMsg('');
     setLoading(true);
     try {
-      const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim() });
+      // Same button, two different senders. A reset code does not come
+      // from resend() -- that is for confirmations -- so asking for one
+      // means asking for the recovery email again.
+      const { error } = mode === 'reset'
+        ? await supabase.auth.resetPasswordForEmail(email.trim())
+        : await supabase.auth.resend({ type: 'signup', email: email.trim() });
       if (error) throw error;
       nudge();
       startCooldown();
@@ -293,16 +430,30 @@ export default function AuthScreen() {
   };
 
   const verifying = mode === 'verify';
+  const forgetting = mode === 'forgot';
+  const resetting = mode === 'reset';
+  // Both code screens share the digits field; only 'reset' puts a
+  // password box underneath it.
+  const codeEntry = verifying || resetting;
+
   const title = verifying ? 'Check your email'
-    : mode === 'signup' ? 'Create an account' : 'Log in to your account';
-  const action = verifying ? 'Confirm' : mode === 'signup' ? 'Sign Up' : 'Log In';
+    : forgetting ? 'Reset your password'
+    : resetting ? 'Choose a new password'
+    : mode === 'signup' ? 'Create an account'
+    : 'Log in to your account';
+
+  const action = verifying ? 'Confirm'
+    : forgetting ? 'Send code'
+    : resetting ? 'Save new password'
+    : mode === 'signup' ? 'Sign Up'
+    : 'Log In';
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Nutrition</Text>
       <Text style={styles.subtitle}>{title}</Text>
 
-      {verifying ? (
+      {codeEntry ? (
         <>
           <Text style={styles.sentTo}>
             Enter the {CODE_LENGTH}-digit code sent to{'\n'}
@@ -319,9 +470,22 @@ export default function AuthScreen() {
             value={code}
             onChangeText={(t) => setCode(t.replace(/[^0-9]/g, ''))}
             autoFocus
-            returnKeyType="done"
-            onSubmitEditing={handleSubmit}
+            returnKeyType={resetting ? 'next' : 'done'}
+            onSubmitEditing={resetting ? undefined : handleSubmit}
           />
+          {resetting ? (
+            <TextInput
+              style={styles.input}
+              placeholder="New password"
+              secureTextEntry
+              autoComplete="new-password"
+              textContentType="newPassword"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              returnKeyType="done"
+              onSubmitEditing={handleSubmit}
+            />
+          ) : null}
         </>
       ) : (
         <>
@@ -334,13 +498,17 @@ export default function AuthScreen() {
             value={email}
             onChangeText={setEmail}
           />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          {/* No password box when all we are asking for is the address
+              to send a code to. */}
+          {forgetting ? null : (
+            <TextInput
+              style={styles.input}
+              placeholder="Password"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+            />
+          )}
         </>
       )}
 
@@ -355,31 +523,46 @@ export default function AuthScreen() {
         )}
       </TouchableOpacity>
 
-      {verifying ? (
+      {codeEntry ? (
         <>
           <TouchableOpacity onPress={handleResend} disabled={cooldown > 0 || loading}>
             <Text style={[styles.switchModeText, cooldown > 0 && styles.switchModeMuted]}>
               {cooldown > 0 ? `Send a new code in ${cooldown}s` : 'Send a new code'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={leaveVerify}>
+          <TouchableOpacity onPress={resetting ? leaveFlow : leaveVerify} disabled={loading}>
             <Text style={[styles.switchModeText, styles.switchModeQuiet]}>
-              Use a different address
+              {resetting ? 'Back to log in' : 'Use a different address'}
             </Text>
           </TouchableOpacity>
         </>
-      ) : (
-        <TouchableOpacity
-          onPress={() => {
-            setErrorMsg('');
-            setInfoMsg('');
-            setMode(mode === 'signup' ? 'login' : 'signup');
-          }}
-        >
-          <Text style={styles.switchModeText}>
-            {mode === 'signup' ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
-          </Text>
+      ) : forgetting ? (
+        <TouchableOpacity onPress={leaveFlow} disabled={loading}>
+          <Text style={[styles.switchModeText, styles.switchModeQuiet]}>Back to log in</Text>
         </TouchableOpacity>
+      ) : (
+        <>
+          <TouchableOpacity
+            onPress={() => {
+              setErrorMsg('');
+              setInfoMsg('');
+              setMode(mode === 'signup' ? 'login' : 'signup');
+            }}
+          >
+            <Text style={styles.switchModeText}>
+              {mode === 'signup' ? 'Already have an account? Log in' : "Don't have an account? Sign up"}
+            </Text>
+          </TouchableOpacity>
+          {/* Only on the login screen: offering a password reset from the
+              signup form would be answering a question nobody asked. */}
+          {mode === 'login' ? (
+            <TouchableOpacity onPress={goForgot}>
+              <Text style={[styles.switchModeText, styles.switchModeQuiet]}>
+                Forgot your password?
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </>
       )}
 
       {/* Same reasoning/rule as DashboardScreen.js's version line — a

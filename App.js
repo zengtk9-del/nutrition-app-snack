@@ -85,6 +85,11 @@ export default function App() {
   // --- Account login state ---
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // True between "the reset code was accepted" and "the new password was
+  // saved". A session exists during that window, so this is the only
+  // thing keeping the app from jumping to the Today tab mid-reset. See
+  // the PASSWORD_RECOVERY note on the auth listener below.
+  const [recovering, setRecovering] = useState(false);
   // What the intro page asked for. Lives on the auth user's metadata, so
   // it survives a reinstall and needs no table of its own.
   const [userName, setUserName] = useState('');
@@ -136,7 +141,24 @@ export default function App() {
       setAuthLoading(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    // PASSWORD_RECOVERY IS WHY THIS LISTENS TO THE EVENT (v0.7.9).
+    //
+    // Verifying a reset code signs the user in. That is Supabase's
+    // design, not a quirk: verifyOtp({ type: 'recovery' }) saves a real
+    // session. If this only looked at `session`, the app would swap to
+    // the Today tab the instant the code was accepted -- taking the
+    // "choose a new password" field away with it and leaving the old
+    // password in place, with no sign that anything had gone wrong.
+    //
+    // supabase-js distinguishes the two cases for exactly this reason:
+    // a recovery verification fires PASSWORD_RECOVERY where an ordinary
+    // sign-in fires SIGNED_IN (verified in @supabase/auth-js 2.117.3,
+    // GoTrueClient.js -- `params.type == 'recovery' ? 'PASSWORD_RECOVERY'
+    // : 'SIGNED_IN'`). Holding that flag keeps AuthScreen mounted until
+    // the new password is actually saved, which also means a failed save
+    // still has a screen to report itself on.
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovering(true);
       setSession(session);
     });
 
@@ -961,8 +983,16 @@ export default function App() {
     );
   }
 
-  if (!session) {
-    return <AuthScreen />;
+  // `recovering` holds this screen open even though a session now exists,
+  // so the new password can be typed and, if saving it fails, so the
+  // failure has somewhere to appear.
+  if (!session || recovering) {
+    return (
+      <AuthScreen
+        recovering={recovering}
+        onRecoveryDone={() => setRecovering(false)}
+      />
+    );
   }
 
   if (dataLoading) {
