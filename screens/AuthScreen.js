@@ -67,19 +67,80 @@ export default function AuthScreen() {
   const CODE_LENGTH = 6;
   const RESEND_COOLDOWN_S = 60;
 
+  // What the project's Auth settings currently demand, mirrored here only
+  // to WORD the error below -- Supabase itself does the enforcing, so a
+  // mismatch makes a sentence stale, never lets a bad password through.
+  // The real figure is read out of Supabase's own text whenever it states
+  // one, so this is a fallback rather than the source of truth.
+  const PASSWORD_MIN = 10;
+
   useEffect(() => {
     if (cooldown <= 0) return undefined;
     timerRef.current = setTimeout(() => setCooldown((n) => n - 1), 1000);
     return () => clearTimeout(timerRef.current);
   }, [cooldown]);
 
+  // A REJECTED PASSWORD IS NOT A WALL OF PUNCTUATION (v0.7.8).
+  //
+  // Supabase's weak-password message spells out every permitted symbol,
+  // so it arrives looking like this:
+  //
+  //   "Password should contain at least one character of each:
+  //    abcdefghijklmnopqrstuvwxyz, ABCDEFGHIJKLMNOPQRSTUVWXYZ,
+  //    0123456789, !@#$%^&*()_+-=[]{};'\:"|<>?,./`~."
+  //
+  // Now that the project asks for ten characters and all four character
+  // classes, a good share of people will fail their first attempt, and
+  // that paragraph is the first thing the app ever says to them.
+  //
+  // The library gives us something much better than the text. supabase-js
+  // raises an AuthWeakPasswordError carrying `reasons`: a string array
+  // drawn from 'length', 'characters' and 'pwned' (read off
+  // @supabase/auth-js 2.117.3 -- lib/errors.js builds the error, lib/
+  // types.js lists the three values -- rather than guessed). Those drive
+  // the wording. The raw text is consulted for one thing only: the actual
+  // minimum length, so this sentence stays true if that setting is ever
+  // changed in the dashboard.
+  const isWeakPassword = (err) =>
+    !!err && (err.name === 'AuthWeakPasswordError' || err.code === 'weak_password');
+
+  const weakPasswordText = (err) => {
+    const reasons = err && Array.isArray(err.reasons) ? err.reasons : [];
+
+    // Only reachable once the project is on a paid plan, where Supabase
+    // checks passwords against known breaches. Handled now so that the
+    // day the plan changes, this message is already correct.
+    if (reasons.includes('pwned')) {
+      return 'That password has turned up in a known data breach. Please pick a different one.';
+    }
+
+    const stated = ((err && err.message) || '').match(/at least (\d+) characters/i);
+    const min = stated ? stated[1] : PASSWORD_MIN;
+
+    const needs = [];
+    if (reasons.includes('length')) needs.push(`at least ${min} characters`);
+    if (reasons.includes('characters')) {
+      needs.push('a capital letter, a lowercase letter, a number and a symbol');
+    }
+
+    // `reasons` can legitimately arrive empty. Say something true rather
+    // than inventing a rule that may not be the one that failed.
+    if (!needs.length) {
+      return 'That password is not strong enough. Try a longer one with letters, numbers and a symbol.';
+    }
+    return `Your password needs ${needs.join(', including ')}.`;
+  };
+
   // Supabase speaks in its own strings and most of them are fine to show
-  // ("Invalid login credentials" says what happened). These three are
-  // not: they are about a flow the user is in the middle of, and the raw
-  // text does not tell them what to do next. Everything else falls
-  // through unchanged rather than being hidden behind a guess.
+  // ("Invalid login credentials" says what happened). These are not: they
+  // are about a flow the user is in the middle of, and the raw text does
+  // not tell them what to do next. Everything else falls through
+  // unchanged rather than being hidden behind a guess.
   const readable = (err) => {
     const m = (err && err.message) || '';
+    if (isWeakPassword(err)) {
+      return weakPasswordText(err);
+    }
     if (/expired|invalid/i.test(m) && /token|otp|code/i.test(m)) {
       return 'That code is wrong or has expired. Check the latest email, or send a new code.';
     }
