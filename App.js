@@ -997,6 +997,25 @@ export default function App() {
     finishQuiz();
   };
 
+  // Skipping the intake (v0.8.1). Asked twice on purpose: the quiz is the
+  // one thing that turns this app from a blank calorie counter into a plan,
+  // so leaving it should be a decision rather than a mis-tap on a link that
+  // sits directly under the Next button.
+  //
+  // "You can take it later" is a promise the app keeps -- the Goals tab's
+  // "Retake the Goals Quiz" row is always there, whether or not it has ever
+  // been taken.
+  const confirmSkipQuiz = () => {
+    Alert.alert(
+      'Skip the intake quiz for now?',
+      'You can take it later.',
+      [
+        { text: 'No', style: 'cancel' },
+        { text: 'Yes', onPress: () => setSkipQuiz(true) },
+      ]
+    );
+  };
+
   // The report's exit when nobody is signed in yet. There is no account to
   // save to, so the whole result is set aside and the login screen takes
   // over; the effect below is what actually puts it in place.
@@ -1145,16 +1164,17 @@ export default function App() {
         <QuizScreen
           onComplete={handleQuizComplete}
           // The quiz's own close button. Mid-quiz it still steps
-          // backwards; on the first screen it lands here, which during
-          // onboarding means the login form rather than the app.
-          onCancel={() => setSkipQuiz(true)}
+          // backwards; on the first screen it lands here. Routed through
+          // the same confirmation as the link below, because it is the
+          // same decision and should not behave two different ways.
+          onCancel={confirmSkipQuiz}
         />
         <TouchableOpacity
-          style={styles.haveAccount}
-          onPress={() => setSkipQuiz(true)}
+          style={styles.skipQuiz}
+          onPress={confirmSkipQuiz}
           accessibilityRole="button"
         >
-          <Text style={styles.haveAccountText}>I already have an account</Text>
+          <Text style={styles.skipQuizText}>Skip the quiz for now</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -1354,8 +1374,8 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   loadingContainer: { flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' },
   // Sits under the quiz for the whole of onboarding, not just the first
-  // question: someone three answers in who remembers they already have an
-  // account should not have to finish or hunt for a close button.
-  haveAccount: { paddingVertical: 12, alignItems: 'center', backgroundColor: COLORS.bg },
-  haveAccountText: { color: COLORS.textMuted, fontSize: 14, textDecorationLine: 'underline' },
+  // question: someone three answers in who decides they would rather get
+  // on with it should not have to finish or hunt for a close button.
+  skipQuiz: { paddingVertical: 12, alignItems: 'center', backgroundColor: COLORS.bg },
+  skipQuizText: { color: COLORS.textMuted, fontSize: 14, textDecorationLine: 'underline' },
 });
