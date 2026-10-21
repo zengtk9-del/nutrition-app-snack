@@ -54,7 +54,14 @@ function Section({ title, children }) {
 // would switch what you are following back to it — which is wrong for
 // someone who came to re-read their plan and may well be following a
 // different goal on purpose. So the button closes instead.
-export default function ReportScreen({ profile, answers, report, onDone, onSaveGoal, atCap, viewOnly = false }) {
+// `onboarding` (v0.8.0): this report was produced by the intake quiz
+// BEFORE anyone signed in, so there is no account to save a named goal
+// against yet. The button therefore leads to sign-up rather than to
+// SaveGoalModal, and App.js applies the plan once the account exists.
+// Same shape as `viewOnly` — the numbers are identical, only the exit
+// differs — but the label has to say where it actually goes, or the
+// button promises to save something and then asks for a password.
+export default function ReportScreen({ profile, answers, report, onDone, onSaveGoal, atCap, viewOnly = false, onboarding = false }) {
   const { bmr, tdee, calorieTarget, macros, timeline } = report;
   const [showSaveModal, setShowSaveModal] = useState(false);
 
@@ -63,7 +70,7 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
     return (
       <ReportChrome
         title="Let's hold off on a number here"
-        nextLabel="Done"
+        nextLabel={onboarding ? 'Continue' : 'Done'}
         nextIcon={null}
         onNext={onDone}
         testID="report-summary"
@@ -93,9 +100,9 @@ export default function ReportScreen({ profile, answers, report, onDone, onSaveG
   return (
     <ReportChrome
       title="Your Plan"
-      nextLabel={viewOnly ? 'Done' : 'Save These Goals'}
-      nextIcon={viewOnly ? null : 'content-save-outline'}
-      onNext={viewOnly ? onDone : () => setShowSaveModal(true)}
+      nextLabel={onboarding ? 'Create my account' : viewOnly ? 'Done' : 'Save These Goals'}
+      nextIcon={onboarding || viewOnly ? null : 'content-save-outline'}
+      onNext={onboarding || viewOnly ? onDone : () => setShowSaveModal(true)}
       testID="report-summary"
     >
       <ScrollView

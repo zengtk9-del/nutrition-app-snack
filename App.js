@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AppState, View, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert, Animated } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert, Animated } from 'react-native';
 import { supabase } from './utils/supabaseClient';
 // Portrait only — see utils/orientation.js for why, and for the half of
 // it that lives in app.json.
@@ -90,6 +90,17 @@ export default function App() {
   // thing keeping the app from jumping to the Today tab mid-reset. See
   // the PASSWORD_RECOVERY note on the auth listener below.
   const [recovering, setRecovering] = useState(false);
+  // THE QUIZ NOW RUNS BEFORE SIGN-IN (v0.8.0), which means its result has
+  // nowhere to go at the moment it is produced. `pendingIntake` holds the
+  // finished answers and report across the login screen, and the effect
+  // further down applies them the instant an account exists.
+  //
+  // `skipQuiz` is the returning user's way past all of it, straight to the
+  // login form. Without it, logging out — or installing on a second phone
+  // — would mean answering the whole quiz again just to reach a password
+  // field, which is not a thing any app should make someone do.
+  const [pendingIntake, setPendingIntake] = useState(null);
+  const [skipQuiz, setSkipQuiz] = useState(false);
   // What the intro page asked for. Lives on the auth user's metadata, so
   // it survives a reinstall and needs no table of its own.
   const [userName, setUserName] = useState('');
@@ -159,6 +170,11 @@ export default function App() {
     // still has a screen to report itself on.
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') setRecovering(true);
+      // Someone who has just logged out wants the login form, not the
+      // intake quiz over again — they have an account, that is the whole
+      // point. A fresh launch starts this at false, so a genuinely new
+      // visitor still meets the quiz first.
+      if (event === 'SIGNED_OUT') setSkipQuiz(true);
       setSession(session);
     });
 
@@ -846,12 +862,18 @@ export default function App() {
     // user rather than in a table, so it needs no migration and follows
     // the account across devices. buildProfile ignores it -- it reads
     // named fields, so an extra key costs nothing.
+    // Guarded on `session` as of v0.8.0: before sign-in there is no auth
+    // user to hang metadata on, and updateUser would simply reject. The
+    // name is not lost — it travels in `answers` inside pendingIntake and
+    // is written by applyPendingIntake once the account exists.
     const typedName = (answers.name || '').trim();
     if (typedName && typedName !== userName) {
       setUserName(typedName);
-      supabase.auth
-        .updateUser({ data: { name: typedName } })
-        .catch((err) => console.warn('Failed to save name', err));
+      if (session) {
+        supabase.auth
+          .updateUser({ data: { name: typedName } })
+          .catch((err) => console.warn('Failed to save name', err));
+      }
     }
 
     const profile = buildProfile(answers);
@@ -975,6 +997,67 @@ export default function App() {
     finishQuiz();
   };
 
+  // The report's exit when nobody is signed in yet. There is no account to
+  // save to, so the whole result is set aside and the login screen takes
+  // over; the effect below is what actually puts it in place.
+  const handleOnboardingDone = () => {
+    setPendingIntake({ answers: quizAnswers, report: quizReport });
+    finishQuiz();
+  };
+
+  // APPLYING THE PRE-LOGIN QUIZ, once there is somewhere to put it.
+  //
+  // The same for a brand-new signup and an existing login, deliberately:
+  // taking the quiz is itself the request to recalculate, so the fresh
+  // result wins either way. That is only safe because of the escape hatch
+  // — a returning user who just wants back in taps "I already have an
+  // account", never answers a question, and so never reaches this at all.
+  //
+  // Waiting on `dataLoading` is not optional. The load effect above fills
+  // goals and diet from the server; applying on top of a load still in
+  // flight would be quietly overwritten by it a moment later, and the user
+  // would watch their new plan turn back into the old one.
+  useEffect(() => {
+    if (!session || !pendingIntake || dataLoading) return;
+    const { answers, report } = pendingIntake;
+    setPendingIntake(null);
+
+    const typedName = (answers.name || '').trim();
+    if (typedName) {
+      setUserName(typedName);
+      supabase.auth
+        .updateUser({ data: { name: typedName } })
+        .catch((err) => console.warn('Failed to save name', err));
+    }
+
+    if (report && report.tdee != null) {
+      setGoals((prev) => ({ ...prev, tdee: report.tdee }));
+      saveGoals(session.user.id, { tdee: report.tdee }).catch((err) =>
+        console.warn('Failed to save TDEE', err)
+      );
+    }
+
+    if (answers.diet) {
+      setDiet(answers.diet);
+      saveDiet(session.user.id, answers.diet).catch((err) =>
+        console.warn('Failed to save diet', err)
+      );
+    }
+
+    // Null for the "needs professional guidance" result, which has no
+    // calorie number on purpose — see computeCalorieTarget in
+    // utils/goals.js. Everything above still applies in that case; only
+    // the targets are withheld, which is the point of it.
+    if (report && report.calorieTarget && report.calorieTarget.calories != null && report.macros) {
+      handleChangeGoals({
+        calories: report.calorieTarget.calories,
+        protein: report.macros.proteinG,
+        carbs: report.macros.carbsG,
+        fat: report.macros.fatG,
+      });
+    }
+  }, [session, pendingIntake, dataLoading]);
+
   if (authLoading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -983,15 +1066,97 @@ export default function App() {
     );
   }
 
-  // `recovering` holds this screen open even though a session now exists,
-  // so the new password can be typed and, if saving it fails, so the
-  // failure has somewhere to appear.
-  if (!session || recovering) {
+  // A PASSWORD RESET OUTRANKS ONBOARDING. Someone mid-reset already has an
+  // account and a half-finished credential change; dropping them into the
+  // intake quiz instead would strand that, so this branch comes first.
+  // `recovering` also holds the screen open even though a session now
+  // exists, so the new password can be typed and a failed save has
+  // somewhere to report itself.
+  if (recovering) {
     return (
       <AuthScreen
-        recovering={recovering}
+        recovering
         onRecoveryDone={() => setRecovering(false)}
       />
+    );
+  }
+
+  // SIGNED OUT: THE QUIZ COMES FIRST, THE LOGIN FORM SECOND (v0.8.0).
+  //
+  // A new visitor answers the intake, reads their report, and only then is
+  // asked to make an account — so the first thing the app does is tell
+  // them something useful about themselves rather than demand a password.
+  //
+  // Two things end the quiz early: `pendingIntake` (answered, report read,
+  // now waiting for an account to land in) and `skipQuiz` (they said they
+  // already have one). Either way the login screen is what comes next.
+  if (!session) {
+    if (skipQuiz || pendingIntake) {
+      return <AuthScreen onRecoveryDone={() => setRecovering(false)} />;
+    }
+
+    // `quizStage` starts null and is only set once the quiz is under way,
+    // so null means "not started" — which, here, means the first screen.
+    const stage = quizStage || 'quiz';
+
+    if (stage === 'loading') {
+      return (
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="dark-content" />
+          <LoadingScreen onDone={() => setQuizStage('report')} />
+        </SafeAreaView>
+      );
+    }
+
+    if (stage === 'report') {
+      return (
+        <SafeAreaView style={styles.safeArea}>
+          <StatusBar barStyle="dark-content" />
+          {reportView === 'pages' ? (
+            <ReportPagesScreen
+              profile={quizProfile}
+              answers={quizAnswers}
+              report={quizReport}
+              onSkipToSummary={() => setReportView('summary')}
+              onFinishPages={() => setReportView('summary')}
+            />
+          ) : (
+            <ReportScreen
+              profile={quizProfile}
+              answers={quizAnswers}
+              report={quizReport}
+              onDone={handleOnboardingDone}
+              // Unreachable while `onboarding` is set — that turns the
+              // "Save These Goals" button into one that goes straight to
+              // sign-up instead of opening the naming modal, because there
+              // is no account to save a named goal against yet.
+              onSaveGoal={null}
+              atCap={false}
+              onboarding
+            />
+          )}
+        </SafeAreaView>
+      );
+    }
+
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" />
+        <QuizScreen
+          onComplete={handleQuizComplete}
+          // The quiz's own close button. Mid-quiz it still steps
+          // backwards; on the first screen it lands here, which during
+          // onboarding means the login form rather than the app.
+          onCancel={() => setSkipQuiz(true)}
+        />
+        <TouchableOpacity
+          style={styles.haveAccount}
+          onPress={() => setSkipQuiz(true)}
+          accessibilityRole="button"
+        >
+          <Text style={styles.haveAccountText}>I already have an account</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
     );
   }
 
@@ -1188,4 +1353,9 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
   loadingContainer: { flex: 1, backgroundColor: COLORS.bg, justifyContent: 'center', alignItems: 'center' },
+  // Sits under the quiz for the whole of onboarding, not just the first
+  // question: someone three answers in who remembers they already have an
+  // account should not have to finish or hunt for a close button.
+  haveAccount: { paddingVertical: 12, alignItems: 'center', backgroundColor: COLORS.bg },
+  haveAccountText: { color: COLORS.textMuted, fontSize: 14, textDecorationLine: 'underline' },
 });
