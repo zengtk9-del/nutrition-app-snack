@@ -1,12 +1,38 @@
 {
-  "_comment": "Portrait only (v0.7.3). The top-level `orientation` is the real lock: it writes the supported orientations into the iOS Info.plist and the Android manifest, so a build is never offered a landscape frame. It only applies to a build, though, which is why utils/orientation.js also locks at runtime for Expo Go. `ios.requireFullScreen` is not optional here — without it iPad keeps Slide Over and Split View, and iOS refuses the orientation lock outright. `userInterfaceStyle` is already Expo's default; it is stated because this app has only a light palette and nothing should be able to put it into dark mode. `name` and `slug` are placeholders to make this file valid: decide them before the first build, along with version, icon, splash, ios.bundleIdentifier and android.package, which a store submission needs and this file does not have yet.",
+  "_comment": "Sits outside `expo`, where Expo ignores it. PORTRAIT (v0.7.3): the top-level `orientation` is the real lock — it writes the supported orientations into the iOS Info.plist and the Android manifest, so a build is never offered a landscape frame. It only applies to a build, which is why utils/orientation.js also locks at runtime for Expo Go. `ios.requireFullScreen` is not optional alongside it: without it iPad keeps Slide Over and Split View, and iOS refuses the orientation lock outright. `userInterfaceStyle` is already Expo's default; it is stated because this app has only a light palette and nothing should be able to put it into dark mode. SUPPORTS TABLET is deliberately false — iPhone only. That is what keeps iPad screenshots off the App Store Connect requirement list and stops a reviewer finding something broken on a screen size this app was never designed for; iPad can be its own release later. BUNDLE IDENTIFIER and `android.package` are permanent once published — Apple will not let the identifier change after the first submission. NEW ARCHITECTURE is on because it is the SDK 54 default; if the first build behaves strangely in a way the Expo Go version did not, this is the first thing to suspect. VERSION is what users see; `buildNumber` and `versionCode` are what the stores count, and eas.json increments them per build. USES NON EXEMPT ENCRYPTION (v0.9.1) writes ITSAppUsesNonExemptEncryption into the Info.plist, which answers Apple's export-compliance question at upload instead of at a prompt. Without it every build lands in App Store Connect flagged 'Missing Compliance' and cannot be sent to a single tester until someone answers by hand — per build, not once. `false` is the answer for an app whose only encryption is HTTPS through the OS, which is all this one does: Supabase over TLS and nothing else.",
   "expo": {
-    "name": "Nutrition",
-    "slug": "nutrition-app-snack",
+    "name": "Macro Tracker",
+    "slug": "macro-tracker",
+    "version": "0.9.1",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#f7f7fa"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "requireFullScreen": true
+      "bundleIdentifier": "com.broccoleague.macrotracker",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "requireFullScreen": true,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.broccoleague.macrotracker",
+      "versionCode": 1,
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3fb27f"
+      }
     }
   }
 }

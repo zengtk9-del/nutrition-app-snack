@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AppState, View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, ActivityIndicator, Alert, Animated } from 'react-native';
 import { supabase } from './utils/supabaseClient';
+import { APP_VERSION } from './utils/appVersion';
 // Portrait only — see utils/orientation.js for why, and for the half of
 // it that lives in app.json.
 import { lockPortrait } from './utils/orientation';
@@ -1176,6 +1177,13 @@ export default function App() {
         >
           <Text style={styles.skipQuizText}>Skip the quiz for now</Text>
         </TouchableOpacity>
+        {/* The same version line DashboardScreen and AuthScreen carry, for
+            the same reason — "did the code I just pasted take effect?".
+            It is here because v0.8.0 moved the quiz in front of both of
+            those screens, leaving the app's FIRST screen with no way to
+            tell one build from another. That cost a round trip the first
+            time it mattered. */}
+        <Text style={styles.onboardingVersion}>v{APP_VERSION}</Text>
       </SafeAreaView>
     );
   }
@@ -1376,6 +1384,13 @@ const styles = StyleSheet.create({
   // Sits under the quiz for the whole of onboarding, not just the first
   // question: someone three answers in who decides they would rather get
   // on with it should not have to finish or hunt for a close button.
-  skipQuiz: { paddingVertical: 12, alignItems: 'center', backgroundColor: COLORS.bg },
+  skipQuiz: { paddingTop: 12, paddingBottom: 4, alignItems: 'center', backgroundColor: COLORS.bg },
   skipQuizText: { color: COLORS.textMuted, fontSize: 14, textDecorationLine: 'underline' },
+  onboardingVersion: {
+    textAlign: 'center',
+    color: '#bbb',
+    fontSize: 11,
+    paddingBottom: 8,
+    backgroundColor: COLORS.bg,
+  },
 });
