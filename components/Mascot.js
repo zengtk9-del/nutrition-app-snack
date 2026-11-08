@@ -67,7 +67,7 @@
 
 import React from 'react';
 import { Image as RNImage, Platform, StyleSheet } from 'react-native';
-import { ART_READY, MASCOT, MASCOT_POSES, USE_ANIMATED_MASCOT } from '../data/brandArt';
+import { ART_READY, MASCOT, MASCOT_POSE_FILES, MASCOT_POSES, USE_ANIMATED_MASCOT } from '../data/brandArt';
 import { getPoseState, now, posesToWarm, subscribe } from '../utils/mascotState';
 
 // The one number. 108 is close to the middle of the four it replaces
@@ -124,6 +124,17 @@ if (!ExpoImage && rendererNote) {
 // broccoli beats an empty square.
 const CAN_ANIMATE = !!ExpoImage || Platform.OS === 'web';
 
+// What to name in a warning about a pose that would not load. Since
+// v0.9.2 a pose is usually a bundled require() number rather than a URL,
+// and printing `.uri` for one of those said "undefined" -- which pointed
+// whoever was debugging at the CDN when the file is in assets/art/.
+function poseFileLabel(pose) {
+  const src = MASCOT_POSES[pose];
+  if (!src) return '?';
+  if (src.uri) return src.uri;
+  return (MASCOT_POSE_FILES && MASCOT_POSE_FILES[pose]) || 'its bundled file';
+}
+
 // Poses whose file failed to load, so we stop asking for them.
 //
 // jsDelivr 404s are silent in React Native: a missing remote image draws
@@ -170,7 +181,10 @@ function warmPoses() {
     if (!src) return;
     setTimeout(() => {
       try {
-        if (typeof Renderer.prefetch === 'function') Renderer.prefetch(src.uri);
+        // `.uri` is undefined for a bundled asset (v0.9.2) -- it is a
+        // require() number, already on the device, with nothing to fetch.
+        // Skipping is the correct outcome, not a degraded one.
+        if (src.uri && typeof Renderer.prefetch === 'function') Renderer.prefetch(src.uri);
       } catch (err) {
         // A warm-up that fails costs a moment of blank on first use.
         // Never worth an error.
@@ -190,6 +204,8 @@ function warmPoses() {
 // warm-up that does not happen costs a moment of blank, which is never
 // worth an error.
 export function warmArt(source) {
+  // No uri means a bundled asset (v0.9.2), which is already on the
+  // device -- returning here is the fast path, not a failure.
   const uri = source && source.uri;
   if (!uri || !ART_READY) return;
   const Renderer = ExpoImage || RNImage;
@@ -235,7 +251,7 @@ function MascotImage({ source, size, style }) {
         if (source || brokenPoses.has(pose)) return;
         brokenPoses.add(pose);
         console.warn(`[Mascot] pose "${pose}" failed to load — falling back to the static PNG. `
-          + 'Check that ' + (MASCOT_POSES[pose] ? MASCOT_POSES[pose].uri : '?') + ' exists, lowercase.');
+          + 'Check that ' + poseFileLabel(pose) + ' exists, lowercase.');
         bumpAfterError();
       }}
       accessibilityRole="image"

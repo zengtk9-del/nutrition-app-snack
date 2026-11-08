@@ -33,4 +33,13 @@
 // distribution:"store" on the production profile, because TestFlight
 // takes store builds only and the preview profile's internal
 // distribution is a different thing entirely (ad hoc, UDID-limited).
-export const APP_VERSION = '0.9.1';
+//
+// 0.9.2 brings the artwork into the app. All 1,826 images -- 1,773 food
+// icons, 29 mascot animations, 24 pieces of brand art, about 49 MB --
+// now ship in the binary instead of streaming from jsDelivr. Nothing a
+// user sees waits on a network request any more, and the icons cannot
+// all break at once if that asset repo is ever renamed or deleted.
+// data/bundledArt.js is the generated table of requires;
+// utils/assetHost.js checks it first and still falls back to the CDN, so
+// art added between App Store releases keeps working without an update.
+export const APP_VERSION = '0.9.2';

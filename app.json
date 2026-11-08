@@ -3,7 +3,7 @@
   "expo": {
     "name": "Macro Tracker",
     "slug": "macro-tracker",
-    "version": "0.9.1",
+    "version": "0.9.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -23,6 +23,11 @@
       "requireFullScreen": true,
       "config": {
         "usesNonExemptEncryption": false
+      }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2306d330-a6ad-4233-84b3-69ae71ac1122"
       }
     },
     "android": {

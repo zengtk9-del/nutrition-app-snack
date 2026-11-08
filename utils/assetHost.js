@@ -18,19 +18,27 @@
 // nothing else in the app changed when this went in.
 //
 // ---------------------------------------------------------------------
-// The trade, stated honestly
+// THE TRADE, AND HOW v0.9.2 SETTLED IT
 //
-// Bundled images are on the device; these are not. So:
+// The note that used to sit here said bundling was "a fine trade for a
+// Snack prototype and a bad one for a shipped app", and that when this
+// reached a real build the files should come back into assets/. That is
+// what v0.9.2 did. The art is now 1,826 files and about 49 MB inside the
+// binary, and nothing a user sees waits on a network request.
 //
-//   - the app needs a connection to draw its icons, and each one appears a
-//     beat late the first time it is shown on a device (RN caches after);
-//   - if that repo is deleted, renamed, or made private, every icon in the
-//     app breaks at once.
+// Two reasons it was worth 49 MB. The first run used to show every image
+// arriving a beat late -- which is every new user's first impression,
+// since their cache is empty. And a shipped app whose entire visual layer
+// is served from a personal GitHub repo breaks everywhere at once if that
+// repo is ever renamed, deleted or made private, with no fallback: a
+// failed remote image in React Native draws nothing, silently.
 //
-// That is a fine trade for a Snack prototype and a bad one for a shipped
-// app. When this moves to a real build (EAS/bare React Native), bundling
-// comes back: put the files in assets/ and swap `assetUri('x.jpg')` for
-// `require('../assets/x.jpg')` in the two maps below. Nothing else moves.
+// THE CDN PATH IS STILL HERE, AND STILL WORKS. assetUri() checks the
+// bundled table first and falls back to this URL for any filename not in
+// it. So a food whose art is added to the icon repo between App Store
+// releases still draws, without an app update -- the flexibility that
+// made the remote approach attractive, kept, without depending on it for
+// the 1,826 files that ship.
 //
 // ---------------------------------------------------------------------
 // Moving or renaming the icon repo
@@ -42,6 +50,8 @@
 // e.g. `@v1.0.0`, which is worth doing if the icons ever need to stay
 // frozen while the repo keeps moving.
 
+import { BUNDLED_ART } from '../data/bundledArt';
+
 export const ASSET_BASE =
   'https://cdn.jsdelivr.net/gh/zengtk9-del/nnutrition-app-v53@main/assets/';
 
@@ -50,6 +60,21 @@ export const ASSET_BASE =
 // Takes the FILENAME, not the icon key -- the two differ for 26 egg and
 // milk images that kept a `_large` suffix their key no longer carries (see
 // data/foodIconImages.js).
+//
+// RETURNS ONE OF TWO SHAPES, and callers must not care which:
+//
+//   bundled  a number, which is what require() of an image evaluates to
+//   remote   { uri: 'https://...' }, as before
+//
+// <Image source={...} /> takes either, which is the whole reason this
+// could change without touching a single call site -- including the one
+// in data/brandArt.js that builds the mascot poses in a loop and so has
+// no literal for Metro to resolve.
+//
+// The one thing that DOES care is prefetching: a bundled asset has no
+// `.uri` and nothing to fetch. components/Mascot.js guards for that.
 export function assetUri(filename) {
+  const bundled = BUNDLED_ART[filename];
+  if (bundled !== undefined) return bundled;
   return { uri: ASSET_BASE + filename };
 }

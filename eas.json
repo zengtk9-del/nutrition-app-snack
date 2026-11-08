@@ -21,7 +21,8 @@
   "submit": {
     "production": {
       "ios": {
-        "appleTeamId": "QCMM3TX94Z"
+        "appleTeamId": "QCMM3TX94Z",
+        "ascAppId": "6830936497"
       }
     }
   }
