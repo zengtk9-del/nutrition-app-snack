@@ -42,4 +42,41 @@
 // data/bundledArt.js is the generated table of requires;
 // utils/assetHost.js checks it first and still falls back to the CDN, so
 // art added between App Store releases keeps working without an update.
-export const APP_VERSION = '0.9.2';
+//
+// 0.9.3 is three unrelated changes that happened to be ready together,
+// plus a deletion that was overdue.
+//
+// THE AGE FLOOR moved from 10 to 13 (data/quizQuestions.js). It is a
+// legal line, not a design one: the published privacy policy states the
+// app is not directed to children under 13, which is what keeps COPPA
+// out of scope, and a dial that let a 10-year-old through contradicted
+// that in the app's own first minute.
+//
+// THE NAME PROMPT now asks "What do I call you?" with a "Name or
+// nickname" placeholder instead of "What is your name?" / "Enter your
+// name". Not a legal fix -- that answer has never left the phone and
+// still doesn't -- but the old wording collects legal first names and
+// the new one collects "Dan", and the less real identity sitting in
+// device storage the better.
+//
+// PAGE 2 OF THE REPORT, Calorie Breakdown, is now a three-beat reveal
+// built on one stacked chart instead of two figures stated one under the
+// other. The old page listed BMR and then TDEE, which invited exactly
+// the question it should have answered: do you add them? You do not --
+// utils/goals.js computes TDEE as `bmr * neatMultiplier + trainingBonus`,
+// so BMR is already inside it. The chart answers that by construction:
+// At rest and Activity are two parts of one column, Activity being the
+// remainder (tdee - bmr), and both columns always finish at the same
+// height, with the surplus or the deficit drawn as the cap that makes up
+// the difference. Next advances a beat before it turns the page, and
+// buzzes for both, on the same reasoning the file already gives for why
+// this screen is the one place navigation buzzes at all.
+//
+// AND 85 FILES ARE GONE. utils/ still carried a whole second copy of the
+// app at 0.0.65 -- utils/screens/, utils/utils/, utils/data/,
+// utils/components/, utils/App.js, utils/package.json -- along with
+// components/CornerMascot.js and components/HapticsCheck.js. None of it
+// was reachable from the entry point. It was deleted in 0.9.0 and came
+// back when the repo was reconciled through the GitHub website; this
+// removes it again.
+export const APP_VERSION = '0.9.3';

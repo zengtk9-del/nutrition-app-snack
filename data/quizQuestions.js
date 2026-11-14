@@ -47,8 +47,16 @@ export const QUIZ_STEPS = [
     firstRunOnly: true,
     // The blank is deliberate: the mascot has no name yet. When he gets
     // one it goes here and nothing else changes.
-    bubble: ['I am _______.', 'What is your name?'],
-    input: { label: 'YOUR NAME', placeholder: 'Enter your name', icon: 'account-outline' },
+    // v0.9.3: "What do I call you?" rather than "What is your name?",
+    // and a placeholder that says nickname out loud. Not a legal fix --
+    // this answer never leaves the phone either way (saveLastIntake ->
+    // AsyncStorage, and no table in the database has a name column). It
+    // is data minimisation: the old phrasing gets legal first names, the
+    // new one gets "Dan" and "sunflower", and the less real identity
+    // sitting in device storage the better, especially on a shared phone
+    // and on the day this ever syncs across devices.
+    bubble: ['I am _______.', 'What do I call you?'],
+    input: { label: 'YOUR NAME', placeholder: 'Name or nickname', icon: 'account-outline' },
   },
   {
     key: 'age',
@@ -66,7 +74,12 @@ export const QUIZ_STEPS = [
     bubble: ['How old', 'are you?'],
     mascot: 'notes',
     sliderVariant: 'dial',
-    min: 10,
+    // v0.9.3: the floor is 13, not 10, and that is a legal line rather
+    // than a design one. The published privacy policy states this app is
+    // not directed to children under 13 -- the answer that keeps COPPA
+    // (US) out of scope entirely. A dial that lets a 10-year-old through
+    // would have contradicted the policy in the app's own first minute.
+    min: 13,
     max: 120,
     step: 1,
     default: 25,

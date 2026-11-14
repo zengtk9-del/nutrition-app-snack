@@ -152,6 +152,166 @@ function CheckRow({ children }) {
   );
 }
 
+// --- Page 2's three-beat reveal (v0.9.3) -----------------------------
+//
+// The old Calorie Breakdown page stated BMR and TDEE as two separate
+// figures one under the other, which invited the one question it should
+// have answered: do you add them? (You do not. utils/goals.js computes
+// TDEE as `bmr * neatMultiplier + trainingBonus`, so BMR is already
+// inside it.) The chart below answers it by construction -- At rest and
+// Activity are two parts of ONE column, and Activity is the remainder,
+// tdee - bmr, not a second total.
+//
+// Both columns always reach the same height. On a surplus the extra sits
+// as a green cap on top of the burn column, so "what you burn plus the
+// surplus" lines up with the target bar. On a deficit the cut sits as a
+// coral cap on top of the target bar, so "target plus what you cut"
+// lines up with what you burn. On maintenance they are level and a
+// dashed line runs across both tops.
+const BREAKDOWN_BEATS = 3;
+const CHART_H = 196;
+const BAR = {
+  rest: '#2b3f72',
+  activity: '#28b2ae',
+  target: '#7d8ff2',
+  dim: '#dde4ef',
+};
+
+// One block of a column. Dimmed blocks keep their label and drop their
+// number, which is what makes beats 1 and 2 read as "this part, now this
+// part" rather than as two different charts.
+function Segment({ height, color, label, value, lit, width }) {
+  return (
+    <View
+      style={[
+        styles.seg,
+        { height, width, backgroundColor: lit ? color : BAR.dim },
+        lit && styles.segLit,
+      ]}
+    >
+      <Text style={[styles.segLabel, !lit && styles.segLabelDim]} numberOfLines={1}>
+        {label}
+      </Text>
+      {lit && value != null ? (
+        <Text style={styles.segValue} numberOfLines={1}>
+          {value.toLocaleString()}
+          <Text style={styles.segUnit}> kcal</Text>
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function BreakdownChart({ beat, bmr, tdee, calories, boardW }) {
+  // Activity is the remainder, never a second total. Clamped at zero
+  // because a NEAT multiplier below 1 is not a thing this app produces,
+  // but a chart with a negative block would be a very loud way to find
+  // out if it ever did.
+  const activity = Math.max(0, tdee - bmr);
+  const burn = bmr + activity;
+  const diff = calories - burn;
+  const span = Math.max(burn, calories, 1);
+  const surplus = diff > 0;
+  const deficit = diff < 0;
+
+  // A cap of two or three real pixels would be unreadable, so it gets a
+  // floor -- and the floor is what makes the next two lines necessary.
+  const capTrue = (Math.abs(diff) / span) * CHART_H;
+  const capPx = diff === 0 ? 0 : Math.min(CHART_H * 0.45, Math.max(26, capTrue));
+
+  // BOTH COLUMNS ALWAYS FINISH AT CHART_H. Whichever one carries the cap
+  // pays for it out of its own body, so a 6 kcal surplus forced up to the
+  // 26pt minimum cannot stick out above the other column -- which would
+  // say, in the one language this chart speaks, that the two totals are
+  // not equal. Without this the overshoot is the full floor, about 25pt.
+  const burnH = surplus ? CHART_H - capPx : CHART_H * (burn / span);
+  const targetH = deficit ? CHART_H - capPx : CHART_H * (calories / span);
+  const restH = burnH * (bmr / Math.max(burn, 1));
+  const activityH = Math.max(0, burnH - restH);
+
+  const colW = Math.max(74, Math.min(104, (boardW || 300) * 0.3));
+  const showTarget = beat >= 2;
+  const restLit = beat === 0 || beat >= 2;
+  const activityLit = beat === 1 || beat >= 2;
+
+  return (
+    <View style={styles.chartRow}>
+      {/* Maintenance only: the columns are the same height, and a dashed
+          rule across both tops is what makes "the same" visible rather
+          than something you measure by eye. Drawn first so it sits
+          behind the blocks. */}
+      {showTarget && diff === 0 ? <View pointerEvents="none" style={styles.levelLine} /> : null}
+
+      <View style={styles.chartCol}>
+        <View style={[styles.stack, { width: colW }]}>
+          {showTarget && surplus ? (
+            <View style={styles.capRow}>
+              <Text style={[styles.capTag, styles.capTagGood]}>Surplus</Text>
+              <View style={[styles.cap, { height: capPx, width: colW, backgroundColor: COLORS.good }]}>
+                <Text style={styles.capValue}>+{diff.toLocaleString()}</Text>
+              </View>
+            </View>
+          ) : null}
+          <Segment
+            height={activityH}
+            width={colW}
+            color={BAR.activity}
+            label="Activity"
+            value={activity}
+            lit={activityLit}
+          />
+          <Segment
+            height={restH}
+            width={colW}
+            color={BAR.rest}
+            label="At rest"
+            value={bmr}
+            lit={restLit}
+          />
+        </View>
+        <Text style={styles.colLabel}>You burn</Text>
+      </View>
+
+      <View style={styles.chartCol}>
+        <View style={[styles.stack, { width: colW }]}>
+          {showTarget && deficit ? (
+            <View style={styles.capRow}>
+              <View style={[styles.cap, { height: capPx, width: colW, backgroundColor: COLORS.over }]}>
+                <Text style={styles.capValue}>{diff.toLocaleString()}</Text>
+              </View>
+              <Text style={[styles.capTag, styles.capTagOver]}>Deficit</Text>
+            </View>
+          ) : null}
+          {showTarget ? (
+            <View
+              style={[styles.seg, styles.segLit, styles.targetBar, { height: targetH, width: colW }]}
+            >
+              <Text style={styles.segValue} numberOfLines={1}>
+                {calories.toLocaleString()}
+                <Text style={styles.segUnit}> kcal</Text>
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Text style={styles.colLabel}>{showTarget ? 'Daily target' : ' '}</Text>
+      </View>
+    </View>
+  );
+}
+
+// The three beads under the board. Page turns have their own progress
+// bar up top; this is the beat inside one page, so it stays small and
+// sits with the board rather than with the chrome.
+function BeatDots({ count, index }) {
+  return (
+    <View style={styles.dotsRow}>
+      {Array.from({ length: count }, (_, i) => (
+        <View key={i} style={[styles.dot, i === index && styles.dotOn]} />
+      ))}
+    </View>
+  );
+}
+
 export default function ReportPagesScreen({
   profile,
   answers,
@@ -195,8 +355,23 @@ export default function ReportPagesScreen({
   // feature breaking rather than as a distinction.
   //
   // Back stays silent: going back is correcting, not arriving.
+  // The beat inside a page (v0.9.3). Only page 2 has more than one; every
+  // other page is a single beat, so `beats` is 1 and this collapses back
+  // to the page-turn behaviour that was here before.
+  const [rawBeat, setBeat] = useState(0);
+  const beats = page === 'breakdown' ? BREAKDOWN_BEATS : 1;
+  const beat = Math.max(0, Math.min(rawBeat, beats - 1));
+
   const goNext = () => {
+    // A beat is a beat: the haptics note below says these pages are a
+    // presentation delivered one beat at a time, and a reveal step is
+    // one of those beats, not navigation inside one.
     commit();
+    if (beat < beats - 1) {
+      setBeat(beat + 1);
+      return;
+    }
+    setBeat(0);
     if (pageIndex < pages.length - 1) {
       setPageIndex(pageIndex + 1);
     } else {
@@ -205,7 +380,19 @@ export default function ReportPagesScreen({
   };
 
   const goBack = () => {
-    if (pageIndex > 0) setPageIndex(pageIndex - 1);
+    // Silent, like every other back in this screen.
+    if (beat > 0) {
+      setBeat(beat - 1);
+      return;
+    }
+    if (pageIndex > 0) {
+      const target = pages[pageIndex - 1];
+      // Arrive at a multi-beat page finished rather than replaying it --
+      // going back is correcting, and nobody corrects by sitting through
+      // the reveal again.
+      setBeat(target === 'breakdown' ? BREAKDOWN_BEATS - 1 : 0);
+      setPageIndex(pageIndex - 1);
+    }
   };
 
   // --- What each page writes on the board ---------------------------
@@ -273,50 +460,36 @@ export default function ReportPagesScreen({
     }
 
     if (page === 'breakdown') {
+      // Captions are the whole script of this page: the teacher's pointer
+      // aims at this line, not at a bar, so it has to carry the beat on
+      // its own. Beat 3's wording is the one place the goal shows through
+      // -- and `isMinor` reads as maintenance here deliberately, because
+      // page 1 is where that gets explained.
+      const caption =
+        beat === 0
+          ? 'Calories your body burns at complete rest to keep you alive.'
+          : beat === 1
+            ? 'Calories you burn through daily activities and exercise.'
+            : profile.goal === 'gain' && !isMinor
+              ? `Eat ${calorieTarget.delta.toLocaleString()} more calories than you burn each day.`
+              : profile.goal === 'lose' && !isMinor
+                ? `Eat ${calorieTarget.delta.toLocaleString()} fewer calories than you burn each day.`
+                : 'Eat the same as you burn to maintain your weight.';
+
       return {
-        top: (
+        top: (boardW) => (
           <View>
-            <Text style={T.heading}>Calories your body burns at complete rest (BMR)</Text>
-            <Text style={styles.figureLine}>
-              <Text style={T.figure}>{bmr.toLocaleString()}</Text>
-              <Text style={T.figureUnit}> kcal/day</Text>
-            </Text>
-            <Text style={T.body}>
-              This is how many calories your body burns just to keep you alive—even if you stayed
-              in bed all day.
-            </Text>
-            <View style={[T.divider, styles.sectionRule]} />
-            <Text style={T.heading}>Calories you burn in a typical day (TDEE)</Text>
-            <Text style={styles.figureLine}>
-              <Text style={T.figure}>{tdee.toLocaleString()}</Text>
-              <Text style={T.figureUnit}> kcal/day</Text>
-            </Text>
-            <Text style={T.body}>
-              This includes your BMR plus your daily movement, work, walking, and exercise.
-            </Text>
+            <BreakdownChart
+              beat={beat}
+              bmr={bmr}
+              tdee={tdee}
+              calories={calorieTarget.calories}
+              boardW={boardW}
+            />
+            <Text style={[T.big, styles.caption]}>{caption}</Text>
           </View>
         ),
-        lower: (
-          <View style={T.panel}>
-            <Text style={T.heading}>Your target calories</Text>
-            <Text style={styles.figureLine}>
-              <Text style={[T.figure, T.blue]}>{calorieTarget.calories.toLocaleString()}</Text>
-              <Text style={[T.figureUnit, T.blue]}> kcal/day</Text>
-            </Text>
-            <Text style={T.body}>
-              {profile.goal === 'lose' && !isMinor
-                ? `Since your goal is to lose weight, we recommend eating ${calorieTarget.delta.toLocaleString()} fewer calories than you burn each day.`
-                : null}
-              {profile.goal === 'gain' && !isMinor
-                ? `We recommend eating ${calorieTarget.delta.toLocaleString()} more calories than you burn each day.`
-                : null}
-              {profile.goal === 'maintain' || isMinor
-                ? 'This matches the calories you burn each day.'
-                : null}
-            </Text>
-          </View>
-        ),
-        lowerAlign: 'flex-end',
+        topFill: true,
       };
     }
 
@@ -479,6 +652,7 @@ export default function ReportPagesScreen({
           topFill={!!board.topFill}
           testID={`board-${page}`}
         />
+        {beats > 1 ? <BeatDots count={beats} index={beat} /> : null}
       </ScrollView>
     </ReportChrome>
   );
@@ -504,9 +678,94 @@ const styles = StyleSheet.create({
 
   // --- page 2, Calorie Breakdown ---
   // The number and its unit are one Text so they sit on one baseline;
-  // this is the line's own spacing around it.
+  // this is the line's own spacing around it. Kept because page 1 and
+  // the one-page summary still use it.
   figureLine: { marginTop: 1, marginBottom: 3 },
   sectionRule: { marginVertical: 11 },
+
+  // The two columns. `flex-end` on both is what puts them on a shared
+  // baseline, which is the whole premise of the picture -- heights are
+  // only comparable if they start from the same floor.
+  chartRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    marginTop: 4,
+  },
+  chartCol: { alignItems: 'center', marginHorizontal: 9 },
+  // Fixed height, contents piled at the bottom: that shared floor is
+  // what makes two heights comparable, and the fixed top is what the
+  // maintenance rule lines up with.
+  stack: { height: CHART_H, justifyContent: 'flex-end' },
+  seg: {
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
+    paddingHorizontal: 6,
+    overflow: 'hidden',
+  },
+  // Only the lit block gets the lift. A dimmed block is background.
+  segLit: {
+    shadowColor: '#152a4a',
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  targetBar: { backgroundColor: BAR.target },
+  segLabel: { fontSize: 13, fontWeight: '800', color: '#ffffff' },
+  segLabelDim: { color: COLORS.textSoft },
+  segValue: { fontSize: 21, fontWeight: '900', color: '#ffffff', letterSpacing: -0.4 },
+  segUnit: { fontSize: 12, fontWeight: '800', color: '#ffffff' },
+
+  // The surplus/deficit cap and its word. The word sits beside the cap
+  // rather than above it so the cap keeps the column's exact width and
+  // the two totals still read as equal.
+  capRow: { flexDirection: 'row', alignItems: 'center' },
+  cap: {
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  capValue: { fontSize: 17, fontWeight: '900', color: '#ffffff' },
+  capTag: { fontSize: 13, fontWeight: '900', marginHorizontal: 7, marginBottom: 4 },
+  capTagGood: { color: COLORS.good },
+  capTagOver: { color: COLORS.over },
+
+  colLabel: { marginTop: 9, fontSize: 13.5, fontWeight: '800', color: COLORS.textSoft },
+
+  // Maintenance only: the two columns are the same height, and a dashed
+  // rule across both tops is what makes "the same" visible rather than
+  // something you have to measure by eye.
+  levelLine: {
+    position: 'absolute',
+    top: 0,
+    left: 8,
+    right: 8,
+    borderTopWidth: 2,
+    borderStyle: 'dashed',
+    borderColor: COLORS.textFaint,
+  },
+
+  caption: {
+    marginTop: 18,
+    textAlign: 'center',
+    fontSize: 15.5,
+    lineHeight: 21,
+    color: COLORS.text,
+  },
+
+  dotsRow: { flexDirection: 'row', justifyContent: 'center', paddingTop: 12 },
+  dot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    marginHorizontal: 5,
+    backgroundColor: '#dbe3ef',
+  },
+  dotOn: { backgroundColor: COLORS.accent },
 
   // --- page 3, Estimated Timeline ---
   milestone: { flexDirection: 'row', alignItems: 'center' },
